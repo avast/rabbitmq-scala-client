@@ -44,7 +44,6 @@ public class DefaultRabbitMQSender implements RabbitMQSender {
             channel = factory.newConnection().createChannel();
             LOG.debug("Connected to " + host + "/" + queue);
 
-
             channel.queueDeclare(queue, true, false, false, null);
         } catch (IOException e) {
             LOG.debug("Error while connecting to the " + host + "/" + queue, e);

@@ -9,5 +9,10 @@ import com.rabbitmq.client.QueueingConsumer;
  * @author Jenda Kolena, kolena@avast.com
  */
 public interface RabbitMQReceiver {
+    /**
+     * Adds listener to this MQ receiver.
+     *
+     * @param listener The listener.
+     */
     void addListener(GenericAsyncHandler<QueueingConsumer.Delivery> listener);
 }
