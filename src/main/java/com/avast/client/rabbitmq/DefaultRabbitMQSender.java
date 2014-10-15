@@ -1,5 +1,6 @@
 package com.avast.client.rabbitmq;
 
+import com.avast.client.api.exceptions.RequestConnectException;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.google.protobuf.ByteString;
 import com.google.protobuf.MessageLite;
@@ -8,6 +9,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
+import java.net.URI;
 import java.util.Date;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -17,6 +19,7 @@ import java.util.concurrent.Executors;
  *
  * @author Jenda Kolena, kolena@avast.com
  */
+@SuppressWarnings("unused")
 public class DefaultRabbitMQSender implements RabbitMQSender {
     protected final Logger LOG = LoggerFactory.getLogger(getClass());
 
@@ -26,22 +29,30 @@ public class DefaultRabbitMQSender implements RabbitMQSender {
     protected final String queue;
     protected final Channel channel;
 
-    public DefaultRabbitMQSender(final String host, final String queue, final int connectionTimeout) throws IOException {
+    public DefaultRabbitMQSender(final String host, final String queue, final int connectionTimeout) throws RequestConnectException {
         this.host = host;
         this.queue = queue;
 
-        final ConnectionFactory factory = new ConnectionFactory();
-        factory.setHost(host);
-        factory.setSharedExecutor(executor);
-        factory.setExceptionHandler(getExceptionHandler());
-        factory.setConnectionTimeout(connectionTimeout > 0 ? connectionTimeout : 5000);
+        try {
+            final ConnectionFactory factory = new ConnectionFactory();
+            factory.setHost(host);
+            factory.setSharedExecutor(executor);
+            factory.setExceptionHandler(getExceptionHandler());
+            factory.setConnectionTimeout(connectionTimeout > 0 ? connectionTimeout : 5000);
 
-        channel = factory.newConnection().createChannel();
+            LOG.info("Connecting to RabbitMQ on " + host + "/" + queue);
+            channel = factory.newConnection().createChannel();
+            LOG.debug("Connected to " + host + "/" + queue);
 
-        channel.queueDeclare(queue, true, false, false, null);
+
+            channel.queueDeclare(queue, true, false, false, null);
+        } catch (IOException e) {
+            LOG.debug("Error while connecting to the " + host + "/" + queue, e);
+            throw new RequestConnectException(e, URI.create("amqp://" + host + "/" + queue));
+        }
     }
 
-    public DefaultRabbitMQSender(final String host, final String queue) throws IOException {
+    public DefaultRabbitMQSender(final String host, final String queue) throws RequestConnectException {
         this(host, queue, 0);
     }
 
