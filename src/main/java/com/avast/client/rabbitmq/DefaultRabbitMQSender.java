@@ -5,6 +5,7 @@ import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.google.protobuf.ByteString;
 import com.google.protobuf.MessageLite;
 import com.rabbitmq.client.*;
+import org.apache.commons.lang.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -29,16 +30,33 @@ public class DefaultRabbitMQSender implements RabbitMQSender {
     protected final String queue;
     protected final Channel channel;
 
-    public DefaultRabbitMQSender(final String host, final String queue, final int connectionTimeout) throws RequestConnectException {
+    public DefaultRabbitMQSender(final String host, final String username, final String password, final String queue, final int connectionTimeout) throws RequestConnectException {
         this.host = host;
         this.queue = queue;
 
         try {
             final ConnectionFactory factory = new ConnectionFactory();
-            factory.setHost(host);
+            if (host.contains("/")) {
+                final String[] parts = host.split("/");
+                if (parts.length > 2 || StringUtils.isBlank(parts[0]) || StringUtils.isBlank(parts[1])) {
+                    throw new IllegalArgumentException("Invalid definition of host/virtualhost");
+                }
+                factory.setHost(parts[0]);
+                factory.setVirtualHost(parts[1]);
+            }
+            else {
+                factory.setHost(host);
+            }
+
             factory.setSharedExecutor(executor);
             factory.setExceptionHandler(getExceptionHandler());
             factory.setConnectionTimeout(connectionTimeout > 0 ? connectionTimeout : 5000);
+            if (StringUtils.isNotBlank(username)) {
+                factory.setUsername(username);
+            }
+            if (StringUtils.isNotBlank(password)) {
+                factory.setPassword(password);
+            }
 
             LOG.info("Connecting to RabbitMQ on " + host + "/" + queue);
             channel = factory.newConnection().createChannel();
@@ -52,7 +70,7 @@ public class DefaultRabbitMQSender implements RabbitMQSender {
     }
 
     public DefaultRabbitMQSender(final String host, final String queue) throws RequestConnectException {
-        this(host, queue, 0);
+        this(host, "", "", queue, 0);
     }
 
     @Override

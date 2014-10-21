@@ -4,6 +4,7 @@ import com.avast.client.api.GenericAsyncHandler;
 import com.avast.client.api.exceptions.RequestConnectException;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.rabbitmq.client.*;
+import org.apache.commons.lang.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -41,16 +42,33 @@ public class DefaultRabbitMQReceiver implements RabbitMQReceiver {
 
     protected Thread listenerThread;
 
-    public DefaultRabbitMQReceiver(final String host, final String queue, final boolean allowRetry, final int connectionTimeout) throws RequestConnectException {
+    public DefaultRabbitMQReceiver(final String host, final String username, final String password, final String queue, final boolean allowRetry, final int connectionTimeout) throws RequestConnectException {
         this.queue = queue;
         this.allowRetry = allowRetry;
 
         try {
             final ConnectionFactory factory = new ConnectionFactory();
-            factory.setHost(host);
+            if (host.contains("/")) {
+                final String[] parts = host.split("/");
+                if (parts.length > 2 || StringUtils.isBlank(parts[0]) || StringUtils.isBlank(parts[1])) {
+                    throw new IllegalArgumentException("Invalid definition of host/virtualhost");
+                }
+                factory.setHost(parts[0]);
+                factory.setVirtualHost(parts[1]);
+            }
+            else {
+                factory.setHost(host);
+            }
+
             factory.setSharedExecutor(executor);
             factory.setExceptionHandler(getExceptionHandler());
             factory.setConnectionTimeout(connectionTimeout > 0 ? connectionTimeout : 5000);
+            if (StringUtils.isNotBlank(username)) {
+                factory.setUsername(username);
+            }
+            if (StringUtils.isNotBlank(password)) {
+                factory.setPassword(password);
+            }
 
             LOG.info("Connecting to RabbitMQ on " + host + "/" + queue);
             channel = factory.newConnection().createChannel();
@@ -75,7 +93,7 @@ public class DefaultRabbitMQReceiver implements RabbitMQReceiver {
     }
 
     public DefaultRabbitMQReceiver(final String host, final String queue) throws RequestConnectException {
-        this(host, queue, true, 0);
+        this(host, "", "", queue, true, 0);
     }
 
     @Override
