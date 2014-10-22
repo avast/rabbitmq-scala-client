@@ -92,8 +92,12 @@ public class DefaultRabbitMQReceiver implements RabbitMQReceiver {
         }
     }
 
+    public DefaultRabbitMQReceiver(final String host, final String queue, final int timeout) throws RequestConnectException {
+        this(host, "", "", queue, true, timeout);
+    }
+
     public DefaultRabbitMQReceiver(final String host, final String queue) throws RequestConnectException {
-        this(host, "", "", queue, true, 0);
+        this(host, queue, 0);
     }
 
     @Override

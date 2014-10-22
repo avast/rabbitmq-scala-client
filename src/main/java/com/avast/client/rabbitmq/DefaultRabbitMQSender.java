@@ -69,8 +69,12 @@ public class DefaultRabbitMQSender implements RabbitMQSender {
         }
     }
 
+    public DefaultRabbitMQSender(final String host, final String queue, final int timeout) throws RequestConnectException {
+        this(host, "", "", queue, timeout);
+    }
+
     public DefaultRabbitMQSender(final String host, final String queue) throws RequestConnectException {
-        this(host, "", "", queue, 0);
+        this(host, queue, 0);
     }
 
     @Override
