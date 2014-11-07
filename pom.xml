@@ -1,7 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<project xmlns="http://maven.apache.org/POM/4.0.0"
-         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
     <parent>
@@ -12,7 +10,7 @@
 
     <groupId>com.avast.client</groupId>
     <artifactId>rabbitmqclient_${build.scala.version}</artifactId>
-    <version>1.0-SNAPSHOT</version>
+    <version>1.0.3</version>
 
     <name>RabbitMQClient</name>
 
@@ -26,7 +24,7 @@
         <connection>scm:${scm.type}:${scm.server}:${scm.project}</connection>
         <developerConnection>scm:${scm.type}:${scm.server}:${scm.project}</developerConnection>
         <url>${scm.server}:${scm.project}</url>
-        <tag>1.0-SNAPSHOT</tag>
+        <tag>v1.0.3_2.9</tag>
     </scm>
 
     <dependencies>
