@@ -10,6 +10,8 @@ import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.net.URI;
+import java.security.KeyManagementException;
+import java.security.NoSuchAlgorithmException;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.Set;
@@ -42,7 +44,7 @@ public class DefaultRabbitMQReceiver implements RabbitMQReceiver {
 
     protected Thread listenerThread;
 
-    public DefaultRabbitMQReceiver(final String host, final String username, final String password, final String queue, final boolean allowRetry, final int connectionTimeout) throws RequestConnectException {
+    public DefaultRabbitMQReceiver(final String host, final String username, final String password, final String queue, final boolean allowRetry, final int connectionTimeout, final boolean useSSL) throws RequestConnectException {
         this.queue = queue;
         this.allowRetry = allowRetry;
 
@@ -55,11 +57,11 @@ public class DefaultRabbitMQReceiver implements RabbitMQReceiver {
                 }
                 factory.setHost(parts[0]);
                 factory.setVirtualHost(parts[1]);
-            }
-            else {
+            } else {
                 factory.setHost(host);
             }
 
+            if (useSSL) factory.useSslProtocol();
             factory.setSharedExecutor(executor);
             factory.setExceptionHandler(getExceptionHandler());
             factory.setConnectionTimeout(connectionTimeout > 0 ? connectionTimeout : 5000);
@@ -89,11 +91,13 @@ public class DefaultRabbitMQReceiver implements RabbitMQReceiver {
         } catch (IOException e) {
             LOG.debug("Error while connecting to the " + host + "/" + queue, e);
             throw new RequestConnectException(e, URI.create("amqp://" + host + "/" + queue));
+        } catch (NoSuchAlgorithmException | KeyManagementException e) {
+            throw new RuntimeException(e);
         }
     }
 
     public DefaultRabbitMQReceiver(final String host, final String queue, final int timeout) throws RequestConnectException {
-        this(host, "", "", queue, true, timeout);
+        this(host, "", "", queue, true, timeout, true);
     }
 
     public DefaultRabbitMQReceiver(final String host, final String queue) throws RequestConnectException {
@@ -146,13 +150,11 @@ public class DefaultRabbitMQReceiver implements RabbitMQReceiver {
                                     if (failedTags.contains(deliveryTag)) { //when it has failed before, ACK it, or add to retry list
                                         LOG.warn("Processing of listener has failed");
                                         ack(deliveryTag);
-                                    }
-                                    else {
+                                    } else {
                                         LOG.debug("Processing of listener has failed, but retry is allowed");
                                         failedTags.add(deliveryTag);
                                     }
-                                }
-                                else {
+                                } else {
                                     LOG.warn("Processing of listener has failed");
                                     ack(deliveryTag);
                                 }

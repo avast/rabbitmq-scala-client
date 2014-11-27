@@ -11,6 +11,8 @@ import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.net.URI;
+import java.security.KeyManagementException;
+import java.security.NoSuchAlgorithmException;
 import java.util.Date;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -30,7 +32,7 @@ public class DefaultRabbitMQSender implements RabbitMQSender {
     protected final String queue;
     protected final Channel channel;
 
-    public DefaultRabbitMQSender(final String host, final String username, final String password, final String queue, final int connectionTimeout) throws RequestConnectException {
+    public DefaultRabbitMQSender(final String host, final String username, final String password, final String queue, final int connectionTimeout, final boolean useSSL) throws RequestConnectException {
         this.host = host;
         this.queue = queue;
 
@@ -43,11 +45,11 @@ public class DefaultRabbitMQSender implements RabbitMQSender {
                 }
                 factory.setHost(parts[0]);
                 factory.setVirtualHost(parts[1]);
-            }
-            else {
+            } else {
                 factory.setHost(host);
             }
 
+            if (useSSL) factory.useSslProtocol();
             factory.setSharedExecutor(executor);
             factory.setExceptionHandler(getExceptionHandler());
             factory.setConnectionTimeout(connectionTimeout > 0 ? connectionTimeout : 5000);
@@ -66,11 +68,13 @@ public class DefaultRabbitMQSender implements RabbitMQSender {
         } catch (IOException e) {
             LOG.debug("Error while connecting to the " + host + "/" + queue, e);
             throw new RequestConnectException(e, URI.create("amqp://" + host + "/" + queue));
+        } catch (NoSuchAlgorithmException | KeyManagementException e) {
+            throw new RuntimeException(e);
         }
     }
 
     public DefaultRabbitMQSender(final String host, final String queue, final int timeout) throws RequestConnectException {
-        this(host, "", "", queue, timeout);
+        this(host, "", "", queue, timeout, true);
     }
 
     public DefaultRabbitMQSender(final String host, final String queue) throws RequestConnectException {
