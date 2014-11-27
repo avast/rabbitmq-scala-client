@@ -1,6 +1,7 @@
 package com.avast.client.rabbitmq;
 
 import com.avast.client.api.exceptions.RequestConnectException;
+import com.google.common.base.Strings;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.google.protobuf.ByteString;
 import com.google.protobuf.MessageLite;
@@ -9,6 +10,7 @@ import org.apache.commons.lang.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import javax.net.ssl.SSLContext;
 import java.io.IOException;
 import java.net.URI;
 import java.security.KeyManagementException;
@@ -32,7 +34,7 @@ public class DefaultRabbitMQSender implements RabbitMQSender {
     protected final String queue;
     protected final Channel channel;
 
-    public DefaultRabbitMQSender(final String host, final String username, final String password, final String queue, final int connectionTimeout, final boolean useSSL) throws RequestConnectException {
+    public DefaultRabbitMQSender(final String host, final String username, final String password, final String queue, final int connectionTimeout, final SSLContext sslContext) throws RequestConnectException {
         this.host = host;
         this.queue = queue;
 
@@ -49,10 +51,12 @@ public class DefaultRabbitMQSender implements RabbitMQSender {
                 factory.setHost(host);
             }
 
-            if (useSSL) factory.useSslProtocol();
+            if (sslContext != null) factory.useSslProtocol(sslContext);
+
             factory.setSharedExecutor(executor);
             factory.setExceptionHandler(getExceptionHandler());
             factory.setConnectionTimeout(connectionTimeout > 0 ? connectionTimeout : 5000);
+
             if (StringUtils.isNotBlank(username)) {
                 factory.setUsername(username);
             }
@@ -68,13 +72,11 @@ public class DefaultRabbitMQSender implements RabbitMQSender {
         } catch (IOException e) {
             LOG.debug("Error while connecting to the " + host + "/" + queue, e);
             throw new RequestConnectException(e, URI.create("amqp://" + host + "/" + queue));
-        } catch (NoSuchAlgorithmException | KeyManagementException e) {
-            throw new RuntimeException(e);
         }
     }
 
     public DefaultRabbitMQSender(final String host, final String queue, final int timeout) throws RequestConnectException {
-        this(host, "", "", queue, timeout, true);
+        this(host, "", "", queue, timeout, null);
     }
 
     public DefaultRabbitMQSender(final String host, final String queue) throws RequestConnectException {

@@ -8,6 +8,7 @@ import org.apache.commons.lang.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import javax.net.ssl.SSLContext;
 import java.io.IOException;
 import java.net.URI;
 import java.security.KeyManagementException;
@@ -44,7 +45,7 @@ public class DefaultRabbitMQReceiver implements RabbitMQReceiver {
 
     protected Thread listenerThread;
 
-    public DefaultRabbitMQReceiver(final String host, final String username, final String password, final String queue, final boolean allowRetry, final int connectionTimeout, final boolean useSSL) throws RequestConnectException {
+    public DefaultRabbitMQReceiver(final String host, final String username, final String password, final String queue, final boolean allowRetry, final int connectionTimeout, final SSLContext sslContext) throws RequestConnectException {
         this.queue = queue;
         this.allowRetry = allowRetry;
 
@@ -61,7 +62,8 @@ public class DefaultRabbitMQReceiver implements RabbitMQReceiver {
                 factory.setHost(host);
             }
 
-            if (useSSL) factory.useSslProtocol();
+            if (sslContext != null) factory.useSslProtocol(sslContext);
+
             factory.setSharedExecutor(executor);
             factory.setExceptionHandler(getExceptionHandler());
             factory.setConnectionTimeout(connectionTimeout > 0 ? connectionTimeout : 5000);
@@ -91,13 +93,11 @@ public class DefaultRabbitMQReceiver implements RabbitMQReceiver {
         } catch (IOException e) {
             LOG.debug("Error while connecting to the " + host + "/" + queue, e);
             throw new RequestConnectException(e, URI.create("amqp://" + host + "/" + queue));
-        } catch (NoSuchAlgorithmException | KeyManagementException e) {
-            throw new RuntimeException(e);
         }
     }
 
     public DefaultRabbitMQReceiver(final String host, final String queue, final int timeout) throws RequestConnectException {
-        this(host, "", "", queue, true, timeout, true);
+        this(host, "", "", queue, true, timeout, null);
     }
 
     public DefaultRabbitMQReceiver(final String host, final String queue) throws RequestConnectException {
