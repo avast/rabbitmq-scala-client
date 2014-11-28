@@ -144,8 +144,8 @@ public interface RabbitMQSender {
             return this;
         }
 
-        public DefaultRabbitMQReceiver build() throws RequestConnectException {
-            return new DefaultRabbitMQReceiver(host + "/" + virtualHost, Strings.nullToEmpty(username), Strings.nullToEmpty(password), queue, allowRetry, connectTimeout, sslContext);
+        public DefaultRabbitMQSender build() throws RequestConnectException {
+            return new DefaultRabbitMQSender(host + "/" + virtualHost, Strings.nullToEmpty(username), Strings.nullToEmpty(password), queue, connectTimeout, sslContext);
         }
     }
 }
