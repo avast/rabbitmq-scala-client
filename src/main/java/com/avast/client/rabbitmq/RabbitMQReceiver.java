@@ -8,6 +8,7 @@ import org.apache.commons.lang.StringUtils;
 
 import javax.net.ssl.KeyManagerFactory;
 import javax.net.ssl.SSLContext;
+import javax.net.ssl.TrustManagerFactory;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -75,12 +76,15 @@ public interface RabbitMQReceiver {
                     throw new FileNotFoundException("Keystore file '" + keystorePath + "' cannot be found or is not readable");
 
                 final SSLContext context = SSLContext.getInstance("TLS");
-                KeyManagerFactory kmf = KeyManagerFactory.getInstance("SunX509");
-                KeyStore ks = KeyStore.getInstance("JKS");
+                final KeyManagerFactory kmf = KeyManagerFactory.getInstance("SunX509");
+                final KeyStore ks = KeyStore.getInstance("JKS");
                 ks.load(Files.newInputStream(keystorePath), password.toCharArray());
 
+                final TrustManagerFactory tmf = TrustManagerFactory.getInstance("X509");
+                tmf.init(ks);
+
                 kmf.init(ks, "".toCharArray());
-                context.init(kmf.getKeyManagers(), null, null);
+                context.init(kmf.getKeyManagers(), tmf.getTrustManagers(), null);
 
                 this.sslContext = context;
             } catch (KeyStoreException | CertificateException | NoSuchAlgorithmException | UnrecoverableKeyException | KeyManagementException e) {
