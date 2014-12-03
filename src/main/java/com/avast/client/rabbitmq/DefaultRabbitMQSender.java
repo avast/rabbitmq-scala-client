@@ -1,7 +1,6 @@
 package com.avast.client.rabbitmq;
 
 import com.avast.client.api.exceptions.RequestConnectException;
-import com.google.common.base.Strings;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.google.protobuf.ByteString;
 import com.google.protobuf.MessageLite;
@@ -13,11 +12,10 @@ import org.slf4j.LoggerFactory;
 import javax.net.ssl.SSLContext;
 import java.io.IOException;
 import java.net.URI;
-import java.security.KeyManagementException;
-import java.security.NoSuchAlgorithmException;
 import java.util.Date;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * Created <b>15.10.2014</b><br>
@@ -34,7 +32,9 @@ public class DefaultRabbitMQSender implements RabbitMQSender {
     protected final String queue;
     protected final Channel channel;
 
-    public DefaultRabbitMQSender(final String host, final String username, final String password, final String queue, final int connectionTimeout, final SSLContext sslContext) throws RequestConnectException {
+    protected final AtomicBoolean closed = new AtomicBoolean(false);
+
+    public DefaultRabbitMQSender(final String host, final String username, final String password, final String queue, final int connectionTimeout, final SSLContext sslContext, final ExceptionHandler exceptionHandler) throws RequestConnectException {
         this.host = host;
         this.queue = queue;
 
@@ -54,8 +54,10 @@ public class DefaultRabbitMQSender implements RabbitMQSender {
             if (sslContext != null) factory.useSslProtocol(sslContext);
 
             factory.setSharedExecutor(executor);
-            factory.setExceptionHandler(getExceptionHandler());
+            factory.setExceptionHandler(exceptionHandler != null ? exceptionHandler : getExceptionHandler());
             factory.setConnectionTimeout(connectionTimeout > 0 ? connectionTimeout : 5000);
+            factory.setAutomaticRecoveryEnabled(true);
+            factory.setNetworkRecoveryInterval(5000);
 
             if (StringUtils.isNotBlank(username)) {
                 factory.setUsername(username);
@@ -75,12 +77,12 @@ public class DefaultRabbitMQSender implements RabbitMQSender {
         }
     }
 
-    public DefaultRabbitMQSender(final String host, final String queue, final int timeout) throws RequestConnectException {
-        this(host, "", "", queue, timeout, null);
+    public DefaultRabbitMQSender(final String host, final String queue, final int timeout, final ExceptionHandler exceptionHandler) throws RequestConnectException {
+        this(host, "", "", queue, timeout, null, exceptionHandler);
     }
 
     public DefaultRabbitMQSender(final String host, final String queue) throws RequestConnectException {
-        this(host, queue, 0);
+        this(host, queue, 0, null);
     }
 
     @Override
@@ -136,6 +138,23 @@ public class DefaultRabbitMQSender implements RabbitMQSender {
 
     public AMQP.BasicProperties createProperties() {
         return createProperties(null, "application/octet-stream", null);
+    }
+
+    @Override
+    public void close() throws IOException {
+        if (closed.get()) return;
+
+        closed.set(true);
+        channel.close();
+    }
+
+    @Override
+    public void closeQuietly() {
+        try {
+            close();
+        } catch (Exception e) {
+            LOG.warn("Error while closing the receiver", e);
+        }
     }
 
     private ExceptionHandler getExceptionHandler() {

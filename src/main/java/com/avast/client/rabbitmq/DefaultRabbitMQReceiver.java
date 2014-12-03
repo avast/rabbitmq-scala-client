@@ -11,8 +11,6 @@ import org.slf4j.LoggerFactory;
 import javax.net.ssl.SSLContext;
 import java.io.IOException;
 import java.net.URI;
-import java.security.KeyManagementException;
-import java.security.NoSuchAlgorithmException;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.Set;
@@ -20,6 +18,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * Created <b>15.10.2014</b><br>
@@ -44,8 +43,11 @@ public class DefaultRabbitMQReceiver implements RabbitMQReceiver {
     protected final boolean allowRetry;
 
     protected Thread listenerThread;
+    protected final AtomicBoolean closed = new AtomicBoolean(false);
 
-    public DefaultRabbitMQReceiver(final String host, final String username, final String password, final String queue, final boolean allowRetry, final int connectionTimeout, final SSLContext sslContext) throws RequestConnectException {
+    protected final AtomicBoolean hasFailed = new AtomicBoolean(false);
+
+    public DefaultRabbitMQReceiver(final String host, final String username, final String password, final String queue, final boolean allowRetry, final int connectionTimeout, final SSLContext sslContext, final ExceptionHandler exceptionHandler) throws RequestConnectException {
         this.queue = queue;
         this.allowRetry = allowRetry;
 
@@ -65,8 +67,11 @@ public class DefaultRabbitMQReceiver implements RabbitMQReceiver {
             if (sslContext != null) factory.useSslProtocol(sslContext);
 
             factory.setSharedExecutor(executor);
-            factory.setExceptionHandler(getExceptionHandler());
+            factory.setExceptionHandler(exceptionHandler != null ? exceptionHandler : getExceptionHandler());
             factory.setConnectionTimeout(connectionTimeout > 0 ? connectionTimeout : 5000);
+            factory.setAutomaticRecoveryEnabled(true);
+            factory.setNetworkRecoveryInterval(5000);
+
             if (StringUtils.isNotBlank(username)) {
                 factory.setUsername(username);
             }
@@ -96,12 +101,12 @@ public class DefaultRabbitMQReceiver implements RabbitMQReceiver {
         }
     }
 
-    public DefaultRabbitMQReceiver(final String host, final String queue, final int timeout) throws RequestConnectException {
-        this(host, "", "", queue, true, timeout, null);
+    public DefaultRabbitMQReceiver(final String host, final String queue, final int timeout, final ExceptionHandler exceptionHandler) throws RequestConnectException {
+        this(host, "", "", queue, true, timeout, null, exceptionHandler);
     }
 
     public DefaultRabbitMQReceiver(final String host, final String queue) throws RequestConnectException {
-        this(host, queue, 0);
+        this(host, queue, 0, null);
     }
 
     @Override
@@ -125,7 +130,16 @@ public class DefaultRabbitMQReceiver implements RabbitMQReceiver {
             @Override
             public void run() {
                 //noinspection InfiniteLoopStatement
-                while (true) {
+                while (!closed.get()) {
+                    if (hasFailed.compareAndSet(true, false)) {
+                        LOG.debug("Throttling the receiver, delaying 200s");
+                        try {
+                            Thread.sleep(200);
+                        } catch (InterruptedException e) {
+                            LOG.debug("Error while receiver throttling", e);
+                        }
+                    }
+
                     LOG.debug("Waiting for message");
                     try {
                         final QueueingConsumer.Delivery delivery = consumer.nextDelivery();
@@ -165,6 +179,7 @@ public class DefaultRabbitMQReceiver implements RabbitMQReceiver {
                             ack(deliveryTag);
                         }
                     } catch (Exception e) {
+                        hasFailed.set(true);
                         LOG.debug("Error while receiving new message", e);
                         final Set<GenericAsyncHandler<QueueingConsumer.Delivery>> listeners = new HashSet<>(DefaultRabbitMQReceiver.this.listeners);
                         for (GenericAsyncHandler<QueueingConsumer.Delivery> listener : listeners) {
@@ -183,6 +198,23 @@ public class DefaultRabbitMQReceiver implements RabbitMQReceiver {
             channel.basicAck(tag, false);
         } catch (IOException e) {
             LOG.warn("Cannot ACK message with tag " + tag, e);
+        }
+    }
+
+    @Override
+    public void close() throws IOException {
+        if (closed.get()) return;
+
+        closed.set(true);
+        channel.close();
+    }
+
+    @Override
+    public void closeQuietly() {
+        try {
+            close();
+        } catch (Exception e) {
+            LOG.warn("Error while closing the receiver", e);
         }
     }
 

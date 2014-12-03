@@ -5,12 +5,13 @@ import com.google.common.base.Strings;
 import com.google.protobuf.ByteString;
 import com.google.protobuf.MessageLite;
 import com.rabbitmq.client.AMQP;
+import com.rabbitmq.client.ExceptionHandler;
 import org.apache.commons.lang.StringUtils;
 
 import javax.net.ssl.KeyManagerFactory;
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.TrustManagerFactory;
-import java.io.FileInputStream;
+import java.io.Closeable;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -23,7 +24,7 @@ import java.security.cert.CertificateException;
  *
  * @author Jenda Kolena, kolena@avast.com
  */
-public interface RabbitMQSender {
+public interface RabbitMQSender extends Closeable {
 
     /**
      * Sends message to the queue.
@@ -76,6 +77,11 @@ public interface RabbitMQSender {
      */
     void send(MessageLite msg) throws IOException;
 
+    /**
+     * Closes this client quietly, only logs errors.
+     */
+    void closeQuietly();
+
     /* ---------------------------------------------------------------- */
 
     @SuppressWarnings("unused")
@@ -84,6 +90,7 @@ public interface RabbitMQSender {
         protected int connectTimeout = 5000;
         protected SSLContext sslContext = null;
         protected boolean allowRetry = false;
+        protected ExceptionHandler exceptionHandler = null;
 
         public Builder(String host, String queue) {
             if (StringUtils.isBlank(host)) throw new IllegalArgumentException("Host must not be null");
@@ -113,11 +120,15 @@ public interface RabbitMQSender {
             return this;
         }
 
+        public Builder withExceptionHandler(ExceptionHandler exceptionHandler) {
+            this.exceptionHandler = exceptionHandler;
+            return this;
+        }
+
         public Builder withSslContext(SSLContext sslContext) {
             this.sslContext = sslContext;
             return this;
         }
-
 
         public Builder withSslContextFromKeystore(Path keystorePath, String password) throws IOException {
             try {
@@ -149,7 +160,7 @@ public interface RabbitMQSender {
         }
 
         public DefaultRabbitMQSender build() throws RequestConnectException {
-            return new DefaultRabbitMQSender(host + "/" + virtualHost, Strings.nullToEmpty(username), Strings.nullToEmpty(password), queue, connectTimeout, sslContext);
+            return new DefaultRabbitMQSender(host + "/" + virtualHost, Strings.nullToEmpty(username), Strings.nullToEmpty(password), queue, connectTimeout, sslContext, exceptionHandler);
         }
     }
 }
