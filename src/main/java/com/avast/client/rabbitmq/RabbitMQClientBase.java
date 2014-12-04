@@ -184,7 +184,7 @@ abstract class RabbitMQClientBase implements RabbitMQClient {
 
             @Override
             public void handleConnectionRecoveryException(Connection conn, Throwable exception) {
-                LOG.warn("Connection to " + conn.getAddress().getHostName() + " couldn't be recovered", exception);
+                LOG.warn("Connection to " + conn.getAddress().getHostName() + " couldn't be recovered: " + exception.getClass().getName() + "(" + exception.getMessage() + ")");
             }
 
             @Override
