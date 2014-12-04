@@ -82,6 +82,7 @@ public class DefaultRabbitMQSender extends RabbitMQClientBase implements RabbitM
                 .contentType(contentType)
                 .contentEncoding("utf-8")
                 .deliveryMode(2)
+                .correlationId(null)
                 .priority(0)
                 .type(msgType)
                 .timestamp(new Date())

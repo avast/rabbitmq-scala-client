@@ -31,6 +31,7 @@ public class DefaultRabbitMQReceiver extends RabbitMQClientBase implements Rabbi
 
     protected final Meter receivedMeter;
     protected final Meter failedMeter;
+    protected final Meter retriedMeter;
 
     protected QueueingConsumer consumer;
 
@@ -59,7 +60,7 @@ public class DefaultRabbitMQReceiver extends RabbitMQClientBase implements Rabbi
 
         receivedMeter = Metrics.newMeter(getMetricName("received"), "receivedMessages", TimeUnit.SECONDS);
         failedMeter = Metrics.newMeter(getMetricName("failed"), "failedMessages", TimeUnit.SECONDS);
-
+        retriedMeter = Metrics.newMeter(getMetricName("retried"), "retriedMessages", TimeUnit.SECONDS);
     }
 
     @Override
@@ -136,8 +137,6 @@ public class DefaultRabbitMQReceiver extends RabbitMQClientBase implements Rabbi
 
                             LOG.debug("Received message, length " + delivery.getBody().length + "B");
 
-                            boolean error = false;
-
                             failed.set(0);//reset the error indicator
 
                             final GenericAsyncHandler<QueueingConsumer.Delivery> listener = DefaultRabbitMQReceiver.this.listener.get();
@@ -145,29 +144,26 @@ public class DefaultRabbitMQReceiver extends RabbitMQClientBase implements Rabbi
                             try {
                                 if (listener != null)//that would be weird!
                                     listener.completed(delivery);
+                                receivedMeter.mark();
                             } catch (Exception e) {
                                 LOG.info("Error while executing the listener", e);
-                                error = true;
 
                                 if (allowRetry) {
-                                    if (failedTags.contains(deliveryTag)) { //when it has failedCnt before, ACK it, or add to retry list
-                                        failedMeter.mark();
+                                    if (isRetry(delivery)) { //when it has failed before, throw it away it, or add it back to the queue
                                         LOG.warn("Processing of listener has failed");
-                                        ack(deliveryTag);
+                                        failedMeter.mark();
                                     } else {
-                                        LOG.debug("Processing of listener has failed, but retry is allowed");
-                                        failedTags.add(deliveryTag);
+                                        LOG.debug("Processing of listener has failed, but retry is allowed");//do retry!
+                                        retriedMeter.mark();
+                                        retry(delivery);
                                     }
-                                } else {
+                                } else { //retry not enabled
                                     LOG.warn("Processing of listener has failed");
-                                    ack(deliveryTag);
+                                    failedMeter.mark();
                                 }
                             }
 
-                            if (!error) {
-                                ack(deliveryTag);
-                                receivedMeter.mark();
-                            }
+                            ack(deliveryTag);
                         } catch (Exception e) {
                             DefaultRabbitMQReceiver.this.failed.incrementAndGet();
                             LOG.debug("Error while receiving new message", e);
@@ -183,6 +179,10 @@ public class DefaultRabbitMQReceiver extends RabbitMQClientBase implements Rabbi
         }
     }
 
+    protected static boolean isRetry(final QueueingConsumer.Delivery delivery) {
+        return "retry".equals(delivery.getProperties().getCorrelationId());
+    }
+
     protected void ack(long tag) {
         LOG.debug("Sending ACK to message with tag " + tag);
         try {
@@ -190,6 +190,11 @@ public class DefaultRabbitMQReceiver extends RabbitMQClientBase implements Rabbi
         } catch (IOException e) {
             LOG.warn("Cannot ACK message with tag " + tag, e);
         }
+    }
+
+    protected void retry(final QueueingConsumer.Delivery delivery) throws IOException {
+        LOG.debug("Retrying message " + delivery.getEnvelope().getDeliveryTag() + ", putting back to the queue " + queue);
+        channel.basicPublish("", queue, delivery.getProperties().builder().correlationId("retry").build(), delivery.getBody());
     }
 
     /**
