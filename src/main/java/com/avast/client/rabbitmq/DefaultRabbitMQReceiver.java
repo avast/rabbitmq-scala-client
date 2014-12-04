@@ -2,23 +2,23 @@ package com.avast.client.rabbitmq;
 
 import com.avast.client.api.GenericAsyncHandler;
 import com.avast.client.api.exceptions.RequestConnectException;
-import com.google.common.util.concurrent.ThreadFactoryBuilder;
-import com.rabbitmq.client.*;
-import org.apache.commons.lang.StringUtils;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import com.avast.jmx.JMXProperty;
+import com.rabbitmq.client.ExceptionHandler;
+import com.rabbitmq.client.QueueingConsumer;
+import com.rabbitmq.client.Recoverable;
+import com.yammer.metrics.Metrics;
+import com.yammer.metrics.core.Meter;
 
 import javax.net.ssl.SSLContext;
 import java.io.IOException;
 import java.net.URI;
-import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.Set;
-import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * Created <b>15.10.2014</b><br>
@@ -27,98 +27,75 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * @author Jenda Kolena, kolena@avast.com
  */
 @SuppressWarnings("unused")
-public class DefaultRabbitMQReceiver implements RabbitMQReceiver {
-    protected final Logger LOG = LoggerFactory.getLogger(getClass());
+public class DefaultRabbitMQReceiver extends RabbitMQClientBase implements RabbitMQReceiver {
 
-    protected static final ExecutorService executor = Executors.newCachedThreadPool(new ThreadFactoryBuilder().setNameFormat("mqreceiver-%d").build());
+    protected final Meter receivedMeter;
+    protected final Meter failedMeter;
 
-    protected final String queue;
-    protected final Channel channel;
-    protected final QueueingConsumer consumer;
+    protected QueueingConsumer consumer;
 
-    protected final Set<GenericAsyncHandler<QueueingConsumer.Delivery>> listeners = new LinkedHashSet<>(2);
+    protected final AtomicReference<GenericAsyncHandler<QueueingConsumer.Delivery>> listener = new AtomicReference<>(null);
     protected final Semaphore listenerMutex = new Semaphore(0);
 
     protected final Set<Long> failedTags = new LinkedHashSet<>(2);
     protected final boolean allowRetry;
 
     protected Thread listenerThread;
-    protected final AtomicBoolean closed = new AtomicBoolean(false);
 
-    protected final AtomicBoolean hasFailed = new AtomicBoolean(false);
+    protected final AtomicInteger failed = new AtomicInteger(0);
 
-    public DefaultRabbitMQReceiver(final String host, final String username, final String password, final String queue, final boolean allowRetry, final int connectionTimeout, final SSLContext sslContext, final ExceptionHandler exceptionHandler) throws RequestConnectException {
-        this.queue = queue;
+    public DefaultRabbitMQReceiver(final String host, final String username, final String password, final String queue, final boolean allowRetry, final int connectionTimeout, final int recoveryTimeout, final SSLContext sslContext, final ExceptionHandler exceptionHandler, final String jmxGroup) throws RequestConnectException {
+        super("RECEIVER", host, username, password, queue, connectionTimeout, recoveryTimeout, sslContext, exceptionHandler, jmxGroup);
+
         this.allowRetry = allowRetry;
 
         try {
-            final ConnectionFactory factory = new ConnectionFactory();
-            if (host.contains("/")) {
-                final String[] parts = host.split("/");
-                if (parts.length > 2 || StringUtils.isBlank(parts[0]) || StringUtils.isBlank(parts[1])) {
-                    throw new IllegalArgumentException("Invalid definition of host/virtualhost");
-                }
-                factory.setHost(parts[0]);
-                factory.setVirtualHost(parts[1]);
-            } else {
-                factory.setHost(host);
-            }
-
-            if (sslContext != null) factory.useSslProtocol(sslContext);
-
-            factory.setSharedExecutor(executor);
-            factory.setExceptionHandler(exceptionHandler != null ? exceptionHandler : getExceptionHandler());
-            factory.setConnectionTimeout(connectionTimeout > 0 ? connectionTimeout : 5000);
-            factory.setAutomaticRecoveryEnabled(true);
-            factory.setNetworkRecoveryInterval(5000);
-
-            if (StringUtils.isNotBlank(username)) {
-                factory.setUsername(username);
-            }
-            if (StringUtils.isNotBlank(password)) {
-                factory.setPassword(password);
-            }
-
-            LOG.info("Connecting to RabbitMQ on " + host + "/" + queue);
-            channel = factory.newConnection().createChannel();
-            LOG.debug("Connected to " + host + "/" + queue);
-
-            channel.queueDeclare(queue, true, false, false, null);
-
-            consumer = new QueueingConsumer(channel);
-            channel.basicConsume(queue, false, consumer);
-
-            Executors.newSingleThreadScheduledExecutor().scheduleAtFixedRate(new Runnable() {
-                public void run() {
-                    if (listenerThread == null || !listenerThread.isAlive()) {
-                        planListener(); //start or restart the listener
-                    }
-                }
-            }, 0, 1, TimeUnit.SECONDS);
+            startConsumer(queue);
         } catch (IOException e) {
-            LOG.debug("Error while connecting to the " + host + "/" + queue, e);
-            throw new RequestConnectException(e, URI.create("amqp://" + host + "/" + queue));
+            final URI uri = getUri();
+            LOG.debug("Error while connecting to the " + uri, e);
+            throw new RequestConnectException(e, uri);
         }
-    }
 
-    public DefaultRabbitMQReceiver(final String host, final String queue, final int timeout, final ExceptionHandler exceptionHandler) throws RequestConnectException {
-        this(host, "", "", queue, true, timeout, null, exceptionHandler);
-    }
+        receivedMeter = Metrics.newMeter(getMetricName("received"), "receivedMessages", TimeUnit.SECONDS);
+        failedMeter = Metrics.newMeter(getMetricName("failed"), "failedMessages", TimeUnit.SECONDS);
 
-    public DefaultRabbitMQReceiver(final String host, final String queue) throws RequestConnectException {
-        this(host, queue, 0, null);
     }
 
     @Override
-    public void addListener(final GenericAsyncHandler<QueueingConsumer.Delivery> listener) {
-        synchronized (listeners) {
-            listeners.add(listener);
+    protected void onChannelRecovered(Recoverable recoverable) {
+        try {
+            startConsumer(queue);
+        } catch (IOException e) {
+            LOG.error("Error while restarting the consumer", e);
         }
+    }
+
+    protected void startConsumer(String queue) throws IOException {
+        if (consumer != null) {
+            channel.basicCancel(consumer.getConsumerTag());
+        }
+
+        consumer = new QueueingConsumer(channel);
+        channel.basicConsume(queue, false, consumer);
+
+        Executors.newSingleThreadScheduledExecutor().scheduleAtFixedRate(new Runnable() {
+            public void run() {
+                if (listenerThread == null || !listenerThread.isAlive()) {
+                    planListener(); //start or restart the listener
+                }
+            }
+        }, 0, 1, TimeUnit.SECONDS);
+    }
+
+    @Override
+    public void setListener(final GenericAsyncHandler<QueueingConsumer.Delivery> listener) {
+        this.listener.set(listener);
         listenerMutex.release(100000);//for sure
     }
 
     protected synchronized void planListener() {
-        LOG.debug("Waiting for listeners");
+        LOG.debug("Waiting for listener");
         try {
             listenerMutex.acquire();//just wait for some listener
             listenerMutex.release();
@@ -126,42 +103,55 @@ public class DefaultRabbitMQReceiver implements RabbitMQReceiver {
             throw new RuntimeException(e);
         }
 
-        listenerThread = new Thread(new Runnable() {
-            @Override
-            public void run() {
-                //noinspection InfiniteLoopStatement
-                while (!closed.get()) {
-                    if (hasFailed.compareAndSet(true, false)) {
-                        LOG.debug("Throttling the receiver, delaying 200s");
-                        try {
-                            Thread.sleep(200);
-                        } catch (InterruptedException e) {
-                            LOG.debug("Error while receiver throttling", e);
-                        }
-                    }
-
-                    LOG.debug("Waiting for message");
-                    try {
-                        final QueueingConsumer.Delivery delivery = consumer.nextDelivery();
-                        final long deliveryTag = delivery.getEnvelope().getDeliveryTag();
-
-                        LOG.debug("Received message, length " + delivery.getBody().length + "B");
-
-                        boolean error = false;
-
-                        final Set<GenericAsyncHandler<QueueingConsumer.Delivery>> listeners;
-                        synchronized (DefaultRabbitMQReceiver.this.listeners) {
-                            listeners = new HashSet<>(DefaultRabbitMQReceiver.this.listeners);
-                        }
-                        for (GenericAsyncHandler<QueueingConsumer.Delivery> listener : listeners) {
+        if (listenerThread == null || !listenerThread.isAlive()) {
+            listenerThread = new Thread(new Runnable() {
+                @Override
+                public void run() {
+                    while (!closed.get()) {
+                        if (!channel.isOpen()) {
+                            LOG.debug("Channel failure detected, skipping");
                             try {
-                                listener.completed(delivery);
+                                Thread.sleep(500);
+                            } catch (InterruptedException e) {
+                                LOG.debug("Error while receiver throttling", e);
+                            }
+                            continue;
+                        }
+
+                        final int failedCnt = DefaultRabbitMQReceiver.this.failed.get();
+                        if (failedCnt > 0) {
+                            final int d = 500 * (failedCnt % 100);
+                            LOG.debug("Throttling the receiver, delaying " + d + " ms");
+                            try {
+                                Thread.sleep(d);
+                            } catch (InterruptedException e) {
+                                LOG.debug("Error while receiver throttling", e);
+                            }
+                        }
+
+                        LOG.debug("Waiting for message");
+                        try {
+                            final QueueingConsumer.Delivery delivery = consumer.nextDelivery();
+                            final long deliveryTag = delivery.getEnvelope().getDeliveryTag();
+
+                            LOG.debug("Received message, length " + delivery.getBody().length + "B");
+
+                            boolean error = false;
+
+                            failed.set(0);//reset the error indicator
+
+                            final GenericAsyncHandler<QueueingConsumer.Delivery> listener = DefaultRabbitMQReceiver.this.listener.get();
+
+                            try {
+                                if (listener != null)//that would be weird!
+                                    listener.completed(delivery);
                             } catch (Exception e) {
                                 LOG.info("Error while executing the listener", e);
                                 error = true;
 
                                 if (allowRetry) {
-                                    if (failedTags.contains(deliveryTag)) { //when it has failed before, ACK it, or add to retry list
+                                    if (failedTags.contains(deliveryTag)) { //when it has failedCnt before, ACK it, or add to retry list
+                                        failedMeter.mark();
                                         LOG.warn("Processing of listener has failed");
                                         ack(deliveryTag);
                                     } else {
@@ -173,23 +163,24 @@ public class DefaultRabbitMQReceiver implements RabbitMQReceiver {
                                     ack(deliveryTag);
                                 }
                             }
-                        }
 
-                        if (!error) {
-                            ack(deliveryTag);
-                        }
-                    } catch (Exception e) {
-                        hasFailed.set(true);
-                        LOG.debug("Error while receiving new message", e);
-                        final Set<GenericAsyncHandler<QueueingConsumer.Delivery>> listeners = new HashSet<>(DefaultRabbitMQReceiver.this.listeners);
-                        for (GenericAsyncHandler<QueueingConsumer.Delivery> listener : listeners) {
-                            listener.failed(e);
+                            if (!error) {
+                                ack(deliveryTag);
+                                receivedMeter.mark();
+                            }
+                        } catch (Exception e) {
+                            DefaultRabbitMQReceiver.this.failed.incrementAndGet();
+                            LOG.debug("Error while receiving new message", e);
+
+                            final GenericAsyncHandler<QueueingConsumer.Delivery> listener = DefaultRabbitMQReceiver.this.listener.get();
+                            if (listener != null)//that would be weird!
+                                listener.failed(e);
                         }
                     }
                 }
-            }
-        }, "mqlistener-" + queue + "-" + (System.currentTimeMillis() / 1000));
-        listenerThread.start();
+            }, "mqlistener-" + queue + "-" + (System.currentTimeMillis() / 1000));
+            listenerThread.start();
+        }
     }
 
     protected void ack(long tag) {
@@ -201,69 +192,14 @@ public class DefaultRabbitMQReceiver implements RabbitMQReceiver {
         }
     }
 
+    /**
+     * Queries whether this client is alive; it means it wasn't closed, it is connected to the server and it has some listener so it's actively receiving messages.
+     *
+     * @return TRUE if this client is connected to the server. Returns FALSE e.g. in case of connection failure.
+     */
+    @JMXProperty(name = "alive")
     @Override
-    public void close() throws IOException {
-        if (closed.get()) return;
-
-        closed.set(true);
-        channel.close();
-    }
-
-    @Override
-    public void closeQuietly() {
-        try {
-            close();
-        } catch (Exception e) {
-            LOG.warn("Error while closing the receiver", e);
-        }
-    }
-
-    private ExceptionHandler getExceptionHandler() {
-        return new ExceptionHandler() {
-            @Override
-            public void handleUnexpectedConnectionDriverException(Connection conn, Throwable exception) {
-                LOG.warn("Error in connection driver", exception);
-            }
-
-            @Override
-            public void handleReturnListenerException(Channel channel, Throwable exception) {
-                LOG.warn("Error in ReturnListener", exception);
-            }
-
-            @Override
-            public void handleFlowListenerException(Channel channel, Throwable exception) {
-                LOG.warn("Error in FlowListener", exception);
-            }
-
-            @Override
-            public void handleConfirmListenerException(Channel channel, Throwable exception) {
-                LOG.warn("Error in ConfirmListener", exception);
-            }
-
-            @Override
-            public void handleBlockedListenerException(Connection connection, Throwable exception) {
-                LOG.warn("Error in BlockedListener", exception);
-            }
-
-            @Override
-            public void handleConsumerException(Channel channel, Throwable exception, Consumer consumer, String consumerTag, String methodName) {
-                LOG.warn("Error in consumer", exception);
-            }
-
-            @Override
-            public void handleConnectionRecoveryException(Connection conn, Throwable exception) {
-                LOG.warn("Error in connection recovery", exception);
-            }
-
-            @Override
-            public void handleChannelRecoveryException(Channel ch, Throwable exception) {
-                LOG.warn("Error in channel recovery", exception);
-            }
-
-            @Override
-            public void handleTopologyRecoveryException(Connection conn, Channel ch, TopologyRecoveryException exception) {
-                LOG.warn("Error in topology recovery", exception);
-            }
-        };
+    public boolean isAlive() {
+        return super.isAlive() && listenerThread != null && listenerThread.isAlive();
     }
 }

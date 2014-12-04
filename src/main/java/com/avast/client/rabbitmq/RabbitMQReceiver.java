@@ -10,7 +10,6 @@ import org.apache.commons.lang.StringUtils;
 import javax.net.ssl.KeyManagerFactory;
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.TrustManagerFactory;
-import java.io.Closeable;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -23,27 +22,23 @@ import java.security.cert.CertificateException;
  *
  * @author Jenda Kolena, kolena@avast.com
  */
-public interface RabbitMQReceiver extends Closeable {
+public interface RabbitMQReceiver extends RabbitMQClient {
     /**
      * Adds listener to this MQ receiver.
      *
      * @param listener The listener.
      */
-    void addListener(GenericAsyncHandler<QueueingConsumer.Delivery> listener);
-
-    /**
-     * Closes this client quietly, only logs errors.
-     */
-    void closeQuietly();
+    void setListener(GenericAsyncHandler<QueueingConsumer.Delivery> listener);
 
     /* ---------------------------------------------------------------- */
 
     @SuppressWarnings("unused")
     public static class Builder {
-        protected String host = null, virtualHost = "", username = null, password = null, queue = null;
-        protected int connectTimeout = 5000;
+        protected String host = null, virtualHost = "", username = null, password = null, queue = null, jmxGroup = RabbitMQReceiver.class.getPackage().getName();
+        protected int connectTimeout = 5000, recoveryTimeout = 5000;
         protected SSLContext sslContext = null;
         protected ExceptionHandler exceptionHandler = null;
+        protected boolean allowRetry = false;
 
         public Builder(String host, String queue) {
             if (StringUtils.isBlank(host)) throw new IllegalArgumentException("Host must not be null");
@@ -62,14 +57,33 @@ public interface RabbitMQReceiver extends Closeable {
             return this;
         }
 
+        public Builder withJmxGroup(String jmxGroup) {
+            this.jmxGroup = jmxGroup;
+            return this;
+        }
+
         public Builder withCredentials(String username, String password) {
             this.username = username;
             this.password = password;
             return this;
         }
 
+        public Builder allowRetry(boolean allow) {
+            allowRetry = allow;
+            return this;
+        }
+
+        public Builder withRetry() {
+            return allowRetry(true);
+        }
+
         public Builder withConnectTimeout(int connectTimeout) {
             this.connectTimeout = connectTimeout;
+            return this;
+        }
+
+        public Builder withRecoveryTimeout(int recoveryTimeout) {
+            this.recoveryTimeout = recoveryTimeout;
             return this;
         }
 
@@ -108,7 +122,7 @@ public interface RabbitMQReceiver extends Closeable {
         }
 
         public DefaultRabbitMQReceiver build() throws RequestConnectException {
-            return new DefaultRabbitMQReceiver(host + "/" + virtualHost, Strings.nullToEmpty(username), Strings.nullToEmpty(password), queue, true, connectTimeout, sslContext, exceptionHandler);
+            return new DefaultRabbitMQReceiver(host + "/" + virtualHost, Strings.nullToEmpty(username), Strings.nullToEmpty(password), queue, allowRetry, connectTimeout, recoveryTimeout, sslContext, exceptionHandler, jmxGroup);
         }
     }
 }

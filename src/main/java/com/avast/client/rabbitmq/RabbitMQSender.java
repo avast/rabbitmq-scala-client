@@ -11,7 +11,6 @@ import org.apache.commons.lang.StringUtils;
 import javax.net.ssl.KeyManagerFactory;
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.TrustManagerFactory;
-import java.io.Closeable;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -24,7 +23,7 @@ import java.security.cert.CertificateException;
  *
  * @author Jenda Kolena, kolena@avast.com
  */
-public interface RabbitMQSender extends Closeable {
+public interface RabbitMQSender extends RabbitMQClient {
 
     /**
      * Sends message to the queue.
@@ -77,19 +76,14 @@ public interface RabbitMQSender extends Closeable {
      */
     void send(MessageLite msg) throws IOException;
 
-    /**
-     * Closes this client quietly, only logs errors.
-     */
-    void closeQuietly();
-
     /* ---------------------------------------------------------------- */
 
     @SuppressWarnings("unused")
     public static class Builder {
-        protected String host = null, virtualHost = "", username = null, password = null, queue = null;
-        protected int connectTimeout = 5000;
+        protected String host = null, virtualHost = "", username = null, password = null, queue = null, jmxGroup = RabbitMQSender.class.getPackage().getName();
+        protected int connectTimeout = 5000, recoveryTimeout = 5000;
         protected SSLContext sslContext = null;
-        protected boolean allowRetry = false;
+
         protected ExceptionHandler exceptionHandler = null;
 
         public Builder(String host, String queue) {
@@ -109,6 +103,12 @@ public interface RabbitMQSender extends Closeable {
             return this;
         }
 
+
+        public Builder withJmxGroup(String jmxGroup) {
+            this.jmxGroup = jmxGroup;
+            return this;
+        }
+
         public Builder withCredentials(String username, String password) {
             this.username = username;
             this.password = password;
@@ -117,6 +117,11 @@ public interface RabbitMQSender extends Closeable {
 
         public Builder withConnectTimeout(int connectTimeout) {
             this.connectTimeout = connectTimeout;
+            return this;
+        }
+
+        public Builder withRecoveryTimeout(int recoveryTimeout) {
+            this.recoveryTimeout = recoveryTimeout;
             return this;
         }
 
@@ -154,13 +159,8 @@ public interface RabbitMQSender extends Closeable {
             return this;
         }
 
-        public Builder withRetry() {
-            allowRetry = true;
-            return this;
-        }
-
         public DefaultRabbitMQSender build() throws RequestConnectException {
-            return new DefaultRabbitMQSender(host + "/" + virtualHost, Strings.nullToEmpty(username), Strings.nullToEmpty(password), queue, connectTimeout, sslContext, exceptionHandler);
+            return new DefaultRabbitMQSender(host + "/" + virtualHost, Strings.nullToEmpty(username), Strings.nullToEmpty(password), queue, connectTimeout, recoveryTimeout, sslContext, exceptionHandler, jmxGroup);
         }
     }
 }

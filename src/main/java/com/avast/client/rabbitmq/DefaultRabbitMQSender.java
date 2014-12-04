@@ -1,21 +1,19 @@
 package com.avast.client.rabbitmq;
 
 import com.avast.client.api.exceptions.RequestConnectException;
-import com.google.common.util.concurrent.ThreadFactoryBuilder;
+import com.avast.jmx.JMXProperty;
 import com.google.protobuf.ByteString;
 import com.google.protobuf.MessageLite;
-import com.rabbitmq.client.*;
-import org.apache.commons.lang.StringUtils;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import com.rabbitmq.client.AMQP;
+import com.rabbitmq.client.ExceptionHandler;
+import com.rabbitmq.client.Recoverable;
+import com.yammer.metrics.Metrics;
+import com.yammer.metrics.core.Meter;
 
 import javax.net.ssl.SSLContext;
 import java.io.IOException;
-import java.net.URI;
 import java.util.Date;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Created <b>15.10.2014</b><br>
@@ -23,72 +21,29 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * @author Jenda Kolena, kolena@avast.com
  */
 @SuppressWarnings("unused")
-public class DefaultRabbitMQSender implements RabbitMQSender {
-    protected final Logger LOG = LoggerFactory.getLogger(getClass());
+public class DefaultRabbitMQSender extends RabbitMQClientBase implements RabbitMQSender {
 
-    protected static final ExecutorService executor = Executors.newCachedThreadPool(new ThreadFactoryBuilder().setNameFormat("mqsender-%d").build());
+    protected final Meter sentMeter;
+    protected final Meter failedMeter;
 
-    protected final String host;
-    protected final String queue;
-    protected final Channel channel;
+    public DefaultRabbitMQSender(final String host, final String username, final String password, final String queue, final int connectionTimeout, final int recoveryTimeout, final SSLContext sslContext, final ExceptionHandler exceptionHandler, final String jmxGroup) throws RequestConnectException {
+        super("SENDER", host, username, password, queue, connectionTimeout, recoveryTimeout, sslContext, exceptionHandler, jmxGroup);
 
-    protected final AtomicBoolean closed = new AtomicBoolean(false);
-
-    public DefaultRabbitMQSender(final String host, final String username, final String password, final String queue, final int connectionTimeout, final SSLContext sslContext, final ExceptionHandler exceptionHandler) throws RequestConnectException {
-        this.host = host;
-        this.queue = queue;
-
-        try {
-            final ConnectionFactory factory = new ConnectionFactory();
-            if (host.contains("/")) {
-                final String[] parts = host.split("/");
-                if (parts.length > 2 || StringUtils.isBlank(parts[0]) || StringUtils.isBlank(parts[1])) {
-                    throw new IllegalArgumentException("Invalid definition of host/virtualhost");
-                }
-                factory.setHost(parts[0]);
-                factory.setVirtualHost(parts[1]);
-            } else {
-                factory.setHost(host);
-            }
-
-            if (sslContext != null) factory.useSslProtocol(sslContext);
-
-            factory.setSharedExecutor(executor);
-            factory.setExceptionHandler(exceptionHandler != null ? exceptionHandler : getExceptionHandler());
-            factory.setConnectionTimeout(connectionTimeout > 0 ? connectionTimeout : 5000);
-            factory.setAutomaticRecoveryEnabled(true);
-            factory.setNetworkRecoveryInterval(5000);
-
-            if (StringUtils.isNotBlank(username)) {
-                factory.setUsername(username);
-            }
-            if (StringUtils.isNotBlank(password)) {
-                factory.setPassword(password);
-            }
-
-            LOG.info("Connecting to RabbitMQ on " + host + "/" + queue);
-            channel = factory.newConnection().createChannel();
-            LOG.debug("Connected to " + host + "/" + queue);
-
-            channel.queueDeclare(queue, true, false, false, null);
-        } catch (IOException e) {
-            LOG.debug("Error while connecting to the " + host + "/" + queue, e);
-            throw new RequestConnectException(e, URI.create("amqp://" + host + "/" + queue));
-        }
-    }
-
-    public DefaultRabbitMQSender(final String host, final String queue, final int timeout, final ExceptionHandler exceptionHandler) throws RequestConnectException {
-        this(host, "", "", queue, timeout, null, exceptionHandler);
-    }
-
-    public DefaultRabbitMQSender(final String host, final String queue) throws RequestConnectException {
-        this(host, queue, 0, null);
+        sentMeter = Metrics.newMeter(getMetricName("sent"), "sentMessages", TimeUnit.SECONDS);
+        failedMeter = Metrics.newMeter(getMetricName("failed"), "failedMessages", TimeUnit.SECONDS);
     }
 
     @Override
     public void send(final byte[] msg, final AMQP.BasicProperties properties) throws IOException {
         LOG.debug("Sending message with length " + (msg != null ? msg.length : 0) + " to " + host + "" + queue);
-        channel.basicPublish("", queue, properties, msg);
+        try {
+            channel.basicPublish("", queue, properties, msg);
+            sentMeter.mark();
+        } catch (IOException e) {
+            failedMeter.mark();
+            LOG.debug("Error while sending the message", e);
+            throw e;
+        }
     }
 
     @Override
@@ -116,6 +71,11 @@ public class DefaultRabbitMQSender implements RabbitMQSender {
         send(msg.toByteArray(), createProperties());
     }
 
+    @Override
+    protected void onChannelRecovered(Recoverable recoverable) {
+        //no extra action
+    }
+
     public AMQP.BasicProperties createProperties(String msgType, String contentType, String expiration) {
         return new AMQP.BasicProperties.Builder()
                 .expiration(expiration)
@@ -140,69 +100,10 @@ public class DefaultRabbitMQSender implements RabbitMQSender {
         return createProperties(null, "application/octet-stream", null);
     }
 
+
+    @JMXProperty(name = "alive")
     @Override
-    public void close() throws IOException {
-        if (closed.get()) return;
-
-        closed.set(true);
-        channel.close();
-    }
-
-    @Override
-    public void closeQuietly() {
-        try {
-            close();
-        } catch (Exception e) {
-            LOG.warn("Error while closing the receiver", e);
-        }
-    }
-
-    private ExceptionHandler getExceptionHandler() {
-        return new ExceptionHandler() {
-            @Override
-            public void handleUnexpectedConnectionDriverException(Connection conn, Throwable exception) {
-                LOG.warn("Error in connection driver", exception);
-            }
-
-            @Override
-            public void handleReturnListenerException(Channel channel, Throwable exception) {
-                LOG.warn("Error in ReturnListener", exception);
-            }
-
-            @Override
-            public void handleFlowListenerException(Channel channel, Throwable exception) {
-                LOG.warn("Error in FlowListener", exception);
-            }
-
-            @Override
-            public void handleConfirmListenerException(Channel channel, Throwable exception) {
-                LOG.warn("Error in ConfirmListener", exception);
-            }
-
-            @Override
-            public void handleBlockedListenerException(Connection connection, Throwable exception) {
-                LOG.warn("Error in BlockedListener", exception);
-            }
-
-            @Override
-            public void handleConsumerException(Channel channel, Throwable exception, Consumer consumer, String consumerTag, String methodName) {
-                LOG.warn("Error in consumer", exception);
-            }
-
-            @Override
-            public void handleConnectionRecoveryException(Connection conn, Throwable exception) {
-                LOG.warn("Error in connection recovery", exception);
-            }
-
-            @Override
-            public void handleChannelRecoveryException(Channel ch, Throwable exception) {
-                LOG.warn("Error in channel recovery", exception);
-            }
-
-            @Override
-            public void handleTopologyRecoveryException(Connection conn, Channel ch, TopologyRecoveryException exception) {
-                LOG.warn("Error in topology recovery", exception);
-            }
-        };
+    public boolean isAlive() {//needs override because of the annotation
+        return super.isAlive();
     }
 }
