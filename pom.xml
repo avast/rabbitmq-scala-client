@@ -10,7 +10,7 @@
 
     <groupId>com.avast.client</groupId>
     <artifactId>rabbitmqclient_${build.scala.version}</artifactId>
-    <version>1.0.12</version>
+    <version>1.0-SNAPSHOT</version>
 
     <name>RabbitMQClient</name>
 
@@ -24,7 +24,7 @@
         <connection>scm:${scm.type}:${scm.server}:${scm.project}</connection>
         <developerConnection>scm:${scm.type}:${scm.server}:${scm.project}</developerConnection>
         <url>${scm.server}:${scm.project}</url>
-        <tag>v1.0.12_2.9</tag>
+        <tag>1.0-SNAPSHOT</tag>
     </scm>
 
     <dependencies>
