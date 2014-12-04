@@ -28,7 +28,6 @@ import java.util.concurrent.atomic.AtomicReference;
  */
 @SuppressWarnings("unused")
 public class DefaultRabbitMQReceiver extends RabbitMQClientBase implements RabbitMQReceiver {
-
     protected final Meter receivedMeter;
     protected final Meter failedMeter;
     protected final Meter retriedMeter;
@@ -72,7 +71,7 @@ public class DefaultRabbitMQReceiver extends RabbitMQClientBase implements Rabbi
         }
     }
 
-    protected void startConsumer(String queue) throws IOException {
+    protected synchronized void startConsumer(String queue) throws IOException {
         if (consumer != null) {
             channel.basicCancel(consumer.getConsumerTag());
         }
@@ -90,7 +89,7 @@ public class DefaultRabbitMQReceiver extends RabbitMQClientBase implements Rabbi
     }
 
     @Override
-    public void setListener(final GenericAsyncHandler<QueueingConsumer.Delivery> listener) {
+    public synchronized void setListener(final GenericAsyncHandler<QueueingConsumer.Delivery> listener) {
         this.listener.set(listener);
         listenerMutex.release(100000);//for sure
     }
@@ -204,7 +203,7 @@ public class DefaultRabbitMQReceiver extends RabbitMQClientBase implements Rabbi
      */
     @JMXProperty(name = "alive")
     @Override
-    public boolean isAlive() {
+    public synchronized boolean isAlive() {
         return super.isAlive() && listenerThread != null && listenerThread.isAlive();
     }
 }

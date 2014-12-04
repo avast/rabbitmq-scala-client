@@ -22,7 +22,6 @@ import java.util.concurrent.TimeUnit;
  */
 @SuppressWarnings("unused")
 public class DefaultRabbitMQSender extends RabbitMQClientBase implements RabbitMQSender {
-
     protected final Meter sentMeter;
     protected final Meter failedMeter;
 
@@ -34,7 +33,7 @@ public class DefaultRabbitMQSender extends RabbitMQClientBase implements RabbitM
     }
 
     @Override
-    public void send(final byte[] msg, final AMQP.BasicProperties properties) throws IOException {
+    public synchronized void send(final byte[] msg, final AMQP.BasicProperties properties) throws IOException {
         LOG.debug("Sending message with length " + (msg != null ? msg.length : 0) + " to " + host + "" + queue);
         try {
             channel.basicPublish("", queue, properties, msg);
@@ -76,7 +75,7 @@ public class DefaultRabbitMQSender extends RabbitMQClientBase implements RabbitM
         //no extra action
     }
 
-    public AMQP.BasicProperties createProperties(String msgType, String contentType, String expiration) {
+    public static AMQP.BasicProperties createProperties(String msgType, String contentType, String expiration) {
         return new AMQP.BasicProperties.Builder()
                 .expiration(expiration)
                 .contentType(contentType)
@@ -89,15 +88,15 @@ public class DefaultRabbitMQSender extends RabbitMQClientBase implements RabbitM
                 .build();
     }
 
-    public AMQP.BasicProperties createProperties(String msgType, String contentType) {
+    public static AMQP.BasicProperties createProperties(String msgType, String contentType) {
         return createProperties(msgType, contentType, null);
     }
 
-    public AMQP.BasicProperties createProperties(String msgType) {
+    public static AMQP.BasicProperties createProperties(String msgType) {
         return createProperties(msgType, "application/octet-stream", null);
     }
 
-    public AMQP.BasicProperties createProperties() {
+    public static AMQP.BasicProperties createProperties() {
         return createProperties(null, "application/octet-stream", null);
     }
 

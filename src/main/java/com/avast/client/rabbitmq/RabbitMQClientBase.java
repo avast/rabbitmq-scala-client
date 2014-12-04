@@ -123,7 +123,7 @@ abstract class RabbitMQClientBase implements RabbitMQClient {
     }
 
     @Override
-    public void close() throws IOException {
+    public synchronized void close() throws IOException {
         if (closed.get()) return;
 
         closed.set(true);
@@ -131,7 +131,7 @@ abstract class RabbitMQClientBase implements RabbitMQClient {
     }
 
     @Override
-    public void closeQuietly() {
+    public synchronized void closeQuietly() {
         try {
             close();
         } catch (Exception e) {
@@ -140,13 +140,13 @@ abstract class RabbitMQClientBase implements RabbitMQClient {
     }
 
     @Override
-    public boolean isClosed() {
+    public synchronized boolean isClosed() {
         return closed.get();
     }
 
     @JMXProperty(name = "alive")
     @Override
-    public boolean isAlive() {
+    public synchronized boolean isAlive() {
         return !isClosed() && channel.isOpen();
     }
 
