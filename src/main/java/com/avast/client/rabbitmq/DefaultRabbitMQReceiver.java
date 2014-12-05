@@ -54,7 +54,7 @@ public class DefaultRabbitMQReceiver extends RabbitMQClientBase implements Rabbi
         } catch (IOException e) {
             final URI uri = getUri();
             LOG.debug("Error while connecting to the " + uri, e);
-            throw new RequestConnectException(e, uri);
+            throw new RequestConnectException(e, uri, 0);
         }
 
         receivedMeter = Metrics.newMeter(getMetricName("received"), "receivedMessages", TimeUnit.SECONDS);

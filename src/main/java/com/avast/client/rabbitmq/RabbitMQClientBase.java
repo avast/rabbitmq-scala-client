@@ -108,7 +108,7 @@ abstract class RabbitMQClientBase implements RabbitMQClient {
             MyDynamicBean.exposeAndRegisterSilently(jmxGroup + ":type=" + jmxType + ",scope=" + queue + "(" + clientType + "),name=client", this);
         } catch (IOException e) {
             LOG.debug("Error while connecting to the " + host + "/" + queue, e);
-            throw new RequestConnectException(e, URI.create("amqp://" + host + "/" + queue));
+            throw new RequestConnectException(e, URI.create("amqp://" + host + "/" + queue), 0);
         }
     }
 
