@@ -5,6 +5,7 @@ import com.avast.jmx.JMXProperty;
 import com.google.protobuf.ByteString;
 import com.google.protobuf.MessageLite;
 import com.rabbitmq.client.AMQP;
+import com.rabbitmq.client.Address;
 import com.rabbitmq.client.ExceptionHandler;
 import com.rabbitmq.client.Recoverable;
 import com.yammer.metrics.Metrics;
@@ -25,8 +26,8 @@ public class DefaultRabbitMQSender extends RabbitMQClientBase implements RabbitM
     protected final Meter sentMeter;
     protected final Meter failedMeter;
 
-    public DefaultRabbitMQSender(final String host, final String username, final String password, final String queue, final int connectionTimeout, final int recoveryTimeout, final SSLContext sslContext, final ExceptionHandler exceptionHandler, final String jmxGroup) throws RequestConnectException {
-        super("SENDER", host, username, password, queue, connectionTimeout, recoveryTimeout, sslContext, exceptionHandler, jmxGroup);
+    public DefaultRabbitMQSender(final Address[] addresses, final String virtualHost, final String username, final String password, final String queue, final int connectionTimeout, final int recoveryTimeout, final SSLContext sslContext, final ExceptionHandler exceptionHandler, final String jmxGroup) throws RequestConnectException {
+        super("SENDER", addresses, virtualHost, username, password, queue, connectionTimeout, recoveryTimeout, sslContext, exceptionHandler, jmxGroup);
 
         sentMeter = Metrics.newMeter(getMetricName("sent"), "sentMessages", TimeUnit.SECONDS);
         failedMeter = Metrics.newMeter(getMetricName("failed"), "failedMessages", TimeUnit.SECONDS);
@@ -34,7 +35,7 @@ public class DefaultRabbitMQSender extends RabbitMQClientBase implements RabbitM
 
     @Override
     public synchronized void send(final byte[] msg, final AMQP.BasicProperties properties) throws IOException {
-        LOG.debug("Sending message with length " + (msg != null ? msg.length : 0) + " to " + host + "" + queue);
+        LOG.debug("Sending message with length " + (msg != null ? msg.length : 0) + " to " + addresses + "" + queue);
         try {
             channel.basicPublish("", queue, properties, msg);
             sentMeter.mark();

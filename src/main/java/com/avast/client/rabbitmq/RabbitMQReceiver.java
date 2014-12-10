@@ -3,6 +3,7 @@ package com.avast.client.rabbitmq;
 import com.avast.client.api.GenericAsyncHandler;
 import com.avast.client.api.exceptions.RequestConnectException;
 import com.google.common.base.Strings;
+import com.rabbitmq.client.Address;
 import com.rabbitmq.client.ExceptionHandler;
 import com.rabbitmq.client.QueueingConsumer;
 import org.apache.commons.lang.StringUtils;
@@ -34,22 +35,23 @@ public interface RabbitMQReceiver extends RabbitMQClient {
 
     @SuppressWarnings("unused")
     public static class Builder {
-        protected String host = null, virtualHost = "", username = null, password = null, queue = null, jmxGroup = RabbitMQReceiver.class.getPackage().getName();
+        protected final Address[] addresses;
+        protected String virtualHost = "", username = null, password = null, queue = null, jmxGroup = RabbitMQReceiver.class.getPackage().getName();
         protected int connectTimeout = 5000, recoveryTimeout = 5000;
         protected SSLContext sslContext = null;
         protected ExceptionHandler exceptionHandler = null;
         protected boolean allowRetry = false;
 
-        public Builder(String host, String queue) {
-            if (StringUtils.isBlank(host)) throw new IllegalArgumentException("Host must not be null");
+        public Builder(Address[] addresses, String queue) {
+            if (addresses.length == 0) throw new IllegalArgumentException("Addresses must not be empty");
             if (StringUtils.isBlank(queue)) throw new IllegalArgumentException("Queue name must not be null");
 
-            this.host = host;
+            this.addresses = addresses;
             this.queue = queue;
         }
 
-        public static Builder create(String host, String queue) {
-            return new Builder(host, queue);
+        public static Builder create(Address[] addresses, String queue) {
+            return new Builder(addresses, queue);
         }
 
         public Builder withVirtualHost(String virtualHost) {
@@ -122,7 +124,7 @@ public interface RabbitMQReceiver extends RabbitMQClient {
         }
 
         public DefaultRabbitMQReceiver build() throws RequestConnectException {
-            return new DefaultRabbitMQReceiver(host + "/" + virtualHost, Strings.nullToEmpty(username), Strings.nullToEmpty(password), queue, allowRetry, connectTimeout, recoveryTimeout, sslContext, exceptionHandler, jmxGroup);
+            return new DefaultRabbitMQReceiver(addresses, virtualHost, Strings.nullToEmpty(username), Strings.nullToEmpty(password), queue, allowRetry, connectTimeout, recoveryTimeout, sslContext, exceptionHandler, jmxGroup);
         }
     }
 }

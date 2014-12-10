@@ -3,6 +3,7 @@ package com.avast.client.rabbitmq;
 import com.avast.client.api.GenericAsyncHandler;
 import com.avast.client.api.exceptions.RequestConnectException;
 import com.avast.jmx.JMXProperty;
+import com.rabbitmq.client.Address;
 import com.rabbitmq.client.ExceptionHandler;
 import com.rabbitmq.client.QueueingConsumer;
 import com.rabbitmq.client.Recoverable;
@@ -44,17 +45,22 @@ public class DefaultRabbitMQReceiver extends RabbitMQClientBase implements Rabbi
 
     protected final AtomicInteger failed = new AtomicInteger(0);
 
-    public DefaultRabbitMQReceiver(final String host, final String username, final String password, final String queue, final boolean allowRetry, final int connectionTimeout, final int recoveryTimeout, final SSLContext sslContext, final ExceptionHandler exceptionHandler, final String jmxGroup) throws RequestConnectException {
-        super("RECEIVER", host, username, password, queue, connectionTimeout, recoveryTimeout, sslContext, exceptionHandler, jmxGroup);
+    public DefaultRabbitMQReceiver(final Address[] addresses, final String virtualHost, final String username, final String password, final String queue, final boolean allowRetry, final int connectionTimeout, final int recoveryTimeout, final SSLContext sslContext, final ExceptionHandler exceptionHandler, final String jmxGroup) throws RequestConnectException {
+        super("RECEIVER", addresses, virtualHost, username, password, queue, connectionTimeout, recoveryTimeout, sslContext, exceptionHandler, jmxGroup);
 
         this.allowRetry = allowRetry;
 
         try {
             startConsumer(queue);
         } catch (IOException e) {
-            final URI uri = getUri();
-            LOG.debug("Error while connecting to the " + uri, e);
-            throw new RequestConnectException(e, uri, 0);
+            try {
+                final URI uri = new URI(addresses[0].toString());
+                LOG.debug("Error while connecting to the " + uri, e);
+                throw new RequestConnectException(e, uri, 0);
+            } catch (Exception ex) {
+                LOG.debug("Error while connecting to the " + addresses, e);
+                throw new RuntimeException("Error in get URI during start of consuming.");
+            }
         }
 
         receivedMeter = Metrics.newMeter(getMetricName("received"), "receivedMessages", TimeUnit.SECONDS);

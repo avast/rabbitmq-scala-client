@@ -5,6 +5,7 @@ import com.google.common.base.Strings;
 import com.google.protobuf.ByteString;
 import com.google.protobuf.MessageLite;
 import com.rabbitmq.client.AMQP;
+import com.rabbitmq.client.Address;
 import com.rabbitmq.client.ExceptionHandler;
 import org.apache.commons.lang.StringUtils;
 
@@ -80,22 +81,23 @@ public interface RabbitMQSender extends RabbitMQClient {
 
     @SuppressWarnings("unused")
     public static class Builder {
+        protected final Address[] addresses;
         protected String host = null, virtualHost = "", username = null, password = null, queue = null, jmxGroup = RabbitMQSender.class.getPackage().getName();
         protected int connectTimeout = 5000, recoveryTimeout = 5000;
         protected SSLContext sslContext = null;
 
         protected ExceptionHandler exceptionHandler = null;
 
-        public Builder(String host, String queue) {
-            if (StringUtils.isBlank(host)) throw new IllegalArgumentException("Host must not be null");
+        public Builder(Address[] addresses, String queue) {
+            if (addresses.length == 0) throw new IllegalArgumentException("Addresses must not be empty");
             if (StringUtils.isBlank(queue)) throw new IllegalArgumentException("Queue name must not be null");
 
-            this.host = host;
+            this.addresses = addresses;
             this.queue = queue;
         }
 
-        public static Builder create(String host, String queue) {
-            return new Builder(host, queue);
+        public static Builder create(Address[] addresses, String queue) {
+            return new Builder(addresses, queue);
         }
 
         public Builder withVirtualHost(String virtualHost) {
@@ -160,7 +162,7 @@ public interface RabbitMQSender extends RabbitMQClient {
         }
 
         public DefaultRabbitMQSender build() throws RequestConnectException {
-            return new DefaultRabbitMQSender(host + "/" + virtualHost, Strings.nullToEmpty(username), Strings.nullToEmpty(password), queue, connectTimeout, recoveryTimeout, sslContext, exceptionHandler, jmxGroup);
+            return new DefaultRabbitMQSender(addresses, virtualHost, Strings.nullToEmpty(username), Strings.nullToEmpty(password), queue, connectTimeout, recoveryTimeout, sslContext, exceptionHandler, jmxGroup);
         }
     }
 }
