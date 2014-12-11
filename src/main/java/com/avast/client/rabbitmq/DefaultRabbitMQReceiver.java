@@ -10,9 +10,11 @@ import com.rabbitmq.client.Recoverable;
 import com.yammer.metrics.Metrics;
 import com.yammer.metrics.core.Meter;
 
+import javax.annotation.concurrent.ThreadSafe;
 import javax.net.ssl.SSLContext;
 import java.io.IOException;
 import java.net.URI;
+import java.util.Arrays;
 import java.util.LinkedHashSet;
 import java.util.Set;
 import java.util.concurrent.Executors;
@@ -28,6 +30,7 @@ import java.util.concurrent.atomic.AtomicReference;
  * @author Jenda Kolena, kolena@avast.com
  */
 @SuppressWarnings("unused")
+@ThreadSafe
 public class DefaultRabbitMQReceiver extends RabbitMQClientBase implements RabbitMQReceiver {
     protected final Meter receivedMeter;
     protected final Meter failedMeter;
@@ -54,11 +57,11 @@ public class DefaultRabbitMQReceiver extends RabbitMQClientBase implements Rabbi
             startConsumer(queue);
         } catch (IOException e) {
             try {
-                final URI uri = new URI(addresses[0].toString());
+                final URI uri = getUri();
                 LOG.debug("Error while connecting to the " + uri, e);
                 throw new RequestConnectException(e, uri, 0);
             } catch (Exception ex) {
-                LOG.debug("Error while connecting to the " + addresses, e);
+                LOG.debug("Error while connecting to the " + Arrays.toString(addresses), e);
                 throw new RuntimeException("Error in get URI during start of consuming.");
             }
         }

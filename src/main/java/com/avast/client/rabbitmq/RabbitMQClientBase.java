@@ -15,6 +15,7 @@ import org.slf4j.LoggerFactory;
 import javax.net.ssl.SSLContext;
 import java.io.IOException;
 import java.net.URI;
+import java.util.Arrays;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -32,6 +33,7 @@ abstract class RabbitMQClientBase implements RabbitMQClient {
     @JMXProperty
     protected final String queue;
     protected final AutorecoveringChannel channel;
+    protected final AutorecoveringConnection connection;
 
     @JMXProperty
     protected final AtomicBoolean closed = new AtomicBoolean(false);
@@ -43,22 +45,14 @@ abstract class RabbitMQClientBase implements RabbitMQClient {
 
     protected RabbitMQClientBase(final String clientType, final Address[] addresses, final String virtualHost, final String username, final String password, final String queue, final int connectionTimeout, final int recoveryTimeout, final SSLContext sslContext, final ExceptionHandler exceptionHandler, final String jmxGroup) throws RequestConnectException {
         this.queue = queue;
+        this.addresses = addresses;
+
+        final String addressesString = Arrays.toString(addresses);
 
         try {
             final ConnectionFactory factory = new ConnectionFactory();
-//            if (host.contains("/")) {
-//                final String[] parts = host.split("/");
-//                if (parts.length > 2 || StringUtils.isBlank(parts[0]) || StringUtils.isBlank(parts[1])) {
-//                    throw new IllegalArgumentException("Invalid definition of host/virtualhost");
-//                }
-//                factory.setHost(parts[0]);
-//                factory.setVirtualHost(parts[1]);
-//            } else {
-//                factory.setHost(host);
-//            }
 
             factory.setVirtualHost(virtualHost);
-            this.addresses = addresses;
             if (sslContext != null) factory.useSslProtocol(sslContext);
 
             factory.setSharedExecutor(executor);
@@ -74,10 +68,12 @@ abstract class RabbitMQClientBase implements RabbitMQClient {
                 factory.setPassword(password);
             }
 
-            LOG.info("Connecting to RabbitMQ on " + addresses + "/" + queue);
-            final AutorecoveringConnection connection = (AutorecoveringConnection) factory.newConnection(addresses);
+            LOG.info("Connecting to RabbitMQ on " + addressesString + "/" + queue);
+
+            connection = (AutorecoveringConnection) factory.newConnection(addresses);
             channel = (AutorecoveringChannel) connection.createChannel();
-            LOG.debug("Connected to " + addresses + "/" + queue);
+
+            LOG.debug("Connected to " + connection.getAddress() + "/" + queue);
 
             connection.addShutdownListener(new ShutdownListener() {
                 @Override
@@ -91,7 +87,7 @@ abstract class RabbitMQClientBase implements RabbitMQClient {
                 public void handleRecovery(Recoverable recoverable) {
                     try {
                         onChannelRecovered(recoverable);
-                        LOG.info("Connection to " + addresses + " has been recovered");
+                        LOG.info("Connection to " + connection.getAddress() + " has been recovered");
                     } catch (Exception e) {
                         LOG.error("Error while recovering the client", e);
                     }
@@ -107,12 +103,16 @@ abstract class RabbitMQClientBase implements RabbitMQClient {
 
             MyDynamicBean.exposeAndRegisterSilently(jmxGroup + ":type=" + jmxType + ",scope=" + queue + "(" + clientType + "),name=client", this);
         } catch (IOException e) {
-            LOG.debug("Error while connecting to the " + addresses + "/" + queue, e);
-            throw new RequestConnectException(e, URI.create("amqp://" + addresses + "/" + queue), 0);
+            LOG.debug("Error while connecting to the " + addressesString + "/" + queue, e);
+            throw new RequestConnectException(e, getUri(), 0);
         }
     }
 
     protected abstract void onChannelRecovered(Recoverable recoverable);
+
+    protected URI getUri() {
+        return URI.create("amqp://" + addresses[0] + "/" + queue);
+    }
 
     protected MetricName getMetricName(final String name) {
         return new MetricName(jmxGroup, jmxType, name, queue + "(" + clientType + ")");

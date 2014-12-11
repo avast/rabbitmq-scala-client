@@ -11,6 +11,7 @@ import com.rabbitmq.client.Recoverable;
 import com.yammer.metrics.Metrics;
 import com.yammer.metrics.core.Meter;
 
+import javax.annotation.concurrent.ThreadSafe;
 import javax.net.ssl.SSLContext;
 import java.io.IOException;
 import java.util.Date;
@@ -22,6 +23,7 @@ import java.util.concurrent.TimeUnit;
  * @author Jenda Kolena, kolena@avast.com
  */
 @SuppressWarnings("unused")
+@ThreadSafe
 public class DefaultRabbitMQSender extends RabbitMQClientBase implements RabbitMQSender {
     protected final Meter sentMeter;
     protected final Meter failedMeter;
@@ -35,7 +37,8 @@ public class DefaultRabbitMQSender extends RabbitMQClientBase implements RabbitM
 
     @Override
     public synchronized void send(final byte[] msg, final AMQP.BasicProperties properties) throws IOException {
-        LOG.debug("Sending message with length " + (msg != null ? msg.length : 0) + " to " + addresses + "" + queue);
+
+        LOG.debug("Sending message with length " + (msg != null ? msg.length : 0) + " to " + connection.getAddress().getHostName() + "/" + queue);
         try {
             channel.basicPublish("", queue, properties, msg);
             sentMeter.mark();
