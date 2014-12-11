@@ -36,11 +36,11 @@ public class DefaultRabbitMQSender extends RabbitMQClientBase implements RabbitM
     }
 
     @Override
-    public synchronized void send(final byte[] msg, final AMQP.BasicProperties properties) throws IOException {
+    public synchronized void send(final String exchange, final byte[] msg, final AMQP.BasicProperties properties) throws IOException {
 
         LOG.debug("Sending message with length " + (msg != null ? msg.length : 0) + " to " + connection.getAddress().getHostName() + "/" + queue);
         try {
-            channel.basicPublish("", queue, properties, msg);
+            channel.basicPublish(exchange, queue, properties, msg);
             sentMeter.mark();
         } catch (IOException e) {
             failedMeter.mark();
@@ -50,8 +50,18 @@ public class DefaultRabbitMQSender extends RabbitMQClientBase implements RabbitM
     }
 
     @Override
+    public synchronized void send(final byte[] msg, final AMQP.BasicProperties properties) throws IOException {
+        send("", msg, properties);
+    }
+
+    @Override
     public void send(final byte[] msg) throws IOException {
         send(msg, createProperties());
+    }
+
+    @Override
+    public synchronized void send(final String exchange, final byte[] msg) throws IOException {
+        send(exchange, msg, createProperties());
     }
 
     @Override
@@ -103,7 +113,6 @@ public class DefaultRabbitMQSender extends RabbitMQClientBase implements RabbitM
     public static AMQP.BasicProperties createProperties() {
         return createProperties(null, "application/octet-stream", null);
     }
-
 
     @JMXProperty(name = "alive")
     @Override

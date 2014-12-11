@@ -12,15 +12,9 @@ import com.rabbitmq.client.ExceptionHandler;
 import org.apache.commons.lang.ArrayUtils;
 import org.apache.commons.lang.StringUtils;
 
-import javax.net.ssl.KeyManagerFactory;
 import javax.net.ssl.SSLContext;
-import javax.net.ssl.TrustManagerFactory;
-import java.io.FileNotFoundException;
 import java.io.IOException;
-import java.nio.file.Files;
 import java.nio.file.Path;
-import java.security.*;
-import java.security.cert.CertificateException;
 import java.util.Collection;
 
 /**
@@ -42,10 +36,29 @@ public interface RabbitMQSender extends RabbitMQClient {
     /**
      * Sends message to the queue.
      *
+     * @param exchange   Name of the exchange.
+     * @param msg        The message.
+     * @param properties Properties related to the message.
+     * @throws IOException When problem while sending has occurred.
+     */
+    void send(final String exchange, final byte[] msg, final AMQP.BasicProperties properties) throws IOException;
+
+    /**
+     * Sends message to the queue.
+     *
      * @param msg The message.
      * @throws IOException When problem while sending has occurred.
      */
     void send(byte[] msg) throws IOException;
+
+    /**
+     * Sends message to the queue.
+     *
+     * @param exchange Name of the exchange.
+     * @param msg      The message.
+     * @throws IOException When problem while sending has occurred.
+     */
+    void send(final String exchange, final byte[] msg) throws IOException;
 
     /**
      * Sends message to the queue.
