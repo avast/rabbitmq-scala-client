@@ -1,11 +1,15 @@
 package com.avast.client.rabbitmq;
 
 import com.avast.client.api.exceptions.RequestConnectException;
+import com.avast.client.encryption.SSLBuilder;
 import com.google.common.base.Strings;
+import com.google.common.collect.Iterables;
 import com.google.protobuf.ByteString;
 import com.google.protobuf.MessageLite;
 import com.rabbitmq.client.AMQP;
+import com.rabbitmq.client.Address;
 import com.rabbitmq.client.ExceptionHandler;
+import org.apache.commons.lang.ArrayUtils;
 import org.apache.commons.lang.StringUtils;
 
 import javax.net.ssl.KeyManagerFactory;
@@ -17,6 +21,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.*;
 import java.security.cert.CertificateException;
+import java.util.Collection;
 
 /**
  * Created <b>15.10.2014</b><br>
@@ -80,29 +85,37 @@ public interface RabbitMQSender extends RabbitMQClient {
 
     @SuppressWarnings("unused")
     public static class Builder {
+        protected final Address[] addresses;
         protected String host = null, virtualHost = "", username = null, password = null, queue = null, jmxGroup = RabbitMQSender.class.getPackage().getName();
         protected int connectTimeout = 5000, recoveryTimeout = 5000;
         protected SSLContext sslContext = null;
 
         protected ExceptionHandler exceptionHandler = null;
 
-        public Builder(String host, String queue) {
-            if (StringUtils.isBlank(host)) throw new IllegalArgumentException("Host must not be null");
+        public Builder(Address[] addresses, String queue) {
+            if (ArrayUtils.isEmpty(addresses)) throw new IllegalArgumentException("Addresses must not be empty");
             if (StringUtils.isBlank(queue)) throw new IllegalArgumentException("Queue name must not be null");
 
-            this.host = host;
+            this.addresses = addresses;
             this.queue = queue;
         }
 
-        public static Builder create(String host, String queue) {
-            return new Builder(host, queue);
+        public static Builder createFromHostsString(String hostsString, String queue) {
+            return new Builder(Address.parseAddresses(hostsString), queue);
+        }
+
+        public static Builder create(Address[] addresses, String queue) {
+            return new Builder(addresses, queue);
+        }
+
+        public static Builder create(Collection<Address> addresses, String queue) {
+            return new Builder(Iterables.toArray(addresses, Address.class), queue);
         }
 
         public Builder withVirtualHost(String virtualHost) {
             this.virtualHost = virtualHost;
             return this;
         }
-
 
         public Builder withJmxGroup(String jmxGroup) {
             this.jmxGroup = jmxGroup;
@@ -135,32 +148,12 @@ public interface RabbitMQSender extends RabbitMQClient {
             return this;
         }
 
-        public Builder withSslContextFromKeystore(Path keystorePath, String password) throws IOException {
-            try {
-                if (!Files.isReadable(keystorePath))
-                    throw new FileNotFoundException("Keystore file '" + keystorePath + "' cannot be found or is not readable");
-
-                final SSLContext context = SSLContext.getInstance("TLS");
-                final KeyManagerFactory kmf = KeyManagerFactory.getInstance("SunX509");
-                final KeyStore ks = KeyStore.getInstance("JKS");
-                ks.load(Files.newInputStream(keystorePath), password.toCharArray());
-
-                final TrustManagerFactory tmf = TrustManagerFactory.getInstance("X509");
-                tmf.init(ks);
-
-                kmf.init(ks, "".toCharArray());
-                context.init(kmf.getKeyManagers(), tmf.getTrustManagers(), null);
-
-                this.sslContext = context;
-            } catch (KeyStoreException | CertificateException | NoSuchAlgorithmException | UnrecoverableKeyException | KeyManagementException e) {
-                throw new RuntimeException(e);
-            }
-
-            return this;
+        public Builder withSslContextFromKeystore(Path keystorePath, String password) {
+            return withSslContext(SSLBuilder.create().setKeyStore(keystorePath, password).build());
         }
 
-        public DefaultRabbitMQSender build() throws RequestConnectException {
-            return new DefaultRabbitMQSender(host + "/" + virtualHost, Strings.nullToEmpty(username), Strings.nullToEmpty(password), queue, connectTimeout, recoveryTimeout, sslContext, exceptionHandler, jmxGroup);
+        public RabbitMQSender build() throws RequestConnectException {
+            return new DefaultRabbitMQSender(addresses, virtualHost, Strings.nullToEmpty(username), Strings.nullToEmpty(password), queue, connectTimeout, recoveryTimeout, sslContext, exceptionHandler, jmxGroup);
         }
     }
 }

@@ -5,11 +5,13 @@ import com.avast.jmx.JMXProperty;
 import com.google.protobuf.ByteString;
 import com.google.protobuf.MessageLite;
 import com.rabbitmq.client.AMQP;
+import com.rabbitmq.client.Address;
 import com.rabbitmq.client.ExceptionHandler;
 import com.rabbitmq.client.Recoverable;
 import com.yammer.metrics.Metrics;
 import com.yammer.metrics.core.Meter;
 
+import javax.annotation.concurrent.ThreadSafe;
 import javax.net.ssl.SSLContext;
 import java.io.IOException;
 import java.util.Date;
@@ -21,21 +23,22 @@ import java.util.concurrent.TimeUnit;
  * @author Jenda Kolena, kolena@avast.com
  */
 @SuppressWarnings("unused")
+@ThreadSafe
 public class DefaultRabbitMQSender extends RabbitMQClientBase implements RabbitMQSender {
-
     protected final Meter sentMeter;
     protected final Meter failedMeter;
 
-    public DefaultRabbitMQSender(final String host, final String username, final String password, final String queue, final int connectionTimeout, final int recoveryTimeout, final SSLContext sslContext, final ExceptionHandler exceptionHandler, final String jmxGroup) throws RequestConnectException {
-        super("SENDER", host, username, password, queue, connectionTimeout, recoveryTimeout, sslContext, exceptionHandler, jmxGroup);
+    public DefaultRabbitMQSender(final Address[] addresses, final String virtualHost, final String username, final String password, final String queue, final int connectionTimeout, final int recoveryTimeout, final SSLContext sslContext, final ExceptionHandler exceptionHandler, final String jmxGroup) throws RequestConnectException {
+        super("SENDER", addresses, virtualHost, username, password, queue, connectionTimeout, recoveryTimeout, sslContext, exceptionHandler, jmxGroup);
 
         sentMeter = Metrics.newMeter(getMetricName("sent"), "sentMessages", TimeUnit.SECONDS);
         failedMeter = Metrics.newMeter(getMetricName("failed"), "failedMessages", TimeUnit.SECONDS);
     }
 
     @Override
-    public void send(final byte[] msg, final AMQP.BasicProperties properties) throws IOException {
-        LOG.debug("Sending message with length " + (msg != null ? msg.length : 0) + " to " + host + "" + queue);
+    public synchronized void send(final byte[] msg, final AMQP.BasicProperties properties) throws IOException {
+
+        LOG.debug("Sending message with length " + (msg != null ? msg.length : 0) + " to " + connection.getAddress().getHostName() + "/" + queue);
         try {
             channel.basicPublish("", queue, properties, msg);
             sentMeter.mark();
@@ -76,7 +79,7 @@ public class DefaultRabbitMQSender extends RabbitMQClientBase implements RabbitM
         //no extra action
     }
 
-    public AMQP.BasicProperties createProperties(String msgType, String contentType, String expiration) {
+    public static AMQP.BasicProperties createProperties(String msgType, String contentType, String expiration) {
         return new AMQP.BasicProperties.Builder()
                 .expiration(expiration)
                 .contentType(contentType)
@@ -89,15 +92,15 @@ public class DefaultRabbitMQSender extends RabbitMQClientBase implements RabbitM
                 .build();
     }
 
-    public AMQP.BasicProperties createProperties(String msgType, String contentType) {
+    public static AMQP.BasicProperties createProperties(String msgType, String contentType) {
         return createProperties(msgType, contentType, null);
     }
 
-    public AMQP.BasicProperties createProperties(String msgType) {
+    public static AMQP.BasicProperties createProperties(String msgType) {
         return createProperties(msgType, "application/octet-stream", null);
     }
 
-    public AMQP.BasicProperties createProperties() {
+    public static AMQP.BasicProperties createProperties() {
         return createProperties(null, "application/octet-stream", null);
     }
 

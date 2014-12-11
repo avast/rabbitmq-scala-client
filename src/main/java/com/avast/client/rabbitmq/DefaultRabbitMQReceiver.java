@@ -3,15 +3,18 @@ package com.avast.client.rabbitmq;
 import com.avast.client.api.GenericAsyncHandler;
 import com.avast.client.api.exceptions.RequestConnectException;
 import com.avast.jmx.JMXProperty;
+import com.rabbitmq.client.Address;
 import com.rabbitmq.client.ExceptionHandler;
 import com.rabbitmq.client.QueueingConsumer;
 import com.rabbitmq.client.Recoverable;
 import com.yammer.metrics.Metrics;
 import com.yammer.metrics.core.Meter;
 
+import javax.annotation.concurrent.ThreadSafe;
 import javax.net.ssl.SSLContext;
 import java.io.IOException;
 import java.net.URI;
+import java.util.Arrays;
 import java.util.LinkedHashSet;
 import java.util.Set;
 import java.util.concurrent.Executors;
@@ -27,8 +30,8 @@ import java.util.concurrent.atomic.AtomicReference;
  * @author Jenda Kolena, kolena@avast.com
  */
 @SuppressWarnings("unused")
+@ThreadSafe
 public class DefaultRabbitMQReceiver extends RabbitMQClientBase implements RabbitMQReceiver {
-
     protected final Meter receivedMeter;
     protected final Meter failedMeter;
     protected final Meter retriedMeter;
@@ -45,17 +48,22 @@ public class DefaultRabbitMQReceiver extends RabbitMQClientBase implements Rabbi
 
     protected final AtomicInteger failed = new AtomicInteger(0);
 
-    public DefaultRabbitMQReceiver(final String host, final String username, final String password, final String queue, final boolean allowRetry, final int connectionTimeout, final int recoveryTimeout, final SSLContext sslContext, final ExceptionHandler exceptionHandler, final String jmxGroup) throws RequestConnectException {
-        super("RECEIVER", host, username, password, queue, connectionTimeout, recoveryTimeout, sslContext, exceptionHandler, jmxGroup);
+    public DefaultRabbitMQReceiver(final Address[] addresses, final String virtualHost, final String username, final String password, final String queue, final boolean allowRetry, final int connectionTimeout, final int recoveryTimeout, final SSLContext sslContext, final ExceptionHandler exceptionHandler, final String jmxGroup) throws RequestConnectException {
+        super("RECEIVER", addresses, virtualHost, username, password, queue, connectionTimeout, recoveryTimeout, sslContext, exceptionHandler, jmxGroup);
 
         this.allowRetry = allowRetry;
 
         try {
             startConsumer(queue);
         } catch (IOException e) {
-            final URI uri = getUri();
-            LOG.debug("Error while connecting to the " + uri, e);
-            throw new RequestConnectException(e, uri);
+            try {
+                final URI uri = getUri();
+                LOG.debug("Error while connecting to the " + uri, e);
+                throw new RequestConnectException(e, uri, 0);
+            } catch (Exception ex) {
+                LOG.debug("Error while connecting to the " + Arrays.toString(addresses), e);
+                throw new RuntimeException("Error in get URI during start of consuming.");
+            }
         }
 
         receivedMeter = Metrics.newMeter(getMetricName("received"), "receivedMessages", TimeUnit.SECONDS);
@@ -72,7 +80,7 @@ public class DefaultRabbitMQReceiver extends RabbitMQClientBase implements Rabbi
         }
     }
 
-    protected void startConsumer(String queue) throws IOException {
+    protected synchronized void startConsumer(String queue) throws IOException {
         if (consumer != null) {
             channel.basicCancel(consumer.getConsumerTag());
         }
@@ -91,6 +99,7 @@ public class DefaultRabbitMQReceiver extends RabbitMQClientBase implements Rabbi
 
     @Override
     public void setListener(final GenericAsyncHandler<QueueingConsumer.Delivery> listener) {
+        LOG.debug("Setting new listener.");
         this.listener.set(listener);
         listenerMutex.release(100000);//for sure
     }
@@ -103,6 +112,7 @@ public class DefaultRabbitMQReceiver extends RabbitMQClientBase implements Rabbi
         } catch (InterruptedException e) {
             throw new RuntimeException(e);
         }
+        LOG.debug("Listener acquired.");
 
         if (listenerThread == null || !listenerThread.isAlive()) {
             listenerThread = new Thread(new Runnable() {
@@ -204,7 +214,7 @@ public class DefaultRabbitMQReceiver extends RabbitMQClientBase implements Rabbi
      */
     @JMXProperty(name = "alive")
     @Override
-    public boolean isAlive() {
+    public synchronized boolean isAlive() {
         return super.isAlive() && listenerThread != null && listenerThread.isAlive();
     }
 }
