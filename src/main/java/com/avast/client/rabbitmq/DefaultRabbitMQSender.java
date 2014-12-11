@@ -113,10 +113,4 @@ public class DefaultRabbitMQSender extends RabbitMQClientBase implements RabbitM
     public static AMQP.BasicProperties createProperties() {
         return createProperties(null, "application/octet-stream", null);
     }
-
-    @JMXProperty(name = "alive")
-    @Override
-    public boolean isAlive() {//needs override because of the annotation
-        return super.isAlive();
-    }
 }

@@ -1,9 +1,7 @@
 package com.avast.client.rabbitmq;
 
 import com.avast.client.api.exceptions.RequestConnectException;
-import com.avast.jmx.JMXOperation;
 import com.avast.jmx.JMXProperty;
-import com.avast.jmx.JMXPropertyGetter;
 import com.avast.jmx.MyDynamicBean;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.rabbitmq.client.*;
@@ -41,7 +39,6 @@ abstract class RabbitMQClientBase implements RabbitMQClient {
     @JMXProperty
     protected final AtomicBoolean closed = new AtomicBoolean(false);
 
-    //    @JMXProperty
     protected final Address[] addresses;
 
     protected final String jmxGroup, jmxType, clientType;
@@ -119,11 +116,13 @@ abstract class RabbitMQClientBase implements RabbitMQClient {
         return new MetricName(jmxGroup, jmxType, name, queue + "(" + clientType + ")");
     }
 
+    @SuppressWarnings("unused")
     @JMXProperty(name = "addresses")
     public String getAddressesString() {
         return Arrays.toString(addresses);
     }
 
+    @SuppressWarnings("unused")
     @JMXProperty(name = "currentHost")
     public InetAddress getCurrentHost() {
         return connection.getAddress();
