@@ -95,7 +95,8 @@ public class DefaultRabbitMQReceiver extends RabbitMQClientBase implements Rabbi
     }
 
     @Override
-    public synchronized void setListener(final GenericAsyncHandler<QueueingConsumer.Delivery> listener) {
+    public void setListener(final GenericAsyncHandler<QueueingConsumer.Delivery> listener) {
+        LOG.debug("Setting new listener.");
         this.listener.set(listener);
         listenerMutex.release(100000);//for sure
     }
@@ -108,6 +109,7 @@ public class DefaultRabbitMQReceiver extends RabbitMQClientBase implements Rabbi
         } catch (InterruptedException e) {
             throw new RuntimeException(e);
         }
+        LOG.debug("Listener acquired.");
 
         if (listenerThread == null || !listenerThread.isAlive()) {
             listenerThread = new Thread(new Runnable() {
