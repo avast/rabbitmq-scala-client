@@ -14,6 +14,7 @@ import org.slf4j.LoggerFactory;
 
 import javax.net.ssl.SSLContext;
 import java.io.IOException;
+import java.net.InetAddress;
 import java.net.URI;
 import java.util.Arrays;
 import java.util.concurrent.ExecutorService;
@@ -38,7 +39,6 @@ abstract class RabbitMQClientBase implements RabbitMQClient {
     @JMXProperty
     protected final AtomicBoolean closed = new AtomicBoolean(false);
 
-    @JMXProperty
     protected final Address[] addresses;
 
     protected final String jmxGroup, jmxType, clientType;
@@ -73,7 +73,8 @@ abstract class RabbitMQClientBase implements RabbitMQClient {
             connection = (AutorecoveringConnection) factory.newConnection(addresses);
             channel = (AutorecoveringChannel) connection.createChannel();
 
-            LOG.debug("Connected to " + connection.getAddress() + "/" + queue);
+            final InetAddress address = connection.getAddress();
+            LOG.debug("Connected to " + address + "/" + queue);
 
             connection.addShutdownListener(new ShutdownListener() {
                 @Override
@@ -94,10 +95,7 @@ abstract class RabbitMQClientBase implements RabbitMQClient {
                 }
             });
 
-
-            channel.queueDeclare(queue, true, false, false, null);
-
-            jmxType = factory.getHost() + (StringUtils.isNotBlank(factory.getVirtualHost()) ? "/" + factory.getVirtualHost() : "");
+            jmxType = address.getHostName() + (StringUtils.isNotBlank(factory.getVirtualHost()) ? "/" + factory.getVirtualHost() : "");
             this.jmxGroup = jmxGroup;
             this.clientType = clientType;
 
@@ -116,6 +114,23 @@ abstract class RabbitMQClientBase implements RabbitMQClient {
 
     protected MetricName getMetricName(final String name) {
         return new MetricName(jmxGroup, jmxType, name, queue + "(" + clientType + ")");
+    }
+
+    @SuppressWarnings("unused")
+    @JMXProperty(name = "addresses")
+    public String getAddressesString() {
+        return Arrays.toString(addresses);
+    }
+
+    @SuppressWarnings("unused")
+    @JMXProperty(name = "currentHost")
+    public InetAddress getCurrentHost() {
+        return connection.getAddress();
+    }
+
+    @Override
+    public AutorecoveringChannel getChannel() {
+        return channel;
     }
 
     @Override

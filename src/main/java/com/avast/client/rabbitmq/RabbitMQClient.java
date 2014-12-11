@@ -1,6 +1,6 @@
 package com.avast.client.rabbitmq;
 
-import com.avast.jmx.JMXProperty;
+import com.rabbitmq.client.impl.recovery.AutorecoveringChannel;
 
 import java.io.Closeable;
 
@@ -10,6 +10,14 @@ import java.io.Closeable;
  * @author Jenda Kolena, kolena@avast.com
  */
 public interface RabbitMQClient extends Closeable {
+
+    /**
+     * Gets currently connected channel.
+     *
+     * @return The cnannel.
+     */
+    public AutorecoveringChannel getChannel();
+
     /**
      * Closes this client quietly, only logs errors.
      */
