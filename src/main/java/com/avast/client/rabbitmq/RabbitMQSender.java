@@ -9,8 +9,8 @@ import com.google.protobuf.MessageLite;
 import com.rabbitmq.client.AMQP;
 import com.rabbitmq.client.Address;
 import com.rabbitmq.client.ExceptionHandler;
-import org.apache.commons.lang.ArrayUtils;
-import org.apache.commons.lang.StringUtils;
+import org.apache.commons.lang3.ArrayUtils;
+import org.apache.commons.lang3.StringUtils;
 
 import javax.net.ssl.SSLContext;
 import java.io.IOException;

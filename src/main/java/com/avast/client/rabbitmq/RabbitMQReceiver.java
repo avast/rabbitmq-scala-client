@@ -8,8 +8,8 @@ import com.google.common.collect.Iterables;
 import com.rabbitmq.client.Address;
 import com.rabbitmq.client.ExceptionHandler;
 import com.rabbitmq.client.QueueingConsumer;
-import org.apache.commons.lang.ArrayUtils;
-import org.apache.commons.lang.StringUtils;
+import org.apache.commons.lang3.ArrayUtils;
+import org.apache.commons.lang3.StringUtils;
 
 import javax.net.ssl.SSLContext;
 import java.nio.file.Path;
