@@ -1,7 +1,6 @@
 package com.avast.client.rabbitmq;
 
 import com.avast.client.api.exceptions.RequestConnectException;
-import com.avast.jmx.JMXProperty;
 import com.google.protobuf.ByteString;
 import com.google.protobuf.MessageLite;
 import com.rabbitmq.client.AMQP;
@@ -37,7 +36,6 @@ public class DefaultRabbitMQSender extends RabbitMQClientBase implements RabbitM
 
     @Override
     public synchronized void send(final String exchange, final byte[] msg, final AMQP.BasicProperties properties) throws IOException {
-
         LOG.debug("Sending message with length " + (msg != null ? msg.length : 0) + " to " + connection.getAddress().getHostName() + "/" + queue);
         try {
             channel.basicPublish(exchange, queue, properties, msg);
@@ -50,7 +48,7 @@ public class DefaultRabbitMQSender extends RabbitMQClientBase implements RabbitM
     }
 
     @Override
-    public synchronized void send(final byte[] msg, final AMQP.BasicProperties properties) throws IOException {
+    public void send(final byte[] msg, final AMQP.BasicProperties properties) throws IOException {
         send("", msg, properties);
     }
 
@@ -60,7 +58,7 @@ public class DefaultRabbitMQSender extends RabbitMQClientBase implements RabbitM
     }
 
     @Override
-    public synchronized void send(final String exchange, final byte[] msg) throws IOException {
+    public void send(final String exchange, final byte[] msg) throws IOException {
         send(exchange, msg, createProperties());
     }
 
