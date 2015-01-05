@@ -68,13 +68,13 @@ abstract class RabbitMQClientBase implements RabbitMQClient {
                 factory.setPassword(password);
             }
 
-            LOG.info("Connecting to RabbitMQ on " + addressesString + "/" + queue);
+            LOG.debug("Connecting to RabbitMQ on " + addressesString + "/" + queue);
 
             connection = (AutorecoveringConnection) factory.newConnection(addresses);
             channel = (AutorecoveringChannel) connection.createChannel();
 
             final InetAddress address = connection.getAddress();
-            LOG.debug("Connected to " + address + "/" + queue);
+            LOG.info("Connected to " + address + "/" + queue);
 
             connection.addShutdownListener(new ShutdownListener() {
                 @Override
