@@ -102,6 +102,7 @@ public interface RabbitMQSender extends RabbitMQClient {
         protected String host = null, virtualHost = "", username = null, password = null, queue = null, jmxGroup = RabbitMQSender.class.getPackage().getName();
         protected int connectTimeout = 5000, recoveryTimeout = 5000;
         protected SSLContext sslContext = null;
+        protected RabbitMQDeclare declare = null;
 
         protected ExceptionHandler exceptionHandler = null;
 
@@ -146,6 +147,11 @@ public interface RabbitMQSender extends RabbitMQClient {
             return this;
         }
 
+        public Builder withDeclare(RabbitMQDeclare declare) {
+            this.declare = declare;
+            return this;
+        }
+
         public Builder withRecoveryTimeout(int recoveryTimeout) {
             this.recoveryTimeout = recoveryTimeout;
             return this;
@@ -166,7 +172,7 @@ public interface RabbitMQSender extends RabbitMQClient {
         }
 
         public RabbitMQSender build() throws RequestConnectException {
-            return new DefaultRabbitMQSender(addresses, virtualHost, Strings.nullToEmpty(username), Strings.nullToEmpty(password), queue, connectTimeout, recoveryTimeout, sslContext, exceptionHandler, jmxGroup);
+            return new DefaultRabbitMQSender(addresses, virtualHost, Strings.nullToEmpty(username), Strings.nullToEmpty(password), queue, connectTimeout, recoveryTimeout, sslContext, exceptionHandler, jmxGroup, declare);
         }
     }
 }

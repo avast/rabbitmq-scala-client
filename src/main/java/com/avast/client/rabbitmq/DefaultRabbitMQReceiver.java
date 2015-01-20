@@ -48,13 +48,13 @@ public class DefaultRabbitMQReceiver extends RabbitMQClientBase implements Rabbi
 
     protected final AtomicInteger failed = new AtomicInteger(0);
 
-    public DefaultRabbitMQReceiver(final Address[] addresses, final String virtualHost, final String username, final String password, final String queue, final boolean allowRetry, final int connectionTimeout, final int recoveryTimeout, final SSLContext sslContext, final ExceptionHandler exceptionHandler, final String jmxGroup) throws RequestConnectException {
+    public DefaultRabbitMQReceiver(final Address[] addresses, final String virtualHost, final String username, final String password, final String queue, final boolean allowRetry, final int connectionTimeout, final int recoveryTimeout, final SSLContext sslContext, final ExceptionHandler exceptionHandler, final String jmxGroup, final RabbitMQDeclare declare) throws RequestConnectException {
         super("RECEIVER", addresses, virtualHost, username, password, queue, connectionTimeout, recoveryTimeout, sslContext, exceptionHandler, jmxGroup);
 
         this.allowRetry = allowRetry;
 
         try {
-            startConsumer(queue);
+            startConsumer(queue, declare);
         } catch (IOException e) {
             try {
                 final URI uri = getUri();
@@ -74,17 +74,20 @@ public class DefaultRabbitMQReceiver extends RabbitMQClientBase implements Rabbi
     @Override
     protected void onChannelRecovered(Recoverable recoverable) {
         try {
-            startConsumer(queue);
+            startConsumer(queue, null);
         } catch (IOException e) {
             LOG.error("Error while restarting the consumer", e);
         }
     }
 
-    protected synchronized void startConsumer(String queue) throws IOException {
+    protected synchronized void startConsumer(String queue, RabbitMQDeclare declare) throws IOException {
         if (consumer != null) {
             channel.basicCancel(consumer.getConsumerTag());
         }
 
+        if (declare != null) {
+            declare.declare(channel);
+        }
         consumer = new QueueingConsumer(channel);
         channel.basicConsume(queue, false, consumer);
 

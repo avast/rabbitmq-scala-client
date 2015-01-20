@@ -27,11 +27,33 @@ public class DefaultRabbitMQSender extends RabbitMQClientBase implements RabbitM
     protected final Meter sentMeter;
     protected final Meter failedMeter;
 
-    public DefaultRabbitMQSender(final Address[] addresses, final String virtualHost, final String username, final String password, final String queue, final int connectionTimeout, final int recoveryTimeout, final SSLContext sslContext, final ExceptionHandler exceptionHandler, final String jmxGroup) throws RequestConnectException {
+    public DefaultRabbitMQSender(final Address[] addresses, final String virtualHost, final String username, final String password, final String queue, final int connectionTimeout, final int recoveryTimeout, final SSLContext sslContext, final ExceptionHandler exceptionHandler, final String jmxGroup, RabbitMQDeclare declare) throws RequestConnectException {
         super("SENDER", addresses, virtualHost, username, password, queue, connectionTimeout, recoveryTimeout, sslContext, exceptionHandler, jmxGroup);
+
+        try {
+            startSender(queue, declare);
+        } catch (IOException e) {
+            throw new RuntimeException("Error during starting sender.", e);
+        }
 
         sentMeter = Metrics.newMeter(getMetricName("sent"), "sentMessages", TimeUnit.SECONDS);
         failedMeter = Metrics.newMeter(getMetricName("failed"), "failedMessages", TimeUnit.SECONDS);
+    }
+
+    @Override
+    protected void onChannelRecovered(Recoverable recoverable) {
+        try {
+            startSender(queue, null);
+        } catch (IOException e) {
+            LOG.error("Error while restarting the sender", e);
+        }
+    }
+
+    protected synchronized void startSender(String queue, RabbitMQDeclare declare) throws IOException {
+
+        if (declare != null) {
+            declare.declare(getChannel());
+        }
     }
 
     @Override
@@ -80,11 +102,6 @@ public class DefaultRabbitMQSender extends RabbitMQClientBase implements RabbitM
     @Override
     public void send(final MessageLite msg) throws IOException {
         send(msg.toByteArray(), createProperties());
-    }
-
-    @Override
-    protected void onChannelRecovered(Recoverable recoverable) {
-        //no extra action
     }
 
     public static AMQP.BasicProperties createProperties(String msgType, String contentType, String expiration) {

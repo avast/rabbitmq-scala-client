@@ -39,6 +39,7 @@ public interface RabbitMQReceiver extends RabbitMQClient {
         protected SSLContext sslContext = null;
         protected ExceptionHandler exceptionHandler = null;
         protected boolean allowRetry = false;
+        protected RabbitMQDeclare declare = null;
 
         public Builder(Address[] addresses, String queue) {
             if (ArrayUtils.isEmpty(addresses)) throw new IllegalArgumentException("Addresses must not be empty");
@@ -81,6 +82,11 @@ public interface RabbitMQReceiver extends RabbitMQClient {
             return this;
         }
 
+        public Builder withDeclare(RabbitMQDeclare declare) {
+            this.declare = declare;
+            return this;
+        }
+
         public Builder withRetry() {
             return allowRetry(true);
         }
@@ -110,7 +116,7 @@ public interface RabbitMQReceiver extends RabbitMQClient {
         }
 
         public RabbitMQReceiver build() throws RequestConnectException {
-            return new DefaultRabbitMQReceiver(addresses, virtualHost, Strings.nullToEmpty(username), Strings.nullToEmpty(password), queue, allowRetry, connectTimeout, recoveryTimeout, sslContext, exceptionHandler, jmxGroup);
+            return new DefaultRabbitMQReceiver(addresses, virtualHost, Strings.nullToEmpty(username), Strings.nullToEmpty(password), queue, allowRetry, connectTimeout, recoveryTimeout, sslContext, exceptionHandler, jmxGroup, declare);
         }
     }
 }
