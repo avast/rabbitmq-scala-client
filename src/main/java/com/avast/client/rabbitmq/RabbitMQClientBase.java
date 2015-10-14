@@ -3,11 +3,11 @@ package com.avast.client.rabbitmq;
 import com.avast.client.api.exceptions.RequestConnectException;
 import com.avast.jmx.JMXProperty;
 import com.avast.jmx.MyDynamicBean;
+import com.avast.metrics.api.Monitor;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.rabbitmq.client.*;
 import com.rabbitmq.client.impl.recovery.AutorecoveringChannel;
 import com.rabbitmq.client.impl.recovery.AutorecoveringConnection;
-import com.yammer.metrics.core.MetricName;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -19,20 +19,18 @@ import java.net.URI;
 import java.util.Arrays;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
- * Created <b>4.12.2014</b><br>
- *
  * @author Jenda Kolena, kolena@avast.com
  */
+@SuppressWarnings("unused")
 abstract class RabbitMQClientBase implements RabbitMQClient {
     protected final Logger LOG = LoggerFactory.getLogger(getClass());
 
     protected static final ExecutorService executor = Executors.newCachedThreadPool(new ThreadFactoryBuilder().setNameFormat(RabbitMQClient.class.getSimpleName().toLowerCase() + "-%d").setDaemon(true).build());
 
-    @JMXProperty
-    protected final String queue;
     protected final AutorecoveringChannel channel;
     protected final AutorecoveringConnection connection;
 
@@ -41,11 +39,11 @@ abstract class RabbitMQClientBase implements RabbitMQClient {
 
     protected final Address[] addresses;
 
-    protected final String jmxGroup, jmxType, clientType;
+    protected final String jmxType, clientType, name;
 
-    protected RabbitMQClientBase(final String clientType, final Address[] addresses, final String virtualHost, final String username, final String password, final String queue, final int connectionTimeout, final int recoveryTimeout, final SSLContext sslContext, final ExceptionHandler exceptionHandler, final String jmxGroup) throws RequestConnectException {
-        this.queue = queue;
+    protected RabbitMQClientBase(final String clientName, final Address[] addresses, final String virtualHost, final String username, final String password, final int connectionTimeout, final int recoveryTimeout, final SSLContext sslContext, final ExceptionHandler exceptionHandler, final Monitor metricsMonitor, final String name) throws RequestConnectException {
         this.addresses = addresses;
+        this.name = name;
 
         final String addressesString = Arrays.toString(addresses);
 
@@ -68,13 +66,13 @@ abstract class RabbitMQClientBase implements RabbitMQClient {
                 factory.setPassword(password);
             }
 
-            LOG.debug("Connecting to RabbitMQ on " + addressesString + "/" + queue);
+            LOG.debug("Client '" + name + "' connecting to RabbitMQ on " + addressesString);
 
             connection = (AutorecoveringConnection) factory.newConnection(addresses);
             channel = (AutorecoveringChannel) connection.createChannel();
 
             final InetAddress address = connection.getAddress();
-            LOG.info("Connected to " + address + "/" + queue);
+            LOG.info("Client '" + name + "' connected to " + address);
 
             connection.addShutdownListener(new ShutdownListener() {
                 @Override
@@ -96,12 +94,11 @@ abstract class RabbitMQClientBase implements RabbitMQClient {
             });
 
             jmxType = address.getHostName() + (StringUtils.isNotBlank(factory.getVirtualHost()) ? "/" + factory.getVirtualHost() : "");
-            this.jmxGroup = jmxGroup;
-            this.clientType = clientType;
+            this.clientType = clientName;
 
-            MyDynamicBean.exposeAndRegisterSilently(jmxGroup + ":type=" + jmxType + ",scope=" + queue + "(" + clientType + "),name=client", this);
-        } catch (IOException e) {
-            LOG.debug("Error while connecting to the " + addressesString + "/" + queue, e);
+            MyDynamicBean.exposeAndRegisterSilently(metricsMonitor.getName() + ":type=" + jmxType + ",scope=" + name + "(" + clientType + "),name=client", this);
+        } catch (IOException | TimeoutException e) {
+            LOG.debug("Error while connecting client '" + name + "' to the " + addressesString, e);
             throw new RequestConnectException(e, getUri(), 0);
         }
     }
@@ -109,20 +106,14 @@ abstract class RabbitMQClientBase implements RabbitMQClient {
     protected abstract void onChannelRecovered(Recoverable recoverable);
 
     protected URI getUri() {
-        return URI.create("amqp://" + addresses[0] + "/" + queue);
+        return URI.create("amqp://" + addresses[0]);
     }
 
-    protected MetricName getMetricName(final String name) {
-        return new MetricName(jmxGroup, jmxType, name, queue + "(" + clientType + ")");
-    }
-
-    @SuppressWarnings("unused")
     @JMXProperty(name = "addresses")
     public String getAddressesString() {
         return Arrays.toString(addresses);
     }
 
-    @SuppressWarnings("unused")
     @JMXProperty(name = "currentHost")
     public InetAddress getCurrentHost() {
         return connection.getAddress();
@@ -138,7 +129,11 @@ abstract class RabbitMQClientBase implements RabbitMQClient {
         if (closed.get()) return;
 
         closed.set(true);
-        channel.close();
+        try {
+            channel.close();
+        } catch (TimeoutException e) {
+            LOG.warn("Could not close the client correctly in timeout", e);
+        }
     }
 
     @Override

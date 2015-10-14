@@ -1,66 +1,64 @@
 package com.avast.client.rabbitmq;
 
 import com.avast.client.api.exceptions.RequestConnectException;
-import com.google.protobuf.ByteString;
+import com.avast.metrics.api.Meter;
+import com.avast.metrics.api.Monitor;
 import com.google.protobuf.MessageLite;
 import com.rabbitmq.client.AMQP;
 import com.rabbitmq.client.Address;
 import com.rabbitmq.client.ExceptionHandler;
 import com.rabbitmq.client.Recoverable;
-import com.yammer.metrics.Metrics;
-import com.yammer.metrics.core.Meter;
 
 import javax.annotation.concurrent.ThreadSafe;
 import javax.net.ssl.SSLContext;
 import java.io.IOException;
 import java.util.Date;
-import java.util.concurrent.TimeUnit;
 
 /**
- * Created <b>15.10.2014</b><br>
- *
  * @author Jenda Kolena, kolena@avast.com
  */
 @SuppressWarnings("unused")
 @ThreadSafe
 public class DefaultRabbitMQSender extends RabbitMQClientBase implements RabbitMQSender {
+    public static final String EXCHANGE_DEFAULT = "";
+    public static final String ROUTING_KEY_DEFAULT = null;
+
     protected final Meter sentMeter;
     protected final Meter failedMeter;
 
-    public DefaultRabbitMQSender(final Address[] addresses, final String virtualHost, final String username, final String password, final String queue, final int connectionTimeout, final int recoveryTimeout, final SSLContext sslContext, final ExceptionHandler exceptionHandler, final String jmxGroup, RabbitMQDeclare declare) throws RequestConnectException {
-        super("SENDER", addresses, virtualHost, username, password, queue, connectionTimeout, recoveryTimeout, sslContext, exceptionHandler, jmxGroup);
+    public DefaultRabbitMQSender(final Address[] addresses, final String virtualHost, final String username, final String password, final int connectionTimeout, final int recoveryTimeout, final SSLContext sslContext, final ExceptionHandler exceptionHandler, final RabbitMQDeclare declare, final Monitor metricsMonitor, final String name) throws RequestConnectException {
+        super("SENDER", addresses, virtualHost, username, password, connectionTimeout, recoveryTimeout, sslContext, exceptionHandler, metricsMonitor, name);
 
         try {
-            startSender(queue, declare);
+            startSender(declare);
         } catch (IOException e) {
             throw new RuntimeException("Error during starting sender.", e);
         }
 
-        sentMeter = Metrics.newMeter(getMetricName("sent"), "sentMessages", TimeUnit.SECONDS);
-        failedMeter = Metrics.newMeter(getMetricName("failed"), "failedMessages", TimeUnit.SECONDS);
+        sentMeter = metricsMonitor.newMeter("sent");
+        failedMeter = metricsMonitor.newMeter("failed");
     }
 
     @Override
     protected void onChannelRecovered(Recoverable recoverable) {
         try {
-            startSender(queue, null);
+            startSender(null);
         } catch (IOException e) {
             LOG.error("Error while restarting the sender", e);
         }
     }
 
-    protected synchronized void startSender(String queue, RabbitMQDeclare declare) throws IOException {
-
+    protected synchronized void startSender(RabbitMQDeclare declare) throws IOException {
         if (declare != null) {
             declare.declare(getChannel());
         }
     }
 
     @Override
-    public synchronized void send(final String exchange, final byte[] msg, final AMQP.BasicProperties properties) throws IOException {
-        LOG.debug("Sending message with length " + (msg != null ? msg.length : 0) + " to " + connection.getAddress().getHostName() + "/" + queue);
+    public synchronized void send(final String exchange, final String routingKey, final byte[] msg, final AMQP.BasicProperties properties) throws IOException {
+        LOG.debug("Sending message with length " + (msg != null ? msg.length : 0) + " to " + connection.getAddress().getHostName());
         try {
-            channel.basicPublish(exchange, queue, properties, msg);
+            channel.basicPublish(exchange, routingKey, properties, msg);
             sentMeter.mark();
         } catch (IOException e) {
             failedMeter.mark();
@@ -70,38 +68,28 @@ public class DefaultRabbitMQSender extends RabbitMQClientBase implements RabbitM
     }
 
     @Override
-    public void send(final byte[] msg, final AMQP.BasicProperties properties) throws IOException {
-        send("", msg, properties);
-    }
-
-    @Override
-    public void send(final byte[] msg) throws IOException {
-        send(msg, createProperties());
+    public void send(final String exchange, final byte[] msg, final AMQP.BasicProperties properties) throws IOException {
+        send(exchange, ROUTING_KEY_DEFAULT, msg, properties);
     }
 
     @Override
     public void send(final String exchange, final byte[] msg) throws IOException {
-        send(exchange, msg, createProperties());
+        send(exchange, ROUTING_KEY_DEFAULT, msg, createProperties());
     }
 
     @Override
-    public void send(final ByteString msg, final AMQP.BasicProperties properties) throws IOException {
-        send(msg.toByteArray(), properties);
+    public void send(final String exchange, final String routingKey, final MessageLite msg, final AMQP.BasicProperties properties) throws IOException {
+        send(exchange, ROUTING_KEY_DEFAULT, msg.toByteArray(), properties);
     }
 
     @Override
-    public void send(final ByteString msg) throws IOException {
-        send(msg.toByteArray(), createProperties());
+    public void send(final String exchange, final MessageLite msg, final AMQP.BasicProperties properties) throws IOException {
+        send(exchange, ROUTING_KEY_DEFAULT, msg, properties);
     }
 
     @Override
-    public void send(final MessageLite msg, final AMQP.BasicProperties properties) throws IOException {
-        send(msg.toByteArray(), properties);
-    }
-
-    @Override
-    public void send(final MessageLite msg) throws IOException {
-        send(msg.toByteArray(), createProperties());
+    public void send(final String exchange, final MessageLite msg) throws IOException {
+        send(exchange, ROUTING_KEY_DEFAULT, msg, createProperties());
     }
 
     public static AMQP.BasicProperties createProperties(String msgType, String contentType, String expiration) {

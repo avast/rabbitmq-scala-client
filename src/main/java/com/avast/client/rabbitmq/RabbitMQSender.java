@@ -2,36 +2,38 @@ package com.avast.client.rabbitmq;
 
 import com.avast.client.api.exceptions.RequestConnectException;
 import com.avast.client.encryption.SSLBuilder;
+import com.avast.metrics.api.Monitor;
+import com.avast.metrics.test.NoOpMonitor;
 import com.google.common.base.Strings;
 import com.google.common.collect.Iterables;
-import com.google.protobuf.ByteString;
 import com.google.protobuf.MessageLite;
 import com.rabbitmq.client.AMQP;
 import com.rabbitmq.client.Address;
 import com.rabbitmq.client.ExceptionHandler;
 import org.apache.commons.lang3.ArrayUtils;
-import org.apache.commons.lang3.StringUtils;
 
+import javax.annotation.concurrent.NotThreadSafe;
 import javax.net.ssl.SSLContext;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.Collection;
 
 /**
- * Created <b>15.10.2014</b><br>
- *
  * @author Jenda Kolena, kolena@avast.com
  */
+@SuppressWarnings("unused")
 public interface RabbitMQSender extends RabbitMQClient {
 
     /**
      * Sends message to the queue.
      *
+     * @param exchange   Name of the exchange.
+     * @param routingKey The routing key
      * @param msg        The message.
      * @param properties Properties related to the message.
      * @throws IOException When problem while sending has occurred.
      */
-    void send(byte[] msg, AMQP.BasicProperties properties) throws IOException;
+    void send(final String exchange, final String routingKey, final byte[] msg, final AMQP.BasicProperties properties) throws IOException;
 
     /**
      * Sends message to the queue.
@@ -46,14 +48,6 @@ public interface RabbitMQSender extends RabbitMQClient {
     /**
      * Sends message to the queue.
      *
-     * @param msg The message.
-     * @throws IOException When problem while sending has occurred.
-     */
-    void send(byte[] msg) throws IOException;
-
-    /**
-     * Sends message to the queue.
-     *
      * @param exchange Name of the exchange.
      * @param msg      The message.
      * @throws IOException When problem while sending has occurred.
@@ -63,67 +57,68 @@ public interface RabbitMQSender extends RabbitMQClient {
     /**
      * Sends message to the queue.
      *
+     * @param exchange   Name of the exchange.
+     * @param routingKey The routing key
      * @param msg        The message.
      * @param properties Properties related to the message.
      * @throws IOException When problem while sending has occurred.
      */
-    void send(ByteString msg, AMQP.BasicProperties properties) throws IOException;
+    void send(final String exchange, final String routingKey, MessageLite msg, AMQP.BasicProperties properties) throws IOException;
 
     /**
      * Sends message to the queue.
      *
-     * @param msg The message.
-     * @throws IOException When problem while sending has occurred.
-     */
-    void send(ByteString msg) throws IOException;
-
-    /**
-     * Sends message to the queue.
-     *
+     * @param exchange   Name of the exchange.
      * @param msg        The message.
      * @param properties Properties related to the message.
      * @throws IOException When problem while sending has occurred.
      */
-    void send(MessageLite msg, AMQP.BasicProperties properties) throws IOException;
+    void send(final String exchange, MessageLite msg, AMQP.BasicProperties properties) throws IOException;
 
     /**
      * Sends message to the queue.
      *
-     * @param msg The message.
+     * @param exchange Name of the exchange.
+     * @param msg      The message.
      * @throws IOException When problem while sending has occurred.
      */
-    void send(MessageLite msg) throws IOException;
+    void send(final String exchange, MessageLite msg) throws IOException;
+
 
     /* ---------------------------------------------------------------- */
 
-    @SuppressWarnings("unused")
-    public static class Builder {
+    @NotThreadSafe
+    class Builder {
         protected final Address[] addresses;
-        protected String host = null, virtualHost = "", username = null, password = null, queue = null, jmxGroup = RabbitMQSender.class.getPackage().getName();
+        protected String host = null, virtualHost = "", username = null, password = null, name = System.currentTimeMillis() + "";
         protected int connectTimeout = 5000, recoveryTimeout = 5000;
         protected SSLContext sslContext = null;
         protected RabbitMQDeclare declare = null;
+        protected Monitor monitor = NoOpMonitor.INSTANCE;
 
         protected ExceptionHandler exceptionHandler = null;
 
-        public Builder(Address[] addresses, String queue) {
+        public Builder(Address[] addresses) {
             if (ArrayUtils.isEmpty(addresses)) throw new IllegalArgumentException("Addresses must not be empty");
-            if (StringUtils.isBlank(queue)) throw new IllegalArgumentException("Queue name must not be null");
 
             this.addresses = addresses;
-            this.queue = queue;
         }
 
-        public static Builder createFromHostsString(String hostsString, String queue) {
-            return new Builder(Address.parseAddresses(hostsString), queue);
+        public static Builder createFromHostsString(String hostsString) {
+            return new Builder(Address.parseAddresses(hostsString));
         }
 
-        public static Builder create(Address[] addresses, String queue) {
-            return new Builder(addresses, queue);
+        public static Builder create(Address[] addresses) {
+            return new Builder(addresses);
         }
 
-        public static Builder create(Collection<Address> addresses, String queue) {
-            return new Builder(Iterables.toArray(addresses, Address.class), queue);
+        public static Builder create(Collection<Address> addresses) {
+            return new Builder(Iterables.toArray(addresses, Address.class));
+        }
+
+        public Builder withName(String name) {
+            this.name = name;
+            return this;
         }
 
         public Builder withVirtualHost(String virtualHost) {
@@ -131,8 +126,8 @@ public interface RabbitMQSender extends RabbitMQClient {
             return this;
         }
 
-        public Builder withJmxGroup(String jmxGroup) {
-            this.jmxGroup = jmxGroup;
+        public Builder withMonitor(Monitor monitor) {
+            this.monitor = monitor;
             return this;
         }
 
@@ -172,7 +167,7 @@ public interface RabbitMQSender extends RabbitMQClient {
         }
 
         public RabbitMQSender build() throws RequestConnectException {
-            return new DefaultRabbitMQSender(addresses, virtualHost, Strings.nullToEmpty(username), Strings.nullToEmpty(password), queue, connectTimeout, recoveryTimeout, sslContext, exceptionHandler, jmxGroup, declare);
+            return new DefaultRabbitMQSender(addresses, virtualHost, Strings.nullToEmpty(username), Strings.nullToEmpty(password), connectTimeout, recoveryTimeout, sslContext, exceptionHandler, declare, monitor, name);
         }
     }
 }

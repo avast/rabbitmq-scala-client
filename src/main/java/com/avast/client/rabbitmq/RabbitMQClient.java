@@ -5,8 +5,6 @@ import com.rabbitmq.client.impl.recovery.AutorecoveringChannel;
 import java.io.Closeable;
 
 /**
- * Created <b>4.12.2014</b><br>
- *
  * @author Jenda Kolena, kolena@avast.com
  */
 public interface RabbitMQClient extends Closeable {

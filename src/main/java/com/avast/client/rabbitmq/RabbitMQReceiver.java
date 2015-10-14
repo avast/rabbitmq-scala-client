@@ -3,6 +3,8 @@ package com.avast.client.rabbitmq;
 import com.avast.client.api.GenericAsyncHandler;
 import com.avast.client.api.exceptions.RequestConnectException;
 import com.avast.client.encryption.SSLBuilder;
+import com.avast.metrics.api.Monitor;
+import com.avast.metrics.test.NoOpMonitor;
 import com.google.common.base.Strings;
 import com.google.common.collect.Iterables;
 import com.rabbitmq.client.Address;
@@ -11,6 +13,7 @@ import com.rabbitmq.client.QueueingConsumer;
 import org.apache.commons.lang3.ArrayUtils;
 import org.apache.commons.lang3.StringUtils;
 
+import javax.annotation.concurrent.NotThreadSafe;
 import javax.net.ssl.SSLContext;
 import java.nio.file.Path;
 import java.util.Collection;
@@ -20,6 +23,7 @@ import java.util.Collection;
  *
  * @author Jenda Kolena, kolena@avast.com
  */
+@SuppressWarnings("unused")
 public interface RabbitMQReceiver extends RabbitMQClient {
 
     /**
@@ -31,15 +35,16 @@ public interface RabbitMQReceiver extends RabbitMQClient {
 
     /* ---------------------------------------------------------------- */
 
-    @SuppressWarnings("unused")
-    public static class Builder {
+    @NotThreadSafe
+    class Builder {
         protected final Address[] addresses;
-        protected String virtualHost = "", username = null, password = null, queue = null, jmxGroup = RabbitMQReceiver.class.getPackage().getName();
+        protected String virtualHost = "", username = null, password = null, queue = null, name = System.currentTimeMillis() + "";
         protected int connectTimeout = 5000, recoveryTimeout = 5000;
         protected SSLContext sslContext = null;
         protected ExceptionHandler exceptionHandler = null;
         protected boolean allowRetry = false;
         protected RabbitMQDeclare declare = null;
+        protected Monitor monitor = NoOpMonitor.INSTANCE;
 
         public Builder(Address[] addresses, String queue) {
             if (ArrayUtils.isEmpty(addresses)) throw new IllegalArgumentException("Addresses must not be empty");
@@ -61,13 +66,18 @@ public interface RabbitMQReceiver extends RabbitMQClient {
             return new Builder(Iterables.toArray(addresses, Address.class), queue);
         }
 
+        public Builder withName(String name) {
+            this.name = name;
+            return this;
+        }
+
         public Builder withVirtualHost(String virtualHost) {
             this.virtualHost = virtualHost;
             return this;
         }
 
-        public Builder withJmxGroup(String jmxGroup) {
-            this.jmxGroup = jmxGroup;
+        public Builder withMonitor(Monitor monitor) {
+            this.monitor = monitor;
             return this;
         }
 
@@ -116,7 +126,7 @@ public interface RabbitMQReceiver extends RabbitMQClient {
         }
 
         public RabbitMQReceiver build() throws RequestConnectException {
-            return new DefaultRabbitMQReceiver(addresses, virtualHost, Strings.nullToEmpty(username), Strings.nullToEmpty(password), queue, allowRetry, connectTimeout, recoveryTimeout, sslContext, exceptionHandler, jmxGroup, declare);
+            return new DefaultRabbitMQReceiver(addresses, virtualHost, Strings.nullToEmpty(username), Strings.nullToEmpty(password), queue, allowRetry, connectTimeout, recoveryTimeout, sslContext, exceptionHandler, declare, monitor, name);
         }
     }
 }

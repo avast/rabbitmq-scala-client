@@ -3,12 +3,9 @@ package com.avast.client.rabbitmq;
 import com.avast.client.api.GenericAsyncHandler;
 import com.avast.client.api.exceptions.RequestConnectException;
 import com.avast.jmx.JMXProperty;
-import com.rabbitmq.client.Address;
-import com.rabbitmq.client.ExceptionHandler;
-import com.rabbitmq.client.QueueingConsumer;
-import com.rabbitmq.client.Recoverable;
-import com.yammer.metrics.Metrics;
-import com.yammer.metrics.core.Meter;
+import com.avast.metrics.api.Meter;
+import com.avast.metrics.api.Monitor;
+import com.rabbitmq.client.*;
 
 import javax.annotation.concurrent.ThreadSafe;
 import javax.net.ssl.SSLContext;
@@ -24,7 +21,6 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
- * Created <b>15.10.2014</b><br>
  * The receiver will wait for first listener, then it will start to receive messages.
  *
  * @author Jenda Kolena, kolena@avast.com
@@ -42,14 +38,16 @@ public class DefaultRabbitMQReceiver extends RabbitMQClientBase implements Rabbi
     protected final Semaphore listenerMutex = new Semaphore(0);
 
     protected final Set<Long> failedTags = new LinkedHashSet<>(2);
+    protected final String queue;
     protected final boolean allowRetry;
 
     protected Thread listenerThread;
 
     protected final AtomicInteger failed = new AtomicInteger(0);
 
-    public DefaultRabbitMQReceiver(final Address[] addresses, final String virtualHost, final String username, final String password, final String queue, final boolean allowRetry, final int connectionTimeout, final int recoveryTimeout, final SSLContext sslContext, final ExceptionHandler exceptionHandler, final String jmxGroup, final RabbitMQDeclare declare) throws RequestConnectException {
-        super("RECEIVER", addresses, virtualHost, username, password, queue, connectionTimeout, recoveryTimeout, sslContext, exceptionHandler, jmxGroup);
+    public DefaultRabbitMQReceiver(final Address[] addresses, final String virtualHost, final String username, final String password, final String queue, final boolean allowRetry, final int connectionTimeout, final int recoveryTimeout, final SSLContext sslContext, final ExceptionHandler exceptionHandler, final RabbitMQDeclare declare, final Monitor metricsMonitor, final String name) throws RequestConnectException {
+        super("RECEIVER", addresses, virtualHost, username, password, connectionTimeout, recoveryTimeout, sslContext, exceptionHandler, metricsMonitor, name);
+        this.queue = queue;
 
         this.allowRetry = allowRetry;
 
@@ -66,9 +64,9 @@ public class DefaultRabbitMQReceiver extends RabbitMQClientBase implements Rabbi
             }
         }
 
-        receivedMeter = Metrics.newMeter(getMetricName("received"), "receivedMessages", TimeUnit.SECONDS);
-        failedMeter = Metrics.newMeter(getMetricName("failed"), "failedMessages", TimeUnit.SECONDS);
-        retriedMeter = Metrics.newMeter(getMetricName("retried"), "retriedMessages", TimeUnit.SECONDS);
+        receivedMeter = metricsMonitor.newMeter("received");
+        failedMeter = metricsMonitor.newMeter("failed");
+        retriedMeter = metricsMonitor.newMeter("retried");
     }
 
     @Override
@@ -102,7 +100,7 @@ public class DefaultRabbitMQReceiver extends RabbitMQClientBase implements Rabbi
 
     @Override
     public void setListener(final GenericAsyncHandler<QueueingConsumer.Delivery> listener) {
-        LOG.debug("Setting new listener.");
+        LOG.debug("Setting new listener");
         this.listener.set(listener);
         listenerMutex.release(100000);//for sure
     }
@@ -206,8 +204,13 @@ public class DefaultRabbitMQReceiver extends RabbitMQClientBase implements Rabbi
     }
 
     protected void retry(final QueueingConsumer.Delivery delivery) throws IOException {
-        LOG.debug("Retrying message " + delivery.getEnvelope().getDeliveryTag() + ", putting back to the queue " + queue);
-        channel.basicPublish("", queue, delivery.getProperties().builder().correlationId("retry").build(), delivery.getBody());
+        final Envelope envelope = delivery.getEnvelope();
+        final String exchange = envelope.getExchange();
+        final String routingKey = envelope.getRoutingKey();
+
+        LOG.debug("Retrying message " + envelope.getDeliveryTag() + ", putting back to the exchange " + exchange + " with routing key " + routingKey);
+
+        channel.basicPublish(exchange, routingKey, delivery.getProperties().builder().correlationId("retry").build(), delivery.getBody());
     }
 
     /**
