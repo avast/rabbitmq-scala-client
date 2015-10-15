@@ -10,7 +10,7 @@
 
     <groupId>com.avast.client</groupId>
     <artifactId>rabbitmqclient_${build.scala.version}</artifactId>
-    <version>1.2.25</version>
+    <version>1.2-SNAPSHOT</version>
 
     <name>RabbitMQClient</name>
 
