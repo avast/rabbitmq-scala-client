@@ -24,7 +24,7 @@
         <connection>scm:${scm.type}:${scm.server}:${scm.project}</connection>
         <developerConnection>scm:${scm.type}:${scm.server}:${scm.project}</developerConnection>
         <url>${scm.server}:${scm.project}</url>
-        <tag>1.2-SNAPSHOT</tag>
+        <tag>HEAD</tag>
     </scm>
 
     <dependencies>
