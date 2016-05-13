@@ -1,0 +1,63 @@
+buildscript {
+    repositories {
+        maven { url 'http://integration.ff.int.avast.com:9999/artifactory/libs-release' }
+    }
+
+    dependencies {
+        classpath 'com.avast.gradle:gradle-publish:0.8.7'
+        classpath 'com.avast.gradle:gradle-release:0.8.7'
+        classpath 'com.avast.gradle:gradle-scala:0.8.7'
+        classpath 'com.avast.gradle:docker-compose-gradle-plugin:0.2.99'
+        classpath 'com.github.maiflai:gradle-scalatest:0.11'
+    }
+}
+
+apply plugin: 'avast-release'
+apply plugin: 'idea'
+apply plugin: 'docker-compose'
+
+
+apply plugin: 'java'
+apply plugin: 'avast-publish'
+apply plugin: 'avast-scala'
+apply plugin: 'com.github.maiflai.scalatest'
+
+sourceCompatibility = '1.8'
+targetCompatibility = '1.8'
+
+repositories {
+    maven { url 'http://integration.ff.int.avast.com:9999/artifactory/libs-release' }
+}
+
+avast {
+    publish {
+        groupId = 'com.avast.clients'
+        artifactId = 'rabbitmq-client'
+    }
+
+    scala {
+        version = '2.11'
+    }
+}
+
+//noinspection GroovyAssignabilityCheck
+test {
+    reports.html.enabled = false
+}
+
+tasks.withType(ScalaCompile) {
+    //noinspection GroovyAccessibility
+    scalaCompileOptions.additionalParameters = ['-Xlint', '-Ywarn-value-discard']
+}
+
+ext {
+    utilsVersion = "3.5.1"
+    metricsVersion = "1.7.30"
+}
+
+dependencies {
+    testCompile 'junit:junit:4.12'
+    testCompile 'org.scalatest:scalatest_2.11:2.2.6'
+    testCompile 'org.mockito:mockito-all:1.10.19'
+    testCompile 'ch.qos.logback:logback-classic:1.1.7'
+}
