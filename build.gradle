@@ -51,11 +51,38 @@ tasks.withType(ScalaCompile) {
 }
 
 ext {
-    utilsVersion = "3.5.1"
+    utilsVersion = "3.5.2"
     metricsVersion = "1.7.30"
 }
 
+rootProject.dockerCompose.isRequiredBy(test)
+
+dockerCompose {
+    removeImages = false
+}
+
+test.doFirst {
+    dockerCompose.exposeAsSystemProperties(test)
+}
+
 dependencies {
+    compile "com.avast.metrics:metrics-api:${metricsVersion}"
+    compile 'com.typesafe.scala-logging:scala-logging_?:3.1.0'
+
+    compile "com.avast.utils2:utils-common:${utilsVersion}"
+    compile "com.avast.utils2:utils-scala_?:${utilsVersion}"
+
+    compile 'com.rabbitmq:amqp-client:3.6.1'
+    compile 'com.typesafe:config:1.3.0'
+    compile 'com.iheart:ficus_?:1.2.1'
+
+    testCompile "com.avast.metrics:metrics-dropwizard:${metricsVersion}"
+
+    testCompile "org.scalaj:scalaj-http_?:2.3.0"
+    testCompile 'io.circe:circe-core_?:0.4.1'
+    testCompile 'io.circe:circe-generic_?:0.4.1'
+    testCompile 'io.circe:circe-parser_?:0.4.1'
+
     testCompile 'junit:junit:4.12'
     testCompile 'org.scalatest:scalatest_2.11:2.2.6'
     testCompile 'org.mockito:mockito-all:1.10.19'
