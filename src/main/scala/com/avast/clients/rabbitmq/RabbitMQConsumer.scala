@@ -12,7 +12,7 @@ import scala.concurrent.{ExecutionContext, Future}
 import scala.util.control.NonFatal
 import scala.util.{Failure, Success}
 
-class RabbitMQConsumer(id: String, channel: Channel, clock: Clock, monitor: Monitor)(readAction: Delivery => Future[Boolean])(implicit ec: ExecutionContext)
+class RabbitMQConsumer(id: String, channel: Channel, monitor: Monitor)(readAction: Delivery => Future[Boolean])(implicit ec: ExecutionContext)
   extends DefaultConsumer(channel) with StrictLogging {
 
   private val readMeter = monitor.newMeter("read")

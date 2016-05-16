@@ -1,20 +1,22 @@
 package com.avast.clients.rabbitmq
 
 import java.nio.file.{Path, Paths}
-import java.time.{Clock, Duration}
+import java.time.Duration
 import java.util
+import java.util.concurrent.ScheduledExecutorService
 
 import com.avast.clients.rabbitmq.api.{RabbitMQReceiver, RabbitMQSender, RabbitMQSenderAndReceiver}
 import com.avast.metrics.api.Monitor
+import com.avast.utils2.errorhandling.FutureTimeouter
 import com.avast.utils2.ssl.{KeyStoreTypes, SSLBuilder}
 import com.rabbitmq.client.{Channel, Consumer, TopologyRecoveryException, _}
 import com.typesafe.config.{Config, ConfigFactory}
-import com.typesafe.scalalogging.LazyLogging
+import com.typesafe.scalalogging.{LazyLogging, Logger}
 import net.ceedubs.ficus.Ficus._
 import net.ceedubs.ficus.readers.ArbitraryTypeReader._
 import net.ceedubs.ficus.readers.ValueReader
 
-import scala.concurrent.{ExecutionContextExecutorService, Future}
+import scala.concurrent.{ExecutionContext, ExecutionContextExecutorService, Future}
 import scala.util.control.NonFatal
 
 object RabbitMQClientFactory extends LazyLogging {
@@ -34,61 +36,70 @@ object RabbitMQClientFactory extends LazyLogging {
   }
 
   object SenderAndReceiver {
-    def fromConfig(providedConfig: Config, monitor: Monitor, executor: ExecutionContextExecutorService)
+    def fromConfig(providedConfig: Config,
+                   monitor: Monitor,
+                   executor: ExecutionContextExecutorService,
+                   scheduledExecutorService: ScheduledExecutorService = FutureTimeouter.Implicits.DefaultScheduledExecutor)
                   (readAction: Delivery => Future[Boolean]): RabbitMQSenderAndReceiver = {
       // we need to wrap it with one level, to be able to parse it with Ficus
       val config = ConfigFactory.empty()
         .withValue("root", providedConfig.withFallback(DefaultConfig).root())
 
+      implicit val ec = executor
+
       val rabbitConfig = config.as[RabbitMQClientSenderAndReceiverConfig]("root")
-      import rabbitConfig._
 
       val channel = connectAndCreateChannel(rabbitConfig, executor)
 
-      val sendAction = prepareSenderConfig(sender, channel)
+      val sender = prepareSender(rabbitConfig.sender, channel)
 
-      val receiverConfig = prepareReceiverConfig(receiver, readAction, channel)
+      val receiver = prepareReceiver(rabbitConfig, rabbitConfig.receiver, readAction, channel, monitor, scheduledExecutorService)
 
-      createRabbitMQClient(rabbitConfig, channel, receiverConfig, sendAction, monitor, executor)
+      createRabbitMQClient(rabbitConfig, channel, Option(receiver), sender, monitor, executor)
     }
   }
 
   object Sender {
-    def fromConfig(providedConfig: Config, monitor: Monitor, executor: ExecutionContextExecutorService): RabbitMQSender = {
+    def fromConfig(providedConfig: Config,
+                   monitor: Monitor,
+                   executor: ExecutionContextExecutorService): RabbitMQSender = {
       // we need to wrap it with one level, to be able to parse it with Ficus
       val config = ConfigFactory.empty()
         .withValue("root", providedConfig.withFallback(DefaultConfig).root())
 
       val rabbitConfig = config.as[RabbitMQClientSenderConfig]("root")
-      import rabbitConfig._
 
       val channel = connectAndCreateChannel(rabbitConfig, executor)
 
-      val sendAction = prepareSenderConfig(sender, channel)
+      val sender = prepareSender(rabbitConfig.sender, channel)
 
-      createRabbitMQClient(rabbitConfig, channel, None, sendAction, monitor, executor)
+      createRabbitMQClient(rabbitConfig, channel, None, sender, monitor, executor)
     }
   }
 
   object Receiver {
-    def fromConfig(providedConfig: Config, monitor: Monitor, executor: ExecutionContextExecutorService)
+    def fromConfig(providedConfig: Config,
+                   monitor: Monitor,
+                   executor: ExecutionContextExecutorService,
+                   scheduledExecutorService: ScheduledExecutorService = FutureTimeouter.Implicits.DefaultScheduledExecutor)
                   (readAction: Delivery => Future[Boolean]): RabbitMQReceiver = {
       // we need to wrap it with one level, to be able to parse it with Ficus
       val config = ConfigFactory.empty()
         .withValue("root", providedConfig.withFallback(DefaultConfig).root())
 
+      implicit val ec = executor
+
       val rabbitConfig = config.as[RabbitMQClientReceiverConfig]("root")
-      import rabbitConfig._
 
       val channel = connectAndCreateChannel(rabbitConfig, executor)
 
-      val receiverConfig = prepareReceiverConfig(receiver, readAction, channel)
+      val receiver = prepareReceiver(rabbitConfig, rabbitConfig.receiver, readAction, channel, monitor, scheduledExecutorService)
 
-      createRabbitMQClient(rabbitConfig, channel, receiverConfig, None, monitor, executor)
+      createRabbitMQClient(rabbitConfig, channel, Option(receiver), None, monitor, executor)
     }
   }
 
-  private def prepareSenderConfig(sender: SenderConfig, channel: ServerChannel): Option[(Delivery) => Unit] = {
+  private def prepareSender(sender: SenderConfig, channel: ServerChannel): Option[(Delivery) => Unit] = {
     // auto declare
     {
       import sender.declare._
@@ -108,13 +119,17 @@ object RabbitMQClientFactory extends LazyLogging {
     })
   }
 
-  private def prepareReceiverConfig(receiver: ReceiverConfig,
-                                    readAction: (Delivery) => Future[Boolean],
-                                    channel: ServerChannel): Option[(ReceiverConfig, (Delivery) => Future[Boolean])] = {
+  private def prepareReceiver(rabbitConfig: RabbitMQClientConfig,
+                              receiverConfig: ReceiverConfig,
+                              readAction: (Delivery) => Future[Boolean],
+                              channel: ServerChannel,
+                              monitor: Monitor,
+                              scheduledExecutor: ScheduledExecutorService)(implicit ec: ExecutionContext): Logger => Consumer = {
+
     // auto declare
     {
-      import receiver.declare._
-      import receiver.queueName
+      import receiverConfig.declare._
+      import receiverConfig.queueName
 
       if (enabled) {
         logger.info(s"Declaring queue $queueName")
@@ -124,8 +139,8 @@ object RabbitMQClientFactory extends LazyLogging {
 
     // auto bind
     {
-      import receiver.bind._
-      import receiver.queueName
+      import receiverConfig.bind._
+      import receiverConfig.queueName
 
       if (enabled) {
         logger.info(s"Binding $exchange($routingKey) -> $queueName")
@@ -133,15 +148,45 @@ object RabbitMQClientFactory extends LazyLogging {
       }
     }
 
-    Option {
-      receiver -> readAction
-    }
+    prepareConsumer(rabbitConfig, receiverConfig, channel, readAction, monitor, scheduledExecutor)
+  }
+
+  private def prepareConsumer(rabbitConfig: RabbitMQClientConfig,
+                              receiverConfig: ReceiverConfig,
+                              channel: ServerChannel,
+                              readAction: (Delivery) => Future[Boolean],
+                              monitor: Monitor,
+                              scheduledExecutor: ScheduledExecutorService)
+                             (logger: Logger)(implicit ec: ExecutionContext): Consumer = {
+    import FutureTimeouter._
+    import rabbitConfig._
+    import receiverConfig._
+
+    val consumer = new RabbitMQConsumer(name, channel, monitor)({ delivery =>
+      try {
+        readAction(delivery)
+          .timeoutAfter(processTimeout)(ec, scheduledExecutor)
+          .recover {
+            case NonFatal(e) =>
+              logger.warn("Error while executing callback, automatically requeuing", e)
+              false
+          }
+      } catch {
+        case NonFatal(e) =>
+          logger.error("Error while executing callback, automatically requeuing", e)
+          Future.successful(false)
+      }
+    })
+
+    channel.basicConsume(queueName, false, consumer)
+
+    consumer
   }
 
   private def createRabbitMQClient(rabbitConfig: RabbitMQClientConfig,
                                    channel: ServerChannel,
-                                   receiverConfig: Option[(ReceiverConfig, (Delivery) => Future[Boolean])],
-                                   sendAction: Option[Delivery => Unit],
+                                   receiver: Option[Logger => Consumer],
+                                   sender: Option[Delivery => Unit],
                                    monitor: Monitor,
                                    executor: ExecutionContextExecutorService): RabbitMQClient = {
     import rabbitConfig._
@@ -149,10 +194,9 @@ object RabbitMQClientFactory extends LazyLogging {
     new RabbitMQClient(name,
       channel = channel,
       processTimeout = processTimeout,
-      clock = Clock.systemUTC(),
       monitor = monitor,
-      receiverConfig = receiverConfig,
-      sendAction = sendAction)(executor)
+      receiver = receiver,
+      sender = sender)(executor)
   }
 
   protected def connectAndCreateChannel(rabbitConfig: RabbitMQClientConfig, executor: ExecutionContextExecutorService): ServerChannel = {
