@@ -189,7 +189,7 @@ object RabbitMQClientFactory extends LazyLogging {
     val factory = new ConnectionFactory
     factory.setVirtualHost(virtualHost)
 
-    factory.setTopologyRecoveryEnabled(true)
+    factory.setTopologyRecoveryEnabled(topologyRecovery)
     factory.setAutomaticRecoveryEnabled(true)
     factory.setNetworkRecoveryInterval(5000)
     factory.setRequestedHeartbeat(heartBeatInterval.getSeconds.toInt)
@@ -275,6 +275,8 @@ sealed trait RabbitMQClientConfig {
 
   val heartBeatInterval: Duration
 
+  val topologyRecovery: Boolean
+
   val processTimeout: Duration
 
   val credentials: Credentials
@@ -289,6 +291,7 @@ case class RabbitMQClientSenderAndReceiverConfig(hosts: Array[String],
                                                  connectionTimeout: Duration,
                                                  heartBeatInterval: Duration,
                                                  processTimeout: Duration,
+                                                 topologyRecovery: Boolean,
                                                  credentials: Credentials,
                                                  ssl: Ssl,
                                                  receiver: ReceiverConfig,
@@ -300,6 +303,7 @@ case class RabbitMQClientReceiverConfig(hosts: Array[String],
                                         connectionTimeout: Duration,
                                         heartBeatInterval: Duration,
                                         processTimeout: Duration,
+                                        topologyRecovery: Boolean,
                                         credentials: Credentials,
                                         ssl: Ssl,
                                         receiver: ReceiverConfig,
@@ -310,6 +314,7 @@ case class RabbitMQClientSenderConfig(hosts: Array[String],
                                       connectionTimeout: Duration,
                                       heartBeatInterval: Duration,
                                       processTimeout: Duration,
+                                      topologyRecovery: Boolean,
                                       credentials: Credentials,
                                       ssl: Ssl,
                                       sender: SenderConfig,
