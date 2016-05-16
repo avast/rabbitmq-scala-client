@@ -8,9 +8,11 @@ import com.rabbitmq.client.{Channel, DefaultConsumer, Envelope}
 import com.typesafe.scalalogging.StrictLogging
 
 import scala.collection.JavaConverters._
+import scala.concurrent.{ExecutionContext, Future}
 import scala.util.control.NonFatal
+import scala.util.{Failure, Success}
 
-class RabbitMQConsumer(id: String, channel: Channel, clock: Clock, monitor: Monitor)(readAction: Delivery => Unit)
+class RabbitMQConsumer(id: String, channel: Channel, clock: Clock, monitor: Monitor)(readAction: Delivery => Future[Boolean])(implicit ec: ExecutionContext)
   extends DefaultConsumer(channel) with StrictLogging {
 
   private val readMeter = monitor.newMeter("read")
@@ -27,15 +29,33 @@ class RabbitMQConsumer(id: String, channel: Channel, clock: Clock, monitor: Moni
       val message = Delivery(body, properties, Option(envelope.getRoutingKey).getOrElse(""))
 
       readAction(message)
-    } finally {
-      ack(messageId, deliveryTag)
+        .andThen {
+          case Success(true) => ack(messageId, deliveryTag)
+          case Success(false) => nack(messageId, deliveryTag)
+          case Failure(NonFatal(e)) =>
+            logger.error("Error while executing callback, it's probably u BUG")
+            nack(messageId, deliveryTag)
+        }
+    } catch {
+      case NonFatal(e) =>
+        logger.error("Error while executing callback, it's probably u BUG")
+        nack(messageId, deliveryTag)
     }
   }
 
   private def ack(messageId: String, deliveryTag: Long): Unit = {
     try {
       logger.debug(s"[$id] Confirming delivery $messageId, deliveryTag $deliveryTag")
-      channel.basicAck(deliveryTag, true)
+      channel.basicAck(deliveryTag, false)
+    } catch {
+      case NonFatal(e) => logger.warn(s"[$id] Error while confirming the delivery", e)
+    }
+  }
+
+  private def nack(messageId: String, deliveryTag: Long): Unit = {
+    try {
+      logger.debug(s"[$id] Confirming delivery $messageId, deliveryTag $deliveryTag")
+      channel.basicNack(deliveryTag, false, true)
     } catch {
       case NonFatal(e) => logger.warn(s"[$id] Error while confirming the delivery", e)
     }

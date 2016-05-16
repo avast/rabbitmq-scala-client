@@ -4,7 +4,7 @@ import java.time.{Clock, Duration}
 import java.util.UUID
 
 import com.avast.clients.rabbitmq.RabbitMQClientFactory.ServerChannel
-import com.avast.clients.rabbitmq.api.{RabbitMQSenderAndReceiver, Result}
+import com.avast.clients.rabbitmq.api.RabbitMQSenderAndReceiver
 import com.avast.metrics.api.Monitor
 import com.avast.utils2.errorhandling.FutureTimeouter._
 import com.rabbitmq.client._
@@ -12,14 +12,13 @@ import com.typesafe.scalalogging.{LazyLogging, StrictLogging}
 
 import scala.concurrent.{ExecutionContext, Future}
 import scala.util.control.NonFatal
-import scala.util.{Failure, Success}
 
 class RabbitMQClient private[rabbitmq](name: String,
                                        channel: ServerChannel,
                                        processTimeout: Duration,
                                        clock: Clock,
                                        monitor: Monitor,
-                                       receiverConfig: Option[(ReceiverConfig, Delivery => Future[Result])],
+                                       receiverConfig: Option[(ReceiverConfig, Delivery => Future[Boolean])],
                                        sendAction: Option[Delivery => Unit])
                                       (implicit ec: ExecutionContext) extends RabbitMQSenderAndReceiver with StrictLogging {
 
@@ -31,22 +30,18 @@ class RabbitMQClient private[rabbitmq](name: String,
     import config._
 
     val consumer = new RabbitMQConsumer(name, channel, clock, monitor)({ delivery =>
-      import Result._
       try {
         action(delivery)
           .timeoutAfter(processTimeout)
-          .andThen {
-            case Success(Ok) => // ok
-            case Success(Failed) =>
-              send(delivery)
-            case Failure(NonFatal(e)) =>
+          .recover {
+            case NonFatal(e) =>
               logger.warn("Error while executing callback, automatically requeuing", e)
-              send(delivery)
+              false
           }
       } catch {
         case NonFatal(e) =>
           logger.error("Error while executing callback, automatically requeuing", e)
-          send(delivery)
+          Future.successful(false)
       }
     })
 

@@ -4,7 +4,7 @@ import java.nio.file.{Path, Paths}
 import java.time.{Clock, Duration}
 import java.util
 
-import com.avast.clients.rabbitmq.api.{RabbitMQReceiver, RabbitMQSender, RabbitMQSenderAndReceiver, Result}
+import com.avast.clients.rabbitmq.api.{RabbitMQReceiver, RabbitMQSender, RabbitMQSenderAndReceiver}
 import com.avast.metrics.api.Monitor
 import com.avast.utils2.ssl.{KeyStoreTypes, SSLBuilder}
 import com.rabbitmq.client.{Channel, Consumer, TopologyRecoveryException, _}
@@ -35,7 +35,7 @@ object RabbitMQClientFactory extends LazyLogging {
 
   object SenderAndReceiver {
     def fromConfig(providedConfig: Config, monitor: Monitor, executor: ExecutionContextExecutorService)
-                  (readAction: Delivery => Future[Result]): RabbitMQSenderAndReceiver = {
+                  (readAction: Delivery => Future[Boolean]): RabbitMQSenderAndReceiver = {
       // we need to wrap it with one level, to be able to parse it with Ficus
       val config = ConfigFactory.empty()
         .withValue("root", providedConfig.withFallback(DefaultConfig).root())
@@ -54,8 +54,7 @@ object RabbitMQClientFactory extends LazyLogging {
   }
 
   object Sender {
-    def fromConfig(providedConfig: Config, monitor: Monitor, executor: ExecutionContextExecutorService)
-                  (readAction: Delivery => Future[Result]): RabbitMQSender = {
+    def fromConfig(providedConfig: Config, monitor: Monitor, executor: ExecutionContextExecutorService): RabbitMQSender = {
       // we need to wrap it with one level, to be able to parse it with Ficus
       val config = ConfigFactory.empty()
         .withValue("root", providedConfig.withFallback(DefaultConfig).root())
@@ -73,7 +72,7 @@ object RabbitMQClientFactory extends LazyLogging {
 
   object Receiver {
     def fromConfig(providedConfig: Config, monitor: Monitor, executor: ExecutionContextExecutorService)
-                  (readAction: Delivery => Future[Result]): RabbitMQReceiver = {
+                  (readAction: Delivery => Future[Boolean]): RabbitMQReceiver = {
       // we need to wrap it with one level, to be able to parse it with Ficus
       val config = ConfigFactory.empty()
         .withValue("root", providedConfig.withFallback(DefaultConfig).root())
@@ -88,10 +87,6 @@ object RabbitMQClientFactory extends LazyLogging {
       createRabbitMQClient(rabbitConfig, channel, receiverConfig, None, monitor, executor)
     }
   }
-
-  /* --- --- --- */
-  /* --- --- --- */
-  /* --- --- --- */
 
   private def prepareSenderConfig(sender: SenderConfig, channel: ServerChannel): Option[(Delivery) => Unit] = {
     // auto declare
@@ -114,8 +109,8 @@ object RabbitMQClientFactory extends LazyLogging {
   }
 
   private def prepareReceiverConfig(receiver: ReceiverConfig,
-                                    readAction: (Delivery) => Future[Result],
-                                    channel: ServerChannel): Option[(ReceiverConfig, (Delivery) => Future[Result])] = {
+                                    readAction: (Delivery) => Future[Boolean],
+                                    channel: ServerChannel): Option[(ReceiverConfig, (Delivery) => Future[Boolean])] = {
     // auto declare
     {
       import receiver.declare._
@@ -145,7 +140,7 @@ object RabbitMQClientFactory extends LazyLogging {
 
   private def createRabbitMQClient(rabbitConfig: RabbitMQClientConfig,
                                    channel: ServerChannel,
-                                   receiverConfig: Option[(ReceiverConfig, (Delivery) => Future[Result])],
+                                   receiverConfig: Option[(ReceiverConfig, (Delivery) => Future[Boolean])],
                                    sendAction: Option[Delivery => Unit],
                                    monitor: Monitor,
                                    executor: ExecutionContextExecutorService): RabbitMQClient = {
