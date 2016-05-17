@@ -1,10 +1,10 @@
 package com.avast.clients.rabbitmq
 
-import java.time.Clock
-
+import com.avast.clients.rabbitmq.RabbitMQChannelFactory.ServerChannel
+import com.avast.clients.rabbitmq.api.RabbitMQConsumer
 import com.avast.metrics.api.Monitor
 import com.rabbitmq.client.AMQP.BasicProperties
-import com.rabbitmq.client.{Channel, DefaultConsumer, Envelope}
+import com.rabbitmq.client.{AMQP, DefaultConsumer, Envelope}
 import com.typesafe.scalalogging.StrictLogging
 
 import scala.collection.JavaConverters._
@@ -12,8 +12,8 @@ import scala.concurrent.{ExecutionContext, Future}
 import scala.util.control.NonFatal
 import scala.util.{Failure, Success}
 
-class RabbitMQConsumer(id: String, channel: Channel, monitor: Monitor)(readAction: Delivery => Future[Boolean])(implicit ec: ExecutionContext)
-  extends DefaultConsumer(channel) with StrictLogging {
+class DefaultRabbitMQConsumer(id: String, channel: ServerChannel, monitor: Monitor)(readAction: Delivery => Future[Boolean])(implicit ec: ExecutionContext)
+  extends DefaultConsumer(channel) with RabbitMQConsumer with StrictLogging {
 
   private val readMeter = monitor.newMeter("read")
 
@@ -43,6 +43,11 @@ class RabbitMQConsumer(id: String, channel: Channel, monitor: Monitor)(readActio
     }
   }
 
+
+  override def close(): Unit = {
+    channel.close()
+  }
+
   private def ack(messageId: String, deliveryTag: Long): Unit = {
     try {
       logger.debug(s"[$id] Confirming delivery $messageId, deliveryTag $deliveryTag")
@@ -61,3 +66,5 @@ class RabbitMQConsumer(id: String, channel: Channel, monitor: Monitor)(readActio
     }
   }
 }
+
+case class Delivery(body: Array[Byte], properties: AMQP.BasicProperties, routingKey: String)

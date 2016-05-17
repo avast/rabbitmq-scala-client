@@ -4,7 +4,8 @@ import java.util.UUID
 
 import com.avast.metrics.test.NoOpMonitor
 import com.rabbitmq.client.AMQP.BasicProperties
-import com.rabbitmq.client.{Channel, Envelope}
+import com.rabbitmq.client.Envelope
+import com.rabbitmq.client.impl.recovery.AutorecoveringChannel
 import org.mockito.Mockito._
 import org.scalatest.FunSuite
 import org.scalatest.concurrent.Eventually
@@ -27,9 +28,9 @@ class RabbitMQConsumerTest extends FunSuite with MockitoSugar with Eventually {
     val properties = mock[BasicProperties]
     when(properties.getMessageId).thenReturn(messageId)
 
-    val channel = mock[Channel]
+    val channel = mock[AutorecoveringChannel]
 
-    val consumer = new RabbitMQConsumer(
+    val consumer = new DefaultRabbitMQConsumer(
       "test",
       channel,
       NoOpMonitor.INSTANCE
@@ -58,9 +59,9 @@ class RabbitMQConsumerTest extends FunSuite with MockitoSugar with Eventually {
     val properties = mock[BasicProperties]
     when(properties.getMessageId).thenReturn(messageId)
 
-    val channel = mock[Channel]
+    val channel = mock[AutorecoveringChannel]
 
-    val consumer = new RabbitMQConsumer(
+    val consumer = new DefaultRabbitMQConsumer(
       "test",
       channel,
       NoOpMonitor.INSTANCE
@@ -89,9 +90,9 @@ class RabbitMQConsumerTest extends FunSuite with MockitoSugar with Eventually {
     val properties = mock[BasicProperties]
     when(properties.getMessageId).thenReturn(messageId)
 
-    val channel = mock[Channel]
+    val channel = mock[AutorecoveringChannel]
 
-    val consumer = new RabbitMQConsumer(
+    val consumer = new DefaultRabbitMQConsumer(
       "test",
       channel,
       NoOpMonitor.INSTANCE
@@ -120,9 +121,9 @@ class RabbitMQConsumerTest extends FunSuite with MockitoSugar with Eventually {
     val properties = mock[BasicProperties]
     when(properties.getMessageId).thenReturn(messageId)
 
-    val channel = mock[Channel]
+    val channel = mock[AutorecoveringChannel]
 
-    val consumer = new RabbitMQConsumer(
+    val consumer = new DefaultRabbitMQConsumer(
       "test",
       channel,
       NoOpMonitor.INSTANCE
