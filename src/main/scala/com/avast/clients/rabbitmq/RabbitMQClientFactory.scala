@@ -168,12 +168,12 @@ object RabbitMQClientFactory extends LazyLogging {
           .timeoutAfter(processTimeout)(ec, scheduledExecutor)
           .recover {
             case NonFatal(e) =>
-              logger.warn("Error while executing callback, automatically requeuing", e)
+              logger.warn("Error while executing callback, will be redelivered", e)
               false
           }
       } catch {
         case NonFatal(e) =>
-          logger.error("Error while executing callback, automatically requeuing", e)
+          logger.error("Error while executing callback, will be redelivered", e)
           Future.successful(false)
       }
     })

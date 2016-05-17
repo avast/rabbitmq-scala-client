@@ -108,4 +108,35 @@ class RabbitMQConsumerTest extends FunSuite with MockitoSugar with Eventually {
       verify(channel, times(1)).basicNack(deliveryTag, false, true)
     }
   }
+
+  test("should NACK because of unexpected failure") {
+    val messageId = UUID.randomUUID().toString
+
+    val deliveryTag = Random.nextInt(1000)
+
+    val envelope = mock[Envelope]
+    when(envelope.getDeliveryTag).thenReturn(deliveryTag)
+
+    val properties = mock[BasicProperties]
+    when(properties.getMessageId).thenReturn(messageId)
+
+    val channel = mock[Channel]
+
+    val consumer = new RabbitMQConsumer(
+      "test",
+      channel,
+      NoOpMonitor.INSTANCE
+    )({ delivery =>
+      assertResult(messageId)(delivery.properties.getMessageId)
+
+      throw new RuntimeException
+    })
+
+    consumer.handleDelivery("abcd", envelope, properties, Random.nextString(5).getBytes)
+
+    eventually(timeout(Span(1, Seconds)), interval(Span(0.1, Seconds))) {
+      verify(channel, times(0)).basicAck(deliveryTag, false)
+      verify(channel, times(1)).basicNack(deliveryTag, false, true)
+    }
+  }
 }

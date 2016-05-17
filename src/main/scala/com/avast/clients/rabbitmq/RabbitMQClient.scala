@@ -24,10 +24,8 @@ class RabbitMQClient private[rabbitmq](name: String,
   channel.addRecoveryListener(ChannelRecoveryListener)
   channel.addShutdownListener(ChannelShutdownListener)
 
-  receiver.foreach {
-    // initializes the consumer
-    _ (logger)
-  }
+  // initializes the consumer, if available
+  receiver.foreach(_ (logger))
 
   protected def send(delivery: Delivery): Unit = {
     val action = sender.getOrElse(throw new IllegalStateException("This client is not configured as sender"))
