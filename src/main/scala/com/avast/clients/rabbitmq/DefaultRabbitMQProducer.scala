@@ -10,22 +10,16 @@ import com.typesafe.scalalogging.StrictLogging
 
 import scala.util.control.NonFatal
 
-class DefaultRabbitMQProducer(id: String, senderConfig: ProducerConfig, channel: ServerChannel, monitor: Monitor) extends RabbitMQProducer with StrictLogging {
+class DefaultRabbitMQProducer(name: String,
+                              exchangeName: String,
+                              channel: ServerChannel, monitor: Monitor) extends RabbitMQProducer with StrictLogging {
 
-  import senderConfig._
-
-  protected def send(delivery: Delivery): Unit = {
-    import delivery._
-
+  override def send(routingKey: String, body: Array[Byte], properties: AMQP.BasicProperties): Unit = {
     try {
-      channel.basicPublish(exchange, routingKey, properties, body)
+      channel.basicPublish(exchangeName, routingKey, properties, body)
     } catch {
       case NonFatal(e) => logger.error("Error while sending message", e)
     }
-  }
-
-  override def send(routingKey: String, body: Array[Byte], properties: AMQP.BasicProperties): Unit = {
-    send(Delivery(body, properties, routingKey))
   }
 
   override def send(routingKey: String, body: Array[Byte]): Unit = {

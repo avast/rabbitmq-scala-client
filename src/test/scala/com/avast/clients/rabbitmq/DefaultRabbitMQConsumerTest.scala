@@ -16,7 +16,7 @@ import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.Future
 import scala.util.Random
 
-class RabbitMQConsumerTest extends FunSuite with MockitoSugar with Eventually {
+class DefaultRabbitMQConsumerTest extends FunSuite with MockitoSugar with Eventually {
   test("should ACK") {
     val messageId = UUID.randomUUID().toString
 

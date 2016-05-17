@@ -69,14 +69,12 @@ object RabbitMQClientFactory extends LazyLogging {
   }
 
   private def prepareProducer(producerConfig: ProducerConfig, channel: ServerChannel, monitor: Monitor): DefaultRabbitMQProducer = {
+    import producerConfig._
+
     // auto declare
-    {
-      import producerConfig._
+    declareExchange(exchange, channel, declare)
 
-      declareExchange(exchange, channel, declare)
-    }
-
-    new DefaultRabbitMQProducer(producerConfig.name, producerConfig, channel, monitor)
+    new DefaultRabbitMQProducer(producerConfig.name, exchange, channel, monitor)
   }
 
   private def declareExchange(name: String, channel: ServerChannel, autoDeclareExchange: AutoDeclareExchange): Unit = {
