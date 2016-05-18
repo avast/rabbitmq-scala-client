@@ -10,7 +10,7 @@ import com.avast.clients.rabbitmq.api.{RabbitMQConsumer, RabbitMQProducer}
 import com.avast.metrics.api.Monitor
 import com.avast.utils2.errorhandling.FutureTimeouter
 import com.rabbitmq.client.AMQP
-import com.typesafe.config.{Config, ConfigFactory}
+import com.typesafe.config.{Config, ConfigFactory, ConfigValueFactory}
 import com.typesafe.scalalogging.LazyLogging
 import net.ceedubs.ficus.Ficus._
 import net.ceedubs.ficus.readers.ArbitraryTypeReader._
@@ -21,11 +21,14 @@ import scala.util.control.NonFatal
 
 object RabbitMQClientFactory extends LazyLogging {
 
+  private[rabbitmq] final val ProducerRootConfigKey = "ffRabbitMQProducerDefaults"
+  private[rabbitmq] final val ProducerDefaultConfig = ConfigFactory.defaultReference().getConfig(ProducerRootConfigKey)
+
   private[rabbitmq] final val ConsumerRootConfigKey = "ffRabbitMQConsumerDefaults"
   private[rabbitmq] final val ConsumerDefaultConfig = ConfigFactory.defaultReference().getConfig(ConsumerRootConfigKey)
 
-  private[rabbitmq] final val ProducerRootConfigKey = "ffRabbitMQProducerDefaults"
-  private[rabbitmq] final val ProducerDefaultConfig = ConfigFactory.defaultReference().getConfig(ProducerRootConfigKey)
+  private[rabbitmq] final val ConsumerBindingRootConfigKey = "ffRabbitMQConsumerBindingDefaults"
+  private[rabbitmq] final val ConsumerBindingDefaultConfig = ConfigFactory.defaultReference().getConfig(ConsumerBindingRootConfigKey)
 
   private implicit final val JavaDurationReader: ValueReader[Duration] = new ValueReader[Duration] {
     override def read(config: Config, path: String): Duration = config.getDuration(path)
@@ -56,10 +59,23 @@ object RabbitMQClientFactory extends LazyLogging {
                    scheduledExecutorService: ScheduledExecutorService = FutureTimeouter.Implicits.DefaultScheduledExecutor)
                   (readAction: Delivery => Future[Boolean])
                   (implicit ec: ExecutionContext): RabbitMQConsumer = {
+
+      val mergedConfig = providedConfig.withFallback(ConsumerDefaultConfig)
+
+      // merge consumer binding defaults
+      val updatedConfig = {
+        val updated = mergedConfig.as[Seq[Config]]("binds").map { bindConfig =>
+          bindConfig.withFallback(ConsumerBindingDefaultConfig).root()
+        }
+
+        import scala.collection.JavaConverters._
+
+        mergedConfig.withValue("binds", ConfigValueFactory.fromIterable(updated.asJava))
+      }
+
       // we need to wrap it with one level, to be able to parse it with Ficus
       val config = ConfigFactory.empty()
-        .withValue("root", providedConfig.withFallback(ConsumerDefaultConfig).root())
-
+        .withValue("root", updatedConfig.root())
 
       val consumerConfig = config.as[ConsumerConfig]("root")
 
@@ -94,10 +110,9 @@ object RabbitMQClientFactory extends LazyLogging {
                               monitor: Monitor,
                               scheduledExecutor: ScheduledExecutorService)(implicit ec: ExecutionContext): RabbitMQConsumer = {
 
-    // auto declare exchange
-    {
-      import consumerConfig.bind.exchange._
-
+    // auto declare exchanges
+    consumerConfig.binds.foreach { bind =>
+      import bind.exchange._
       declareExchange(name, channel, declare)
     }
 
@@ -113,23 +128,31 @@ object RabbitMQClientFactory extends LazyLogging {
     }
 
     // auto bind
-    {
-      import consumerConfig.bind._
-      import consumerConfig.queueName
-
-      if (enabled) {
-        val exchangeName = consumerConfig.bind.exchange.name
-
-        routingKeys.foreach { routingKey =>
-          bindTo(channel, queueName)(exchangeName, routingKey)
-        }
-      }
-    }
+    bindQueues(channel, consumerConfig)
 
     prepareConsumer(consumerConfig, channel, readAction, monitor, scheduledExecutor)
   }
 
-  private def bindTo(channel: ServerChannel,queueName: String)(exchangeName: String, routingKey: String): AMQP.Queue.BindOk = {
+  private def bindQueues(channel: ServerChannel, consumerConfig: ConsumerConfig): Unit = {
+    import consumerConfig.queueName
+
+    consumerConfig.binds.foreach { bind =>
+      import bind._
+      val exchangeName = bind.exchange.name
+
+      if (routingKeys.nonEmpty) {
+        routingKeys.foreach { routingKey =>
+          bindTo(channel, queueName)(exchangeName, routingKey)
+        }
+      } else {
+        // binding without routing key, possibly to fanout exchange
+
+        bindTo(channel, queueName)(exchangeName, "")
+      }
+    }
+  }
+
+  private def bindTo(channel: ServerChannel, queueName: String)(exchangeName: String, routingKey: String): AMQP.Queue.BindOk = {
     logger.info(s"Binding $exchangeName($routingKey) -> '$queueName'")
     channel.queueBind(queueName, exchangeName, routingKey)
   }
@@ -167,11 +190,11 @@ object RabbitMQClientFactory extends LazyLogging {
 }
 
 
-case class ConsumerConfig(queueName: String, processTimeout: Duration, declare: AutoDeclareQueue, bind: AutoBindQueue, name: String)
+case class ConsumerConfig(queueName: String, processTimeout: Duration, declare: AutoDeclareQueue, binds: Seq[AutoBindQueue], name: String)
 
 case class AutoDeclareQueue(enabled: Boolean, durable: Boolean, exclusive: Boolean, autoDelete: Boolean)
 
-case class AutoBindQueue(enabled: Boolean, exchange: BindExchange, routingKeys: Seq[String])
+case class AutoBindQueue(exchange: BindExchange, routingKeys: Seq[String])
 
 case class BindExchange(name: String, declare: AutoDeclareExchange)
 
