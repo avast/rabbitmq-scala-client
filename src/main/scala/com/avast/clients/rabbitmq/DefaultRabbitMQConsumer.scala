@@ -61,7 +61,7 @@ class DefaultRabbitMQConsumer(name: String,
 
   private def ack(messageId: String, deliveryTag: Long): Unit = {
     try {
-      logger.debug(s"[$name] Confirming delivery $messageId, deliveryTag $deliveryTag")
+      logger.debug(s"[$name] ACK delivery $messageId, deliveryTag $deliveryTag")
       channel.basicAck(deliveryTag, false)
     } catch {
       case NonFatal(e) => logger.warn(s"[$name] Error while confirming the delivery", e)
@@ -70,7 +70,7 @@ class DefaultRabbitMQConsumer(name: String,
 
   private def nack(messageId: String, deliveryTag: Long): Unit = {
     try {
-      logger.debug(s"[$name] Confirming delivery $messageId, deliveryTag $deliveryTag")
+      logger.debug(s"[$name] NACK delivery $messageId, deliveryTag $deliveryTag")
       channel.basicNack(deliveryTag, false, true)
     } catch {
       case NonFatal(e) => logger.warn(s"[$name] Error while confirming the delivery", e)
