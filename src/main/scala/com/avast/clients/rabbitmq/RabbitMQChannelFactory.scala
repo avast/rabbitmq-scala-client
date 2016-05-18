@@ -154,8 +154,11 @@ case class RabbitMQConnectionConfig(hosts: Array[String],
                                     connectionTimeout: Duration,
                                     heartBeatInterval: Duration,
                                     topologyRecovery: Boolean,
+                                    networkRecovery: NetworkRecovery,
                                     credentials: Credentials,
                                     ssl: Ssl)
+
+case class NetworkRecovery(enabled: Boolean, period: Duration)
 
 case class Credentials(enabled: Boolean, username: String, password: String)
 
