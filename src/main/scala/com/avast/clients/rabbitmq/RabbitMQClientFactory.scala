@@ -9,6 +9,7 @@ import com.avast.clients.rabbitmq.RabbitMQChannelFactory.ServerChannel
 import com.avast.clients.rabbitmq.api.{RabbitMQConsumer, RabbitMQProducer}
 import com.avast.metrics.api.Monitor
 import com.avast.utils2.errorhandling.FutureTimeouter
+import com.rabbitmq.client.AMQP
 import com.typesafe.config.{Config, ConfigFactory}
 import com.typesafe.scalalogging.LazyLogging
 import net.ceedubs.ficus.Ficus._
@@ -120,13 +121,17 @@ object RabbitMQClientFactory extends LazyLogging {
         val exchangeName = consumerConfig.bind.exchange.name
 
         routingKeys.foreach { routingKey =>
-          logger.info(s"Binding $exchangeName($routingKey) -> $queueName")
-          channel.queueBind(queueName, exchangeName, routingKey)
+          bindTo(channel, queueName)(exchangeName, routingKey)
         }
       }
     }
 
     prepareConsumer(consumerConfig, channel, readAction, monitor, scheduledExecutor)
+  }
+
+  private def bindTo(channel: ServerChannel,queueName: String)(exchangeName: String, routingKey: String): AMQP.Queue.BindOk = {
+    logger.info(s"Binding $exchangeName($routingKey) -> $queueName")
+    channel.queueBind(queueName, exchangeName, routingKey)
   }
 
   private def prepareConsumer(consumerConfig: ConsumerConfig,
@@ -152,7 +157,7 @@ object RabbitMQClientFactory extends LazyLogging {
           logger.error("Error while executing callback, will be redelivered", e)
           Future.successful(false)
       }
-    })
+    })(bindTo(channel, queueName))
 
     channel.basicConsume(queueName, false, consumer)
 

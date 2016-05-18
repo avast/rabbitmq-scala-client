@@ -38,7 +38,7 @@ class DefaultRabbitMQConsumerTest extends FunSuite with MockitoSugar with Eventu
       assertResult(messageId)(delivery.properties.getMessageId)
 
       Future.successful(true)
-    })
+    })((_, _) => ???)
 
     consumer.handleDelivery("abcd", envelope, properties, Random.nextString(5).getBytes)
 
@@ -69,7 +69,7 @@ class DefaultRabbitMQConsumerTest extends FunSuite with MockitoSugar with Eventu
       assertResult(messageId)(delivery.properties.getMessageId)
 
       Future.successful(false)
-    })
+    })((_, _) => ???)
 
     consumer.handleDelivery("abcd", envelope, properties, Random.nextString(5).getBytes)
 
@@ -100,7 +100,7 @@ class DefaultRabbitMQConsumerTest extends FunSuite with MockitoSugar with Eventu
       assertResult(messageId)(delivery.properties.getMessageId)
 
       Future.failed(new RuntimeException)
-    })
+    })((_, _) => ???)
 
     consumer.handleDelivery("abcd", envelope, properties, Random.nextString(5).getBytes)
 
@@ -131,7 +131,7 @@ class DefaultRabbitMQConsumerTest extends FunSuite with MockitoSugar with Eventu
       assertResult(messageId)(delivery.properties.getMessageId)
 
       throw new RuntimeException
-    })
+    })((_, _) => ???)
 
     consumer.handleDelivery("abcd", envelope, properties, Random.nextString(5).getBytes)
 
@@ -139,5 +139,40 @@ class DefaultRabbitMQConsumerTest extends FunSuite with MockitoSugar with Eventu
       verify(channel, times(0)).basicAck(deliveryTag, false)
       verify(channel, times(1)).basicNack(deliveryTag, false, true)
     }
+  }
+
+  test("should bind to another exchange") {
+    val messageId = UUID.randomUUID().toString
+
+    val deliveryTag = Random.nextInt(1000)
+
+    val envelope = mock[Envelope]
+    when(envelope.getDeliveryTag).thenReturn(deliveryTag)
+
+    val properties = mock[BasicProperties]
+    when(properties.getMessageId).thenReturn(messageId)
+
+    val channel = mock[AutorecoveringChannel]
+
+    val queueName = Random.nextString(10)
+    val exchange = Random.nextString(10)
+    val routingKey = Random.nextString(10)
+
+    val consumer = new DefaultRabbitMQConsumer(
+      "test",
+      channel,
+      NoOpMonitor.INSTANCE
+    )({ delivery =>
+      assertResult(messageId)(delivery.properties.getMessageId)
+
+      throw new RuntimeException
+    })((exchange, routingKey) => {
+      channel.queueBind(queueName, exchange, routingKey)
+    })
+
+    consumer.bindTo(exchange,routingKey)
+
+    verify(channel, times(1)).queueBind(queueName,exchange,routingKey)
+    ()
   }
 }
