@@ -82,7 +82,7 @@ object RabbitMQClientFactory extends LazyLogging {
     import autoDeclareExchange._
 
     if (enabled) {
-      logger.info(s"Declaring exchange $name of type ${`type`}")
+      logger.info(s"Declaring exchange '$name' of type ${`type`}")
       channel.exchangeDeclare(name, `type`, durable, autoDelete, new util.HashMap())
     }
     ()
@@ -107,7 +107,7 @@ object RabbitMQClientFactory extends LazyLogging {
       import consumerConfig.queueName
 
       if (enabled) {
-        logger.info(s"Declaring queue $queueName")
+        logger.info(s"Declaring queue '$queueName'")
         channel.queueDeclare(queueName, durable, exclusive, autoDelete, new util.HashMap())
       }
     }
@@ -130,7 +130,7 @@ object RabbitMQClientFactory extends LazyLogging {
   }
 
   private def bindTo(channel: ServerChannel,queueName: String)(exchangeName: String, routingKey: String): AMQP.Queue.BindOk = {
-    logger.info(s"Binding $exchangeName($routingKey) -> $queueName")
+    logger.info(s"Binding $exchangeName($routingKey) -> '$queueName'")
     channel.queueBind(queueName, exchangeName, routingKey)
   }
 
