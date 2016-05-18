@@ -15,9 +15,9 @@ import scala.util.{Failure, Success, Try}
 
 class DefaultRabbitMQConsumer(name: String,
                               channel: ServerChannel,
-                              monitor: Monitor)
+                              monitor: Monitor,
+                              bindToAction: (String, String) => BindOk)
                              (readAction: Delivery => Future[Boolean])
-                             (bindToAction: (String, String) => BindOk)
                              (implicit ec: ExecutionContext)
   extends DefaultConsumer(channel) with RabbitMQConsumer with StrictLogging {
 
@@ -42,6 +42,7 @@ class DefaultRabbitMQConsumer(name: String,
             logger.error("Error while executing callback, it's probably u BUG")
             nack(messageId, deliveryTag)
         }
+      ()
     } catch {
       case NonFatal(e) =>
         logger.error("Error while executing callback, it's probably u BUG")
@@ -50,7 +51,7 @@ class DefaultRabbitMQConsumer(name: String,
   }
 
 
-  override def bindTo(exchange: String, routingKey: String): Try[BindOk] = Try{
+  override def bindTo(exchange: String, routingKey: String): Try[BindOk] = Try {
     bindToAction(exchange, routingKey)
   }
 

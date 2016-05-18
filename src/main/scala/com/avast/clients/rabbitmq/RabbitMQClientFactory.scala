@@ -143,7 +143,7 @@ object RabbitMQClientFactory extends LazyLogging {
     import FutureTimeouter._
     import consumerConfig._
 
-    val consumer = new DefaultRabbitMQConsumer(name, channel, monitor)({ delivery =>
+    val consumer = new DefaultRabbitMQConsumer(name, channel, monitor, bindTo(channel, queueName))({ delivery =>
       try {
         readAction(delivery)
           .timeoutAfter(processTimeout)(ec, scheduledExecutor)
@@ -157,7 +157,7 @@ object RabbitMQClientFactory extends LazyLogging {
           logger.error("Error while executing callback, will be redelivered", e)
           Future.successful(false)
       }
-    })(bindTo(channel, queueName))
+    })
 
     channel.basicConsume(queueName, false, consumer)
 

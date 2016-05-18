@@ -33,12 +33,13 @@ class DefaultRabbitMQConsumerTest extends FunSuite with MockitoSugar with Eventu
     val consumer = new DefaultRabbitMQConsumer(
       "test",
       channel,
-      NoOpMonitor.INSTANCE
+      NoOpMonitor.INSTANCE,
+      (_, _) => ???
     )({ delivery =>
       assertResult(messageId)(delivery.properties.getMessageId)
 
       Future.successful(true)
-    })((_, _) => ???)
+    })
 
     consumer.handleDelivery("abcd", envelope, properties, Random.nextString(5).getBytes)
 
@@ -64,12 +65,13 @@ class DefaultRabbitMQConsumerTest extends FunSuite with MockitoSugar with Eventu
     val consumer = new DefaultRabbitMQConsumer(
       "test",
       channel,
-      NoOpMonitor.INSTANCE
+      NoOpMonitor.INSTANCE,
+      (_, _) => ???
     )({ delivery =>
       assertResult(messageId)(delivery.properties.getMessageId)
 
       Future.successful(false)
-    })((_, _) => ???)
+    })
 
     consumer.handleDelivery("abcd", envelope, properties, Random.nextString(5).getBytes)
 
@@ -95,12 +97,13 @@ class DefaultRabbitMQConsumerTest extends FunSuite with MockitoSugar with Eventu
     val consumer = new DefaultRabbitMQConsumer(
       "test",
       channel,
-      NoOpMonitor.INSTANCE
+      NoOpMonitor.INSTANCE,
+      (_, _) => ???
     )({ delivery =>
       assertResult(messageId)(delivery.properties.getMessageId)
 
       Future.failed(new RuntimeException)
-    })((_, _) => ???)
+    })
 
     consumer.handleDelivery("abcd", envelope, properties, Random.nextString(5).getBytes)
 
@@ -126,12 +129,13 @@ class DefaultRabbitMQConsumerTest extends FunSuite with MockitoSugar with Eventu
     val consumer = new DefaultRabbitMQConsumer(
       "test",
       channel,
-      NoOpMonitor.INSTANCE
+      NoOpMonitor.INSTANCE,
+      (_, _) => ???
     )({ delivery =>
       assertResult(messageId)(delivery.properties.getMessageId)
 
       throw new RuntimeException
-    })((_, _) => ???)
+    })
 
     consumer.handleDelivery("abcd", envelope, properties, Random.nextString(5).getBytes)
 
@@ -161,13 +165,14 @@ class DefaultRabbitMQConsumerTest extends FunSuite with MockitoSugar with Eventu
     val consumer = new DefaultRabbitMQConsumer(
       "test",
       channel,
-      NoOpMonitor.INSTANCE
+      NoOpMonitor.INSTANCE,
+      (exchange, routingKey) => {
+        channel.queueBind(queueName, exchange, routingKey)
+      }
     )({ delivery =>
       assertResult(messageId)(delivery.properties.getMessageId)
 
       throw new RuntimeException
-    })((exchange, routingKey) => {
-      channel.queueBind(queueName, exchange, routingKey)
     })
 
     consumer.bindTo(exchange,routingKey)
