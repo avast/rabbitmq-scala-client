@@ -23,14 +23,14 @@ class LiveTest extends FunSuite with Eventually {
 
     private val original = ConfigFactory.load().getConfig("myConfig")
 
-    val bindConfigs = original.as[Array[Config]]("consumer.binds")
+    val bindConfigs = original.as[Array[Config]]("consumer.bindings")
     bindConfigs(0) = bindConfigs(0).withValue("exchange.name", ConfigValueFactory.fromAnyRef(exchange1))
     bindConfigs(1) = bindConfigs(1).withValue("exchange.name", ConfigValueFactory.fromAnyRef(exchange2))
 
 
     val config = original
       .withValue("consumer.queueName", ConfigValueFactory.fromAnyRef(queueName))
-      .withValue("consumer.binds", ConfigValueFactory.fromIterable(bindConfigs.toSeq.map(_.root()).asJava))
+      .withValue("consumer.bindings", ConfigValueFactory.fromIterable(bindConfigs.toSeq.map(_.root()).asJava))
       .withValue("producer.exchange", ConfigValueFactory.fromAnyRef(exchange1))
       .withValue("producer2.exchange", ConfigValueFactory.fromAnyRef(exchange2))
   }

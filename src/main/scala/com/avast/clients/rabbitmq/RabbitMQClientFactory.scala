@@ -64,13 +64,13 @@ object RabbitMQClientFactory extends LazyLogging {
 
       // merge consumer binding defaults
       val updatedConfig = {
-        val updated = mergedConfig.as[Seq[Config]]("binds").map { bindConfig =>
+        val updated = mergedConfig.as[Seq[Config]]("bindings").map { bindConfig =>
           bindConfig.withFallback(ConsumerBindingDefaultConfig).root()
         }
 
         import scala.collection.JavaConverters._
 
-        mergedConfig.withValue("binds", ConfigValueFactory.fromIterable(updated.asJava))
+        mergedConfig.withValue("bindings", ConfigValueFactory.fromIterable(updated.asJava))
       }
 
       // we need to wrap it with one level, to be able to parse it with Ficus
@@ -111,7 +111,7 @@ object RabbitMQClientFactory extends LazyLogging {
                               scheduledExecutor: ScheduledExecutorService)(implicit ec: ExecutionContext): RabbitMQConsumer = {
 
     // auto declare exchanges
-    consumerConfig.binds.foreach { bind =>
+    consumerConfig.bindings.foreach { bind =>
       import bind.exchange._
       declareExchange(name, channel, declare)
     }
@@ -136,7 +136,7 @@ object RabbitMQClientFactory extends LazyLogging {
   private def bindQueues(channel: ServerChannel, consumerConfig: ConsumerConfig): Unit = {
     import consumerConfig.queueName
 
-    consumerConfig.binds.foreach { bind =>
+    consumerConfig.bindings.foreach { bind =>
       import bind._
       val exchangeName = bind.exchange.name
 
@@ -190,7 +190,7 @@ object RabbitMQClientFactory extends LazyLogging {
 }
 
 
-case class ConsumerConfig(queueName: String, processTimeout: Duration, declare: AutoDeclareQueue, binds: Seq[AutoBindQueue], name: String)
+case class ConsumerConfig(queueName: String, processTimeout: Duration, declare: AutoDeclareQueue, bindings: Seq[AutoBindQueue], name: String)
 
 case class AutoDeclareQueue(enabled: Boolean, durable: Boolean, exclusive: Boolean, autoDelete: Boolean)
 
