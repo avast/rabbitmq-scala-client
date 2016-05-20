@@ -5,7 +5,7 @@ from the underlying client.
 
 Currently only Scala API is available. Contact the author for discussion about Java API if you want it.
 
-Author: [Jenda Kolena](kolena@avast.com)
+Author: [Jenda Kolena](mailto:kolena@avast.com)
 
 ## Dependency
 `compile 'com.avast.clients:rabbitmq-client_?:2.0.1'`
