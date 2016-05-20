@@ -3,6 +3,8 @@ This client is lightweight wrapper over standard [RabbitMQ java client](https://
 It's API may be difficult to use for inexperienced RabbitMQ users. Goal of this library is to simplify basic use cases and shadow the programmer
 from the underlying client.
 
+Currently only Scala API is available. Contact the author for discussion about Java API if you want it.
+
 Author: [Jenda Kolena](kolena@avast.com)
 
 ## Dependency
