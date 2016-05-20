@@ -8,7 +8,8 @@ Currently only Scala API is available. Contact the author for discussion about J
 Author: [Jenda Kolena](kolena@avast.com)
 
 ## Dependency
-`compile 'com.avast.clients:rabbitmq-client_?:1.0.1'`
+`compile 'com.avast.clients:rabbitmq-client_?:2.0.1'`
+For most current version see the [Teamcity](https://teamcity.int.avast.com/viewType.html?buildTypeId=CloudSystems_RabbitMQClient_ReleasePublish).
 
 ## Usage
 ```scala
