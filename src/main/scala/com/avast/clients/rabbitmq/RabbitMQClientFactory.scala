@@ -65,8 +65,8 @@ object RabbitMQClientFactory extends LazyLogging {
       * @param channelFactory           See [[RabbitMQChannelFactory]].
       * @param monitor                  Monitor for metrics.
       * @param scheduledExecutorService [[ScheduledExecutorService]] used for timeouting tasks (after specified timeout).
-      * @param readAction               Action executed for each delivered message. The action has to return `Future[Boolean]`, where the `Boolean` means "should the delivery
-      *                                 be marked as done?". You should never return a failed future.
+      * @param readAction               Action executed for each delivered message. The action has to return `Future[Boolean]`, where the `Boolean` means
+      *                                 "should the delivery be marked as done?". You should never return a failed future.
       * @param ec                       [[ExecutionContext]] used for callbacks.
       */
     def fromConfig(providedConfig: Config,
