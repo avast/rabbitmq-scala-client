@@ -35,6 +35,11 @@ object RabbitMQChannelFactory {
     override def read(config: Config, path: String): Path = Paths.get(config.getString(path))
   }
 
+  /** Creates new instance of channel factory, using the passed configuration.
+    *
+    * @param providedConfig The configuration.
+    * @param executor       [[ExecutorService]] which should be used as shared for all channels from this factory. Optional parameter.
+    */
   def fromConfig(providedConfig: Config, executor: Option[ExecutorService] = None): RabbitMQChannelFactory = {
     // we need to wrap it with one level, to be able to parse it with Ficus
     val config = ConfigFactory.empty()

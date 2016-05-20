@@ -39,22 +39,38 @@ object RabbitMQClientFactory extends LazyLogging {
   }
 
   object Producer {
-    def fromConfig(providedConfig: Config, channelCreator: RabbitMQChannelFactory, monitor: Monitor): RabbitMQProducer = {
+    /** Creates new instance of producer, using the passed configuration.
+      *
+      * @param providedConfig The configuration.
+      * @param channelFactory See [[RabbitMQChannelFactory]].
+      * @param monitor        Monitor for metrics.
+      */
+    def fromConfig(providedConfig: Config, channelFactory: RabbitMQChannelFactory, monitor: Monitor): RabbitMQProducer = {
       // we need to wrap it with one level, to be able to parse it with Ficus
       val config = ConfigFactory.empty()
         .withValue("root", providedConfig.withFallback(ProducerDefaultConfig).root())
 
       val producerConfig = config.as[ProducerConfig]("root")
 
-      val channel = channelCreator.createChannel()
+      val channel = channelFactory.createChannel()
 
       prepareProducer(producerConfig, channel, monitor)
     }
   }
 
   object Consumer {
+    /** Creates new instance of consumer, using the passed configuration.
+      *
+      * @param providedConfig           The configuration.
+      * @param channelFactory           See [[RabbitMQChannelFactory]].
+      * @param monitor                  Monitor for metrics.
+      * @param scheduledExecutorService [[ScheduledExecutorService]] used for timeouting tasks (after specified timeout).
+      * @param readAction               Action executed for each delivered message. The action has to return `Future[Boolean]`, where the `Boolean` means "should the delivery
+      *                                 be marked as done?". You should never return a failed future.
+      * @param ec                       [[ExecutionContext]] used for callbacks.
+      */
     def fromConfig(providedConfig: Config,
-                   channelCreator: RabbitMQChannelFactory,
+                   channelFactory: RabbitMQChannelFactory,
                    monitor: Monitor,
                    scheduledExecutorService: ScheduledExecutorService = FutureTimeouter.Implicits.DefaultScheduledExecutor)
                   (readAction: Delivery => Future[Boolean])
@@ -79,7 +95,7 @@ object RabbitMQClientFactory extends LazyLogging {
 
       val consumerConfig = config.as[ConsumerConfig]("root")
 
-      val channel = channelCreator.createChannel()
+      val channel = channelFactory.createChannel()
 
       prepareConsumer(consumerConfig, readAction, channel, monitor, scheduledExecutorService)
     }
