@@ -1,18 +1,20 @@
-# RabbitMQ client #
+# RabbitMQ client
 This client is lightweight wrapper over standard [RabbitMQ java client](https://www.rabbitmq.com/java-client.html).
-It's API may be difficult to use for non-well-experienced RabbitMQ users. Goal of this library is to help programmers with basic usage of the client
-and basically shadow the programmer from the underlying client.
+It's API may be difficult to use for inexperienced RabbitMQ users. Goal of this library is to simplify basic use cases and shadow the programmer
+from the underlying client.
 
 Author: [Jenda Kolena](kolena@avast.com)
 
-## Dependency ##
+## Dependency
 `compile 'com.avast.clients:rabbitmq-client_?:1.0.1'`
 
-## Usage ##
+## Usage
 ```scala
   val config = ConfigFactory.load().getConfig("myConfig")
 
-  implicit val ex = ExecutionContext.fromExecutorService(Executors.newFixedThreadPool(20))
+  // you need both `ExecutionService` (optionally passed to `RabbitMQChannelFactory`) and `ExecutionContext` (implicitly passed to consumer), both are
+  // used for callbacks execution, so why not to use a `ExecutionContextExecutionService`?
+  implicit val ex: ExecutionContextExecutionService = ???
 
   val monitor = new JmxMetricsMonitor("TestDomain")
 
