@@ -209,7 +209,12 @@ object RabbitMQClientFactory extends LazyLogging {
 }
 
 
-case class ConsumerConfig(queueName: String, processTimeout: Duration, prefetchCount: Int, declare: AutoDeclareQueue, bindings: Seq[AutoBindQueue], name: String)
+case class ConsumerConfig(queueName: String,
+                          processTimeout: Duration,
+                          prefetchCount: Int,
+                          declare: AutoDeclareQueue,
+                          bindings: Seq[AutoBindQueue],
+                          name: String)
 
 case class AutoDeclareQueue(enabled: Boolean, durable: Boolean, exclusive: Boolean, autoDelete: Boolean)
 

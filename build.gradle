@@ -4,9 +4,9 @@ buildscript {
     }
 
     dependencies {
-        classpath 'com.avast.gradle:gradle-publish:0.8.7'
-        classpath 'com.avast.gradle:gradle-release:0.8.7'
-        classpath 'com.avast.gradle:gradle-scala:0.8.7'
+        classpath 'com.avast.gradle:gradle-publish:0.8.8'
+        classpath 'com.avast.gradle:gradle-release:0.8.8'
+        classpath 'com.avast.gradle:gradle-scala:0.8.8'
         classpath 'com.avast.gradle:docker-compose-gradle-plugin:0.2.99'
         classpath 'com.github.maiflai:gradle-scalatest:0.11'
     }
