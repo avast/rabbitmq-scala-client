@@ -46,11 +46,7 @@ object RabbitMQClientFactory extends LazyLogging {
       * @param monitor        Monitor for metrics.
       */
     def fromConfig(providedConfig: Config, channelFactory: RabbitMQChannelFactory, monitor: Monitor): RabbitMQProducer = {
-      // we need to wrap it with one level, to be able to parse it with Ficus
-      val config = ConfigFactory.empty()
-        .withValue("root", providedConfig.withFallback(ProducerDefaultConfig).root())
-
-      val producerConfig = config.as[ProducerConfig]("root")
+      val producerConfig = providedConfig.wrapped.as[ProducerConfig]("root")
 
       val channel = channelFactory.createChannel()
 
@@ -89,11 +85,7 @@ object RabbitMQClientFactory extends LazyLogging {
         mergedConfig.withValue("bindings", ConfigValueFactory.fromIterable(updated.asJava))
       }
 
-      // we need to wrap it with one level, to be able to parse it with Ficus
-      val config = ConfigFactory.empty()
-        .withValue("root", updatedConfig.root())
-
-      val consumerConfig = config.as[ConsumerConfig]("root")
+      val consumerConfig = updatedConfig.wrapped.as[ConsumerConfig]("root")
 
       val channel = channelFactory.createChannel()
 
@@ -104,8 +96,13 @@ object RabbitMQClientFactory extends LazyLogging {
   private def prepareProducer(producerConfig: ProducerConfig, channel: ServerChannel, monitor: Monitor): DefaultRabbitMQProducer = {
     import producerConfig._
 
-    // auto declare
-    declareExchange(exchange, channel, declare)
+    // auto declare of exchange
+    // parse it only if it's needed
+    if (declare.getBoolean("enabled")) {
+      val d = declare.wrapped.as[AutoDeclareExchange]("root")
+
+      declareExchange(name, channel, d)
+    }
 
     new DefaultRabbitMQProducer(producerConfig.name, exchange, channel, monitor)
   }
@@ -129,7 +126,13 @@ object RabbitMQClientFactory extends LazyLogging {
     // auto declare exchanges
     consumerConfig.bindings.foreach { bind =>
       import bind.exchange._
-      declareExchange(name, channel, declare)
+
+      // parse it only if it's needed
+      if (declare.getBoolean("enabled")) {
+        val d = declare.wrapped.as[AutoDeclareExchange]("root")
+
+        declareExchange(name, channel, d)
+      }
     }
 
     // auto declare queue
@@ -206,6 +209,14 @@ object RabbitMQClientFactory extends LazyLogging {
     consumer
   }
 
+  implicit class WrapConfig(val c: Config) extends AnyVal {
+    def wrapped: Config = {
+      // we need to wrap it with one level, to be able to parse it with Ficus
+      ConfigFactory.empty()
+        .withValue("root", c.withFallback(ProducerDefaultConfig).root())
+    }
+  }
+
 }
 
 
@@ -220,8 +231,8 @@ case class AutoDeclareQueue(enabled: Boolean, durable: Boolean, exclusive: Boole
 
 case class AutoBindQueue(exchange: BindExchange, routingKeys: Seq[String])
 
-case class BindExchange(name: String, declare: AutoDeclareExchange)
+case class BindExchange(name: String, declare: Config)
 
-case class ProducerConfig(exchange: String, declare: AutoDeclareExchange, name: String)
+case class ProducerConfig(exchange: String, declare: Config, name: String)
 
 case class AutoDeclareExchange(enabled: Boolean, `type`: String, durable: Boolean, autoDelete: Boolean)
