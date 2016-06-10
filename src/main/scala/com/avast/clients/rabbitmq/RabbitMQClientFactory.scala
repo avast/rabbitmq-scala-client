@@ -101,7 +101,7 @@ object RabbitMQClientFactory extends LazyLogging {
     if (declare.getBoolean("enabled")) {
       val d = declare.wrapped.as[AutoDeclareExchange]("root")
 
-      declareExchange(name, channel, d)
+      declareExchange(exchange, channel, d)
     }
 
     new DefaultRabbitMQProducer(producerConfig.name, exchange, channel, monitor)
