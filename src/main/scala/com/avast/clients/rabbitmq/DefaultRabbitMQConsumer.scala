@@ -22,6 +22,7 @@ class DefaultRabbitMQConsumer(name: String,
   extends DefaultConsumer(channel) with RabbitMQConsumer with StrictLogging {
 
   private val readMeter = monitor.newMeter("read")
+  private val processingFailedMeter = monitor.newMeter("processingFailed")
 
   override def handleDelivery(consumerTag: String, envelope: Envelope, properties: BasicProperties, body: Array[Byte]): Unit = {
     val messageId = properties.getMessageId
@@ -39,12 +40,14 @@ class DefaultRabbitMQConsumer(name: String,
           case Success(true) => ack(messageId, deliveryTag)
           case Success(false) => nack(messageId, deliveryTag)
           case Failure(NonFatal(e)) =>
+            processingFailedMeter.mark()
             logger.error("Error while executing callback, it's probably u BUG")
             nack(messageId, deliveryTag)
         }
       ()
     } catch {
       case NonFatal(e) =>
+        processingFailedMeter.mark()
         logger.error("Error while executing callback, it's probably u BUG")
         nack(messageId, deliveryTag)
     }

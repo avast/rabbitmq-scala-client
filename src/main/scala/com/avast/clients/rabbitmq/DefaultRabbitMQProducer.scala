@@ -14,11 +14,17 @@ class DefaultRabbitMQProducer(name: String,
                               exchangeName: String,
                               channel: ServerChannel, monitor: Monitor) extends RabbitMQProducer with StrictLogging {
 
+  private val sentMeter = monitor.newMeter("sent")
+  private val sentFailedMeter = monitor.newMeter("sentFailed")
+
   override def send(routingKey: String, body: Array[Byte], properties: AMQP.BasicProperties): Unit = {
     try {
       channel.basicPublish(exchangeName, routingKey, properties, body)
+      sentMeter.mark()
     } catch {
-      case NonFatal(e) => logger.error("Error while sending message", e)
+      case NonFatal(e) =>
+        sentFailedMeter.mark()
+        logger.error("Error while sending message", e)
     }
   }
 
