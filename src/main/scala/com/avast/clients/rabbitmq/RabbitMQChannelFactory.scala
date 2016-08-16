@@ -47,6 +47,10 @@ object RabbitMQChannelFactory {
 
     val connectionConfig = config.as[RabbitMQConnectionConfig]("root")
 
+    create(connectionConfig, executor)
+  }
+
+  def create(connectionConfig: RabbitMQConnectionConfig, executor: Option[ExecutorService] = None): RabbitMQChannelFactory = {
     val connection = createConnection(connectionConfig, executor)
 
     new RabbitMQChannelFactory {
