@@ -15,9 +15,9 @@ For most current version see the [Teamcity](https://teamcity.int.avast.com/viewT
 ```scala
   val config = ConfigFactory.load().getConfig("myConfig")
 
-  // you need both `ExecutionService` (optionally passed to `RabbitMQChannelFactory`) and `ExecutionContext` (implicitly passed to consumer), both are
+  // you need both `ExecutorService` (optionally passed to `RabbitMQChannelFactory`) and `ExecutionContext` (implicitly passed to consumer), both are
   // used for callbacks execution, so why not to use a `ExecutionContextExecutionService`?
-  implicit val ex: ExecutionContextExecutionService = ???
+  implicit val ex: ExecutionContextExecutorService = ???
 
   val monitor = new JmxMetricsMonitor("TestDomain")
 
@@ -56,8 +56,9 @@ myConfig {
 
   // CONSUMERS AND PRODUCERS:
 
+  // this is the name you use while creating; it's recommended to use something more expressive, like "licensesConsumer"
   consumer {
-    name = "Testing"
+    name = "Testing" // this is used for metrics, logging etc.
 
     queueName = "test"
 
@@ -91,8 +92,9 @@ myConfig {
     ]
   }
 
+  // this is the name you use while creating; it's recommended to use something more expressive, like "licensesProducer"
   producer {
-    name = "Testing"
+    name = "Testing" // this is used for metrics, logging etc.
 
     exchange = "myclient"
 
