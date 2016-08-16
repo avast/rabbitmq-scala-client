@@ -39,7 +39,7 @@ object RabbitMQClientFactory extends LazyLogging {
   }
 
   object Producer {
-    /** Creates new instance of producer, using the passed configuration.
+    /** Creates new instance of producer, using the passed TypeSafe configuration.
       *
       * @param providedConfig The configuration.
       * @param channelFactory See [[RabbitMQChannelFactory]].
@@ -48,6 +48,16 @@ object RabbitMQClientFactory extends LazyLogging {
     def fromConfig(providedConfig: Config, channelFactory: RabbitMQChannelFactory, monitor: Monitor): RabbitMQProducer = {
       val producerConfig = providedConfig.wrapped.as[ProducerConfig]("root")
 
+      create(producerConfig, channelFactory, monitor)
+    }
+
+    /** Creates new instance of producer, using the passed configuration.
+      *
+      * @param producerConfig The configuration.
+      * @param channelFactory See [[RabbitMQChannelFactory]].
+      * @param monitor        Monitor for metrics.
+      */
+    def create(producerConfig: ProducerConfig, channelFactory: RabbitMQChannelFactory, monitor: Monitor): DefaultRabbitMQProducer = {
       val channel = channelFactory.createChannel()
 
       prepareProducer(producerConfig, channel, monitor)
@@ -55,7 +65,7 @@ object RabbitMQClientFactory extends LazyLogging {
   }
 
   object Consumer {
-    /** Creates new instance of consumer, using the passed configuration.
+    /** Creates new instance of consumer, using the passed TypeSafe configuration.
       *
       * @param providedConfig           The configuration.
       * @param channelFactory           See [[RabbitMQChannelFactory]].
@@ -87,6 +97,22 @@ object RabbitMQClientFactory extends LazyLogging {
 
       val consumerConfig = updatedConfig.wrapped.as[ConsumerConfig]("root")
 
+      create(consumerConfig, channelFactory, monitor, scheduledExecutorService)(readAction)
+    }
+
+    /** Creates new instance of consumer, using the passed configuration.
+      *
+      * @param consumerConfig           The configuration.
+      * @param channelFactory           See [[RabbitMQChannelFactory]].
+      * @param monitor                  Monitor for metrics.
+      * @param scheduledExecutorService [[ScheduledExecutorService]] used for timeouting tasks (after specified timeout).
+      * @param readAction               Action executed for each delivered message. The action has to return `Future[Boolean]`, where the `Boolean` means
+      *                                 "should the delivery be marked as done?". You should never return a failed future.
+      * @param ec                       [[ExecutionContext]] used for callbacks.
+      */
+    def create(consumerConfig: ConsumerConfig, channelFactory: RabbitMQChannelFactory, monitor: Monitor, scheduledExecutorService: ScheduledExecutorService)
+              (readAction: (Delivery) => Future[Boolean])
+              (implicit ec: ExecutionContext): RabbitMQConsumer = {
       val channel = channelFactory.createChannel()
 
       prepareConsumer(consumerConfig, readAction, channel, monitor, scheduledExecutorService)
