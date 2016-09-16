@@ -31,12 +31,14 @@ class LiveTest extends FunSuite with Eventually {
     val config = original
       .withValue("consumer.queueName", ConfigValueFactory.fromAnyRef(queueName))
       .withValue("consumer.bindings", ConfigValueFactory.fromIterable(bindConfigs.toSeq.map(_.root()).asJava))
+      .withValue("consumer.processTimeout", ConfigValueFactory.fromAnyRef("500ms"))
       .withValue("producer.exchange", ConfigValueFactory.fromAnyRef(exchange1))
       .withValue("producer2.exchange", ConfigValueFactory.fromAnyRef(exchange2))
-  }
 
-  def randomString(length: Int): String = {
-    Random.alphanumeric.take(length).mkString("")
+    def randomString(length: Int): String = {
+      Random.alphanumeric.take(length).mkString("")
+    }
+
   }
 
   val testHelper = new TestHelper(System.getProperty("rabbit.host"), System.getProperty("rabbit.tcp.15672").toInt)
@@ -129,5 +131,65 @@ class LiveTest extends FunSuite with Eventually {
     assertResult(true)(latch.await(500, TimeUnit.MILLISECONDS))
 
     assertResult(0)(testHelper.getMessagesCount(queueName))
+  }
+
+  test("timeouts and requeues messages") {
+    val c = createConfig()
+    import c._
+
+    implicit val ex = ExecutionContext.fromExecutorService(Executors.newCachedThreadPool())
+
+    val channelFactory = RabbitMQChannelFactory.fromConfig(config, Some(ex))
+
+    val cnt = new AtomicInteger(0)
+
+    RabbitMQClientFactory.Consumer.fromConfig(config.getConfig("consumer"), channelFactory, NoOpMonitor.INSTANCE) { delivery =>
+      cnt.incrementAndGet()
+
+      Future {
+        Thread.sleep(800) // timeout is set to 500 ms
+        true
+      }
+    }
+
+    val sender = RabbitMQClientFactory.Producer.fromConfig(config.getConfig("producer"), channelFactory, NoOpMonitor.INSTANCE)
+
+    for (_ <- 1 to 10) {
+      sender.send("test", Random.nextString(10).getBytes())
+    }
+
+    eventually(timeout(Span(2, Seconds)), interval(Span(0.25, Seconds))) {
+      assert(cnt.get() >= 40)
+      assert(testHelper.getMessagesCount(queueName) <= 20)
+    }
+  }
+
+  test("timeouts and requeues messages, blocking the thread") {
+    val c = createConfig()
+    import c._
+
+    implicit val ex = ExecutionContext.fromExecutorService(Executors.newCachedThreadPool())
+
+    val channelFactory = RabbitMQChannelFactory.fromConfig(config, Some(ex))
+
+    val cnt = new AtomicInteger(0)
+
+    RabbitMQClientFactory.Consumer.fromConfig(config.getConfig("consumer"), channelFactory, NoOpMonitor.INSTANCE) { delivery =>
+      cnt.incrementAndGet()
+
+      Thread.sleep(800) // timeout is set to 500 ms
+      Future.successful(true)
+    }
+
+    val sender = RabbitMQClientFactory.Producer.fromConfig(config.getConfig("producer"), channelFactory, NoOpMonitor.INSTANCE)
+
+    for (_ <- 1 to 10) {
+      sender.send("test", Random.nextString(10).getBytes())
+    }
+
+    eventually(timeout(Span(2, Seconds)), interval(Span(0.25, Seconds))) {
+      assert(cnt.get() >= 40)
+      assert(testHelper.getMessagesCount(queueName) <= 20)
+    }
   }
 }

@@ -3,12 +3,12 @@ package com.avast.clients.rabbitmq
 import com.avast.clients.rabbitmq.RabbitMQChannelFactory.ServerChannel
 import com.avast.clients.rabbitmq.api.RabbitMQConsumer
 import com.avast.metrics.api.Monitor
+import com.avast.utils2.JavaConversions._
 import com.rabbitmq.client.AMQP.BasicProperties
 import com.rabbitmq.client.AMQP.Queue.BindOk
 import com.rabbitmq.client.{AMQP, DefaultConsumer, Envelope}
 import com.typesafe.scalalogging.StrictLogging
 
-import scala.collection.JavaConverters._
 import scala.concurrent.{ExecutionContext, Future}
 import scala.util.control.NonFatal
 import scala.util.{Failure, Success, Try}
@@ -24,7 +24,7 @@ class DefaultRabbitMQConsumer(name: String,
   private val readMeter = monitor.newMeter("read")
   private val processingFailedMeter = monitor.newMeter("processingFailed")
 
-  override def handleDelivery(consumerTag: String, envelope: Envelope, properties: BasicProperties, body: Array[Byte]): Unit = {
+  override def handleDelivery(consumerTag: String, envelope: Envelope, properties: BasicProperties, body: Array[Byte]): Unit = ec.execute(() => {
     val messageId = properties.getMessageId
     val deliveryTag = envelope.getDeliveryTag
 
@@ -51,8 +51,7 @@ class DefaultRabbitMQConsumer(name: String,
         logger.error("Error while executing callback, it's probably u BUG")
         nack(messageId, deliveryTag)
     }
-  }
-
+  })
 
   override def bindTo(exchange: String, routingKey: String): Try[BindOk] = Try {
     bindToAction(exchange, routingKey)

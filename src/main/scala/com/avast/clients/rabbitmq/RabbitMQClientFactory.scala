@@ -10,6 +10,7 @@ import com.avast.clients.rabbitmq.api.{RabbitMQConsumer, RabbitMQProducer}
 import com.avast.metrics.api.Monitor
 import com.avast.utils2.errorhandling.FutureTimeouter
 import com.rabbitmq.client.AMQP
+import com.rabbitmq.client.AMQP.Queue
 import com.typesafe.config.{Config, ConfigFactory, ConfigValueFactory}
 import com.typesafe.scalalogging.LazyLogging
 import net.ceedubs.ficus.Ficus._
@@ -168,7 +169,7 @@ object RabbitMQClientFactory extends LazyLogging {
 
       if (enabled) {
         logger.info(s"Declaring queue '$queueName'")
-        channel.queueDeclare(queueName, durable, exclusive, autoDelete, new util.HashMap())
+        declareQueue(channel, queueName = queueName, durable = durable, exclusive = exclusive, autoDelete = autoDelete)
       }
     }
 
@@ -181,6 +182,10 @@ object RabbitMQClientFactory extends LazyLogging {
     prepareConsumer(consumerConfig, channel, readAction, monitor, scheduledExecutor)
   }
 
+  private[rabbitmq] def declareQueue(channel: ServerChannel, queueName: String, durable: Boolean, exclusive: Boolean, autoDelete: Boolean): Queue.DeclareOk = {
+    channel.queueDeclare(queueName, durable, exclusive, autoDelete, new util.HashMap())
+  }
+
   private def bindQueues(channel: ServerChannel, consumerConfig: ConsumerConfig): Unit = {
     import consumerConfig.queueName
 
@@ -190,17 +195,17 @@ object RabbitMQClientFactory extends LazyLogging {
 
       if (routingKeys.nonEmpty) {
         routingKeys.foreach { routingKey =>
-          bindTo(channel, queueName)(exchangeName, routingKey)
+          bindQueue(channel, queueName)(exchangeName, routingKey)
         }
       } else {
         // binding without routing key, possibly to fanout exchange
 
-        bindTo(channel, queueName)(exchangeName, "")
+        bindQueue(channel, queueName)(exchangeName, "")
       }
     }
   }
 
-  private def bindTo(channel: ServerChannel, queueName: String)(exchangeName: String, routingKey: String): AMQP.Queue.BindOk = {
+  private[rabbitmq] def bindQueue(channel: ServerChannel, queueName: String)(exchangeName: String, routingKey: String): AMQP.Queue.BindOk = {
     logger.info(s"Binding $exchangeName($routingKey) -> '$queueName'")
     channel.queueBind(queueName, exchangeName, routingKey)
   }
@@ -214,10 +219,14 @@ object RabbitMQClientFactory extends LazyLogging {
     import FutureTimeouter._
     import consumerConfig._
 
-    val consumer = new DefaultRabbitMQConsumer(name, channel, monitor, bindTo(channel, queueName))({ delivery =>
+    val consumer = new DefaultRabbitMQConsumer(name, channel, monitor, bindQueue(channel, queueName))({ delivery =>
       try {
-        readAction(delivery)
-          .timeoutAfter(processTimeout)(ec, scheduledExecutor)
+        // we try to catch also long-lasting synchronous work on the thread
+        val action = Future {
+          readAction(delivery)
+        }.flatMap(identity)
+
+        action.timeoutAfter(processTimeout)(ec, scheduledExecutor)
           .recover {
             case NonFatal(e) =>
               logger.warn("Error while executing callback, will be redelivered", e)
