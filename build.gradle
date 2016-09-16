@@ -47,8 +47,8 @@ tasks.withType(ScalaCompile) {
 }
 
 ext {
-    utilsVersion = "4.0.14"
-    metricsVersion = "1.9.42"
+    utilsVersion = "4.0.20"
+    metricsVersion = "1.9.48"
 }
 
 rootProject.dockerCompose.isRequiredBy(test)
