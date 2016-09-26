@@ -175,9 +175,9 @@ class DefaultRabbitMQConsumerTest extends FunSuite with MockitoSugar with Eventu
       throw new RuntimeException
     })
 
-    consumer.bindTo(exchange,routingKey)
+    consumer.bindTo(exchange, routingKey)
 
-    verify(channel, times(1)).queueBind(queueName,exchange,routingKey)
+    verify(channel, times(1)).queueBind(queueName, exchange, routingKey)
     ()
   }
 }

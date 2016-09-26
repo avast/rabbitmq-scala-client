@@ -3,6 +3,7 @@ package com.avast.clients.rabbitmq
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.{CountDownLatch, Executors, TimeUnit}
 
+import com.avast.bytes.Bytes
 import com.avast.metrics.test.NoOpMonitor
 import com.typesafe.config.{Config, ConfigFactory, ConfigValueFactory}
 import net.ceedubs.ficus.Ficus._
@@ -61,7 +62,7 @@ class LiveTest extends FunSuite with Eventually {
     val sender = RabbitMQClientFactory.Producer.fromConfig(config.getConfig("producer"), channelFactory, NoOpMonitor.INSTANCE)
 
 
-    sender.send("test", Random.nextString(10).getBytes())
+    sender.send("test", Bytes.copyFromUtf8(Random.nextString(10)))
 
     assertResult(true)(latch.await(500, TimeUnit.MILLISECONDS))
 
@@ -95,7 +96,7 @@ class LiveTest extends FunSuite with Eventually {
     val sender = RabbitMQClientFactory.Producer.fromConfig(config.getConfig("producer"), channelFactory, NoOpMonitor.INSTANCE)
 
     for (_ <- 1 to count) {
-      sender.send("test", Random.nextString(10).getBytes())
+      sender.send("test", Bytes.copyFromUtf8(Random.nextString(10)))
     }
 
     eventually(timeout(Span(1, Seconds)), interval(Span(0.1, Seconds))) {
@@ -124,8 +125,8 @@ class LiveTest extends FunSuite with Eventually {
     val sender2 = RabbitMQClientFactory.Producer.fromConfig(config.getConfig("producer2"), channelFactory, NoOpMonitor.INSTANCE)
 
     for (_ <- 1 to 10) {
-      sender1.send("test", Random.nextString(10).getBytes())
-      sender2.send("test2", Random.nextString(10).getBytes())
+      sender1.send("test", Bytes.copyFromUtf8(Random.nextString(10)))
+      sender2.send("test2", Bytes.copyFromUtf8(Random.nextString(10)))
     }
 
     assertResult(true)(latch.await(500, TimeUnit.MILLISECONDS))
@@ -155,7 +156,7 @@ class LiveTest extends FunSuite with Eventually {
     val sender = RabbitMQClientFactory.Producer.fromConfig(config.getConfig("producer"), channelFactory, NoOpMonitor.INSTANCE)
 
     for (_ <- 1 to 10) {
-      sender.send("test", Random.nextString(10).getBytes())
+      sender.send("test", Bytes.copyFromUtf8(Random.nextString(10)))
     }
 
     eventually(timeout(Span(2, Seconds)), interval(Span(0.25, Seconds))) {
@@ -184,7 +185,7 @@ class LiveTest extends FunSuite with Eventually {
     val sender = RabbitMQClientFactory.Producer.fromConfig(config.getConfig("producer"), channelFactory, NoOpMonitor.INSTANCE)
 
     for (_ <- 1 to 10) {
-      sender.send("test", Random.nextString(10).getBytes())
+      sender.send("test", Bytes.copyFromUtf8(Random.nextString(10)))
     }
 
     eventually(timeout(Span(2, Seconds)), interval(Span(0.25, Seconds))) {

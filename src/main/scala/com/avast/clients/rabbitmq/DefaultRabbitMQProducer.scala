@@ -2,6 +2,7 @@ package com.avast.clients.rabbitmq
 
 import java.util.UUID
 
+import com.avast.bytes.Bytes
 import com.avast.clients.rabbitmq.RabbitMQChannelFactory.ServerChannel
 import com.avast.clients.rabbitmq.api.RabbitMQProducer
 import com.avast.metrics.api.Monitor
@@ -17,9 +18,9 @@ class DefaultRabbitMQProducer(name: String,
   private val sentMeter = monitor.newMeter("sent")
   private val sentFailedMeter = monitor.newMeter("sentFailed")
 
-  override def send(routingKey: String, body: Array[Byte], properties: AMQP.BasicProperties): Unit = {
+  override def send(routingKey: String, body: Bytes, properties: AMQP.BasicProperties): Unit = {
     try {
-      channel.basicPublish(exchangeName, routingKey, properties, body)
+      channel.basicPublish(exchangeName, routingKey, properties, body.toByteArray)
       sentMeter.mark()
     } catch {
       case NonFatal(e) =>
@@ -28,7 +29,7 @@ class DefaultRabbitMQProducer(name: String,
     }
   }
 
-  override def send(routingKey: String, body: Array[Byte]): Unit = {
+  override def send(routingKey: String, body: Bytes): Unit = {
     val properties = new AMQP.BasicProperties.Builder()
       .messageId(UUID.randomUUID().toString)
       .build()
