@@ -1,5 +1,6 @@
 package com.avast.clients.rabbitmq
 
+import com.avast.bytes.Bytes
 import com.avast.clients.rabbitmq.RabbitMQChannelFactory.ServerChannel
 import com.avast.clients.rabbitmq.api.RabbitMQConsumer
 import com.avast.metrics.api.Monitor
@@ -33,7 +34,7 @@ class DefaultRabbitMQConsumer(name: String,
 
       logger.debug(s"[$name] Read delivery with ID $messageId, deliveryTag $deliveryTag")
 
-      val message = Delivery(body, properties, Option(envelope.getRoutingKey).getOrElse(""))
+      val message = Delivery(Bytes.copyFrom(body), properties, Option(envelope.getRoutingKey).getOrElse(""))
 
       readAction(message)
         .andThen {
@@ -80,4 +81,4 @@ class DefaultRabbitMQConsumer(name: String,
   }
 }
 
-case class Delivery(body: Array[Byte], properties: AMQP.BasicProperties, routingKey: String)
+case class Delivery(body: Bytes, properties: AMQP.BasicProperties, routingKey: String)

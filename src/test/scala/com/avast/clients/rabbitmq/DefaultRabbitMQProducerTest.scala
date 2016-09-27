@@ -1,5 +1,6 @@
 package com.avast.clients.rabbitmq
 
+import com.avast.bytes.Bytes
 import com.avast.metrics.test.NoOpMonitor
 import com.rabbitmq.client.AMQP
 import com.rabbitmq.client.impl.recovery.AutorecoveringChannel
@@ -27,10 +28,10 @@ class DefaultRabbitMQProducerTest extends FunSuite with MockitoSugar with Eventu
     val properties = new AMQP.BasicProperties.Builder()
       .build()
 
-    val body = Random.nextString(10).getBytes
+    val body = Bytes.copyFromUtf8(Random.nextString(10))
 
     producer.send(routingKey, body, properties)
 
-    verify(channel, times(1)).basicPublish(exchangeName, routingKey, properties, body)
+    verify(channel, times(1)).basicPublish(exchangeName, routingKey, properties, body.toByteArray)
   }
 }
