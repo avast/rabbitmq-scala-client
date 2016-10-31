@@ -19,6 +19,7 @@ import net.ceedubs.ficus.Ficus._
 import net.ceedubs.ficus.readers.ArbitraryTypeReader._
 import net.ceedubs.ficus.readers.ValueReader
 
+import scala.collection.JavaConverters._
 import scala.concurrent.{ExecutionContext, Future}
 import scala.util.control.NonFatal
 
@@ -133,7 +134,7 @@ object RabbitMQClientFactory extends LazyLogging {
       declareExchange(exchange, channel, d)
     }
 
-    new DefaultRabbitMQProducer(producerConfig.name, exchange, channel, monitor)
+    new DefaultRabbitMQProducer(producerConfig.name, exchange, channel, useKluzo, monitor)
   }
 
   private def declareExchange(name: String, channel: ServerChannel, autoDeclareExchange: AutoDeclareExchange): Unit = {
@@ -214,7 +215,7 @@ object RabbitMQClientFactory extends LazyLogging {
 
   private def prepareConsumer(consumerConfig: ConsumerConfig,
                               channel: ServerChannel,
-                              userReadAction: (Delivery) => Future[Boolean],
+                              userReadAction: Delivery => Future[Boolean],
                               monitor: Monitor,
                               scheduledExecutor: ScheduledExecutorService)
                              (ec: ExecutionContext): RabbitMQConsumer = {
@@ -248,10 +249,7 @@ object RabbitMQClientFactory extends LazyLogging {
     }
 
     val finalReadAction = if (useKluzo) {
-      { (delivery: Delivery) =>
-        Kluzo.setTraceId(TraceId.generate)
-        readAction(delivery)
-      }
+      addKluzoHandling(readAction) _
     } else {
       readAction
     }
@@ -263,6 +261,17 @@ object RabbitMQClientFactory extends LazyLogging {
     consumer
   }
 
+  private def addKluzoHandling(readAction: (Delivery) => Future[Boolean])(delivery: Delivery): Future[Boolean] = {
+    val traceId = delivery.properties.getHeaders.asScala.get(Kluzo.HttpHeaderName)
+      .map(_.toString)
+      .map(TraceId(_))
+      .getOrElse(TraceId.generate)
+
+    Kluzo.withTraceId(Option(traceId)) {
+      readAction(delivery)
+    }
+  }
+
   implicit class WrapConfig(val c: Config) extends AnyVal {
     def wrapped: Config = {
       // we need to wrap it with one level, to be able to parse it with Ficus
@@ -271,6 +280,19 @@ object RabbitMQClientFactory extends LazyLogging {
     }
   }
 
+}
+
+private[rabbitmq] object KluzoWrapper {
+  def withKluzo[A](action: TraceId => A): A = {
+    Kluzo.getTraceId match {
+      case Some(id) => action(id)
+      case None =>
+        val traceId = TraceId.generate
+        Kluzo.withTraceId(Option(traceId)) {
+          action(traceId)
+        }
+    }
+  }
 }
 
 
@@ -288,6 +310,6 @@ case class AutoBindQueue(exchange: BindExchange, routingKeys: Seq[String])
 
 case class BindExchange(name: String, declare: Config)
 
-case class ProducerConfig(exchange: String, declare: Config, name: String)
+case class ProducerConfig(exchange: String, declare: Config, useKluzo: Boolean, name: String)
 
 case class AutoDeclareExchange(enabled: Boolean, `type`: String, durable: Boolean, autoDelete: Boolean)

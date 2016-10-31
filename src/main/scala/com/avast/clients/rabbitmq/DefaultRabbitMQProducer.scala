@@ -5,22 +5,46 @@ import java.util.UUID
 import com.avast.bytes.Bytes
 import com.avast.clients.rabbitmq.RabbitMQChannelFactory.ServerChannel
 import com.avast.clients.rabbitmq.api.RabbitMQProducer
+import com.avast.kluzo.Kluzo
 import com.avast.metrics.api.Monitor
 import com.rabbitmq.client.AMQP
 import com.typesafe.scalalogging.StrictLogging
 
+import scala.collection.JavaConverters._
+import scala.collection.mutable
 import scala.util.control.NonFatal
 
 class DefaultRabbitMQProducer(name: String,
                               exchangeName: String,
-                              channel: ServerChannel, monitor: Monitor) extends RabbitMQProducer with StrictLogging {
+                              channel: ServerChannel,
+                              useKluzo: Boolean,
+                              monitor: Monitor) extends RabbitMQProducer with StrictLogging {
 
   private val sentMeter = monitor.newMeter("sent")
   private val sentFailedMeter = monitor.newMeter("sentFailed")
 
   override def send(routingKey: String, body: Bytes, properties: AMQP.BasicProperties): Unit = {
     try {
-      channel.basicPublish(exchangeName, routingKey, properties, body.toByteArray)
+      // Kluzo enabled and ID available?
+      val finalProperties = if (useKluzo && Kluzo.getTraceId.nonEmpty) {
+        val headers: mutable.Map[String, AnyRef] = properties.getHeaders.asScala
+
+        // set TraceId if not already set
+        headers.get(Kluzo.HttpHeaderName)
+          .orElse(Kluzo.getTraceId)
+          .map(_.toString)
+          .foreach { id =>
+            headers += Kluzo.HttpHeaderName -> id
+          }
+
+        properties.builder()
+          .headers(headers.asJava)
+          .build()
+      } else {
+        properties
+      }
+
+      channel.basicPublish(exchangeName, routingKey, finalProperties, body.toByteArray)
       sentMeter.mark()
     } catch {
       case NonFatal(e) =>
