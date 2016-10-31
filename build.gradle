@@ -47,9 +47,9 @@ tasks.withType(ScalaCompile) {
 }
 
 ext {
-    utilsVersion = "4.1.24"
-    metricsVersion = "1.9.48"
-    bytesVersion = "1.0.7"
+    utilsVersion = "4.2.25"
+    metricsVersion = "1.10.49"
+    bytesVersion = "1.0.8"
 }
 
 rootProject.dockerCompose.isRequiredBy(test)
@@ -64,7 +64,7 @@ test.doFirst {
 
 dependencies {
     compile "com.avast.metrics:metrics-api:${metricsVersion}"
-    compile 'com.typesafe.scala-logging:scala-logging_?:3.4.0'
+    compile 'com.typesafe.scala-logging:scala-logging_?:3.5.0'
 
     compile "com.avast.utils2:utils-common:${utilsVersion}"
     compile "com.avast.utils2:utils-scala_?:${utilsVersion}"
@@ -72,7 +72,10 @@ dependencies {
 
     compile 'com.rabbitmq:amqp-client:3.6.5'
     compile 'com.typesafe:config:1.3.0'
-    compile 'com.iheart:ficus_?:1.2.1'
+    compile 'com.iheart:ficus_?:1.3.0'
+
+    compile 'com.avast:kluzo-scala_?:1.2.12'
+    compile 'com.avast.continuity:continuity-core-scala_?:1.3.13'
 
     testCompile "com.avast.metrics:metrics-dropwizard:${metricsVersion}"
 
@@ -82,7 +85,7 @@ dependencies {
     testCompile 'io.circe:circe-parser_?:0.4.1'
 
     testCompile 'junit:junit:4.12'
-    testCompile 'org.scalatest:scalatest_2.11:2.2.6'
+    testCompile 'org.scalatest:scalatest_2.11:3.0.0'
     testCompile 'org.mockito:mockito-all:1.10.19'
     testCompile 'ch.qos.logback:logback-classic:1.1.7'
 
