@@ -9,7 +9,7 @@ import com.rabbitmq.client.impl.recovery.AutorecoveringChannel
 import org.mockito.Mockito._
 import org.scalatest.FunSuite
 import org.scalatest.concurrent.Eventually
-import org.scalatest.mock.MockitoSugar
+import org.scalatest.mockito.MockitoSugar
 import org.scalatest.time.{Seconds, Span}
 
 import scala.concurrent.ExecutionContext.Implicits.global
@@ -33,6 +33,7 @@ class DefaultRabbitMQConsumerTest extends FunSuite with MockitoSugar with Eventu
     val consumer = new DefaultRabbitMQConsumer(
       "test",
       channel,
+      true,
       NoOpMonitor.INSTANCE,
       (_, _) => ???
     )({ delivery =>
@@ -65,6 +66,7 @@ class DefaultRabbitMQConsumerTest extends FunSuite with MockitoSugar with Eventu
     val consumer = new DefaultRabbitMQConsumer(
       "test",
       channel,
+      true,
       NoOpMonitor.INSTANCE,
       (_, _) => ???
     )({ delivery =>
@@ -97,6 +99,7 @@ class DefaultRabbitMQConsumerTest extends FunSuite with MockitoSugar with Eventu
     val consumer = new DefaultRabbitMQConsumer(
       "test",
       channel,
+      true,
       NoOpMonitor.INSTANCE,
       (_, _) => ???
     )({ delivery =>
@@ -129,6 +132,7 @@ class DefaultRabbitMQConsumerTest extends FunSuite with MockitoSugar with Eventu
     val consumer = new DefaultRabbitMQConsumer(
       "test",
       channel,
+      true,
       NoOpMonitor.INSTANCE,
       (_, _) => ???
     )({ delivery =>
@@ -165,6 +169,7 @@ class DefaultRabbitMQConsumerTest extends FunSuite with MockitoSugar with Eventu
     val consumer = new DefaultRabbitMQConsumer(
       "test",
       channel,
+      true,
       NoOpMonitor.INSTANCE,
       (exchange, routingKey) => {
         channel.queueBind(queueName, exchange, routingKey)

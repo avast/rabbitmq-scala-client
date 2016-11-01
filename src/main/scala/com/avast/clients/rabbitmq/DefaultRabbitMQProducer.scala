@@ -27,11 +27,11 @@ class DefaultRabbitMQProducer(name: String,
     try {
       // Kluzo enabled and ID available?
       val finalProperties = if (useKluzo && Kluzo.getTraceId.nonEmpty) {
-        val headers: mutable.Map[String, AnyRef] = properties.getHeaders.asScala
+        val headers: mutable.Map[String, AnyRef] = Option(properties.getHeaders).map(_.asScala).getOrElse(mutable.Map[String, AnyRef]())
 
         // set TraceId if not already set
         headers.get(Kluzo.HttpHeaderName)
-          .orElse(Kluzo.getTraceId)
+          .orElse(Kluzo.getTraceId.map(_.value))
           .map(_.toString)
           .foreach { id =>
             headers += Kluzo.HttpHeaderName -> id

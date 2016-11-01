@@ -8,7 +8,7 @@ import java.util.concurrent.ScheduledExecutorService
 import com.avast.clients.rabbitmq.RabbitMQChannelFactory.ServerChannel
 import com.avast.clients.rabbitmq.api.{RabbitMQConsumer, RabbitMQProducer}
 import com.avast.continuity.Continuity
-import com.avast.kluzo.{Kluzo, TraceId}
+import com.avast.kluzo.Kluzo
 import com.avast.metrics.api.Monitor
 import com.avast.utils2.errorhandling.FutureTimeouter
 import com.rabbitmq.client.AMQP
@@ -19,7 +19,6 @@ import net.ceedubs.ficus.Ficus._
 import net.ceedubs.ficus.readers.ArbitraryTypeReader._
 import net.ceedubs.ficus.readers.ValueReader
 
-import scala.collection.JavaConverters._
 import scala.concurrent.{ExecutionContext, Future}
 import scala.util.control.NonFatal
 
@@ -235,12 +234,16 @@ object RabbitMQClientFactory extends LazyLogging {
           userReadAction(delivery)
         }.flatMap(identity)
 
-        action.timeoutAfter(processTimeout)(ec, scheduledExecutor)
+        val traceId = Kluzo.getTraceId
+
+        action.timeoutAfter(processTimeout)(finalExecutor, scheduledExecutor)
           .recover {
             case NonFatal(e) =>
+              traceId.foreach(Kluzo.setTraceId)
+
               logger.warn("Error while executing callback, will be redelivered", e)
               false
-          }
+          }(finalExecutor)
       } catch {
         case NonFatal(e) =>
           logger.error("Error while executing callback, will be redelivered", e)
@@ -248,28 +251,11 @@ object RabbitMQClientFactory extends LazyLogging {
       }
     }
 
-    val finalReadAction = if (useKluzo) {
-      addKluzoHandling(readAction) _
-    } else {
-      readAction
-    }
-
-    val consumer = new DefaultRabbitMQConsumer(name, channel, monitor, bindQueue(channel, queueName))(finalReadAction)(finalExecutor)
+    val consumer = new DefaultRabbitMQConsumer(name, channel, useKluzo, monitor, bindQueue(channel, queueName))(readAction)(finalExecutor)
 
     channel.basicConsume(queueName, false, consumer)
 
     consumer
-  }
-
-  private def addKluzoHandling(readAction: (Delivery) => Future[Boolean])(delivery: Delivery): Future[Boolean] = {
-    val traceId = delivery.properties.getHeaders.asScala.get(Kluzo.HttpHeaderName)
-      .map(_.toString)
-      .map(TraceId(_))
-      .getOrElse(TraceId.generate)
-
-    Kluzo.withTraceId(Option(traceId)) {
-      readAction(delivery)
-    }
   }
 
   implicit class WrapConfig(val c: Config) extends AnyVal {
@@ -281,20 +267,6 @@ object RabbitMQClientFactory extends LazyLogging {
   }
 
 }
-
-private[rabbitmq] object KluzoWrapper {
-  def withKluzo[A](action: TraceId => A): A = {
-    Kluzo.getTraceId match {
-      case Some(id) => action(id)
-      case None =>
-        val traceId = TraceId.generate
-        Kluzo.withTraceId(Option(traceId)) {
-          action(traceId)
-        }
-    }
-  }
-}
-
 
 case class ConsumerConfig(queueName: String,
                           processTimeout: Duration,
