@@ -11,7 +11,6 @@ import com.rabbitmq.client.AMQP.Queue.BindOk
 import com.rabbitmq.client.{AMQP, DefaultConsumer, Envelope}
 import com.typesafe.scalalogging.StrictLogging
 
-import scala.collection.JavaConverters._
 import scala.concurrent.{ExecutionContext, Future}
 import scala.util.control.NonFatal
 import scala.util.{Failure, Success, Try}
@@ -29,8 +28,8 @@ class DefaultRabbitMQConsumer(name: String,
   private val processingFailedMeter = monitor.newMeter("processingFailed")
 
   override def handleDelivery(consumerTag: String, envelope: Envelope, properties: BasicProperties, body: Array[Byte]): Unit = {
-    val traceId = if (useKluzo) {
-      val traceId = Option(properties.getHeaders).map(_.asScala).flatMap(_.get(Kluzo.HttpHeaderName))
+    val traceId = if (useKluzo && properties.getHeaders != null) {
+      val traceId = Option(properties.getHeaders.get(Kluzo.HttpHeaderName))
         .map(_.toString)
         .map(TraceId(_))
         .getOrElse(TraceId.generate)

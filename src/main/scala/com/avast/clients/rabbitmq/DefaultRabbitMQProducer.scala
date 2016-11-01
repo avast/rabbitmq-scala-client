@@ -1,5 +1,6 @@
 package com.avast.clients.rabbitmq
 
+import java.util
 import java.util.UUID
 
 import com.avast.bytes.Bytes
@@ -10,8 +11,6 @@ import com.avast.metrics.api.Monitor
 import com.rabbitmq.client.AMQP
 import com.typesafe.scalalogging.StrictLogging
 
-import scala.collection.JavaConverters._
-import scala.collection.mutable
 import scala.util.control.NonFatal
 
 class DefaultRabbitMQProducer(name: String,
@@ -27,18 +26,18 @@ class DefaultRabbitMQProducer(name: String,
     try {
       // Kluzo enabled and ID available?
       val finalProperties = if (useKluzo && Kluzo.getTraceId.nonEmpty) {
-        val headers: mutable.Map[String, AnyRef] = Option(properties.getHeaders).map(_.asScala).getOrElse(mutable.Map[String, AnyRef]())
+        val headers: java.util.Map[String, AnyRef] = Option(properties.getHeaders).getOrElse(new util.HashMap())
 
         // set TraceId if not already set
-        headers.get(Kluzo.HttpHeaderName)
+        Option(headers.get(Kluzo.HttpHeaderName))
           .orElse(Kluzo.getTraceId.map(_.value))
           .map(_.toString)
           .foreach { id =>
-            headers += Kluzo.HttpHeaderName -> id
+            headers.put(Kluzo.HttpHeaderName, id)
           }
 
         properties.builder()
-          .headers(headers.asJava)
+          .headers(headers)
           .build()
       } else {
         properties
