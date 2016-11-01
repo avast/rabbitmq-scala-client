@@ -3,6 +3,7 @@ package com.avast.clients.rabbitmq
 import com.avast.bytes.Bytes
 import com.avast.clients.rabbitmq.RabbitMQChannelFactory.ServerChannel
 import com.avast.clients.rabbitmq.api.RabbitMQConsumer
+import com.avast.kluzo.{Kluzo, TraceId}
 import com.avast.metrics.api.Monitor
 import com.avast.utils2.JavaConversions._
 import com.rabbitmq.client.AMQP.BasicProperties
@@ -16,6 +17,7 @@ import scala.util.{Failure, Success, Try}
 
 class DefaultRabbitMQConsumer(name: String,
                               channel: ServerChannel,
+                              useKluzo: Boolean,
                               monitor: Monitor,
                               bindToAction: (String, String) => BindOk)
                              (readAction: Delivery => Future[Boolean])
@@ -25,34 +27,49 @@ class DefaultRabbitMQConsumer(name: String,
   private val readMeter = monitor.newMeter("read")
   private val processingFailedMeter = monitor.newMeter("processingFailed")
 
-  override def handleDelivery(consumerTag: String, envelope: Envelope, properties: BasicProperties, body: Array[Byte]): Unit = ec.execute(() => {
-    val messageId = properties.getMessageId
-    val deliveryTag = envelope.getDeliveryTag
+  override def handleDelivery(consumerTag: String, envelope: Envelope, properties: BasicProperties, body: Array[Byte]): Unit = {
+    val traceId = if (useKluzo && properties.getHeaders != null) {
+      val traceId = Option(properties.getHeaders.get(Kluzo.HttpHeaderName))
+        .map(_.toString)
+        .map(TraceId(_))
+        .getOrElse(TraceId.generate)
 
-    try {
-      readMeter.mark()
+      Some(traceId)
+    } else {
+      None
+    }
 
-      logger.debug(s"[$name] Read delivery with ID $messageId, deliveryTag $deliveryTag")
+    Kluzo.withTraceId(traceId) {
+      ec.execute(() => {
+        val messageId = properties.getMessageId
+        val deliveryTag = envelope.getDeliveryTag
 
-      val message = Delivery(Bytes.copyFrom(body), properties, Option(envelope.getRoutingKey).getOrElse(""))
+        try {
+          readMeter.mark()
 
-      readAction(message)
-        .andThen {
-          case Success(true) => ack(messageId, deliveryTag)
-          case Success(false) => nack(messageId, deliveryTag)
-          case Failure(NonFatal(e)) =>
+          logger.debug(s"[$name] Read delivery with ID $messageId, deliveryTag $deliveryTag")
+
+          val message = Delivery(Bytes.copyFrom(body), properties, Option(envelope.getRoutingKey).getOrElse(""))
+
+          readAction(message)
+            .andThen {
+              case Success(true) => ack(messageId, deliveryTag)
+              case Success(false) => nack(messageId, deliveryTag)
+              case Failure(NonFatal(e)) =>
+                processingFailedMeter.mark()
+                logger.error("Error while executing callback, it's probably u BUG")
+                nack(messageId, deliveryTag)
+            }
+          ()
+        } catch {
+          case NonFatal(e) =>
             processingFailedMeter.mark()
             logger.error("Error while executing callback, it's probably u BUG")
             nack(messageId, deliveryTag)
         }
-      ()
-    } catch {
-      case NonFatal(e) =>
-        processingFailedMeter.mark()
-        logger.error("Error while executing callback, it's probably u BUG")
-        nack(messageId, deliveryTag)
+      })
     }
-  })
+  }
 
   override def bindTo(exchange: String, routingKey: String): Try[BindOk] = Try {
     bindToAction(exchange, routingKey)

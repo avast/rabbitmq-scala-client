@@ -7,6 +7,8 @@ import java.util.concurrent.ScheduledExecutorService
 
 import com.avast.clients.rabbitmq.RabbitMQChannelFactory.ServerChannel
 import com.avast.clients.rabbitmq.api.{RabbitMQConsumer, RabbitMQProducer}
+import com.avast.continuity.Continuity
+import com.avast.kluzo.Kluzo
 import com.avast.metrics.api.Monitor
 import com.avast.utils2.errorhandling.FutureTimeouter
 import com.rabbitmq.client.AMQP
@@ -131,7 +133,7 @@ object RabbitMQClientFactory extends LazyLogging {
       declareExchange(exchange, channel, d)
     }
 
-    new DefaultRabbitMQProducer(producerConfig.name, exchange, channel, monitor)
+    new DefaultRabbitMQProducer(producerConfig.name, exchange, channel, useKluzo, monitor)
   }
 
   private def declareExchange(name: String, channel: ServerChannel, autoDeclareExchange: AutoDeclareExchange): Unit = {
@@ -179,7 +181,7 @@ object RabbitMQClientFactory extends LazyLogging {
     // auto bind
     bindQueues(channel, consumerConfig)
 
-    prepareConsumer(consumerConfig, channel, readAction, monitor, scheduledExecutor)
+    prepareConsumer(consumerConfig, channel, readAction, monitor, scheduledExecutor)(ec)
   }
 
   private[rabbitmq] def declareQueue(channel: ServerChannel, queueName: String, durable: Boolean, exclusive: Boolean, autoDelete: Boolean): Queue.DeclareOk = {
@@ -212,32 +214,44 @@ object RabbitMQClientFactory extends LazyLogging {
 
   private def prepareConsumer(consumerConfig: ConsumerConfig,
                               channel: ServerChannel,
-                              readAction: (Delivery) => Future[Boolean],
+                              userReadAction: Delivery => Future[Boolean],
                               monitor: Monitor,
                               scheduledExecutor: ScheduledExecutorService)
-                             (implicit ec: ExecutionContext): RabbitMQConsumer = {
+                             (ec: ExecutionContext): RabbitMQConsumer = {
     import FutureTimeouter._
     import consumerConfig._
 
-    val consumer = new DefaultRabbitMQConsumer(name, channel, monitor, bindQueue(channel, queueName))({ delivery =>
+    implicit val finalExecutor = if (useKluzo) {
+      Continuity.wrapExecutionContext(ec)
+    } else {
+      ec
+    }
+
+    val readAction = { (delivery: Delivery) =>
       try {
         // we try to catch also long-lasting synchronous work on the thread
         val action = Future {
-          readAction(delivery)
+          userReadAction(delivery)
         }.flatMap(identity)
 
-        action.timeoutAfter(processTimeout)(ec, scheduledExecutor)
+        val traceId = Kluzo.getTraceId
+
+        action.timeoutAfter(processTimeout)(finalExecutor, scheduledExecutor)
           .recover {
             case NonFatal(e) =>
+              traceId.foreach(Kluzo.setTraceId)
+
               logger.warn("Error while executing callback, will be redelivered", e)
               false
-          }
+          }(finalExecutor)
       } catch {
         case NonFatal(e) =>
           logger.error("Error while executing callback, will be redelivered", e)
           Future.successful(false)
       }
-    })
+    }
+
+    val consumer = new DefaultRabbitMQConsumer(name, channel, useKluzo, monitor, bindQueue(channel, queueName))(readAction)(finalExecutor)
 
     channel.basicConsume(queueName, false, consumer)
 
@@ -254,10 +268,10 @@ object RabbitMQClientFactory extends LazyLogging {
 
 }
 
-
 case class ConsumerConfig(queueName: String,
                           processTimeout: Duration,
                           prefetchCount: Int,
+                          useKluzo: Boolean,
                           declare: AutoDeclareQueue,
                           bindings: Seq[AutoBindQueue],
                           name: String)
@@ -268,6 +282,6 @@ case class AutoBindQueue(exchange: BindExchange, routingKeys: Seq[String])
 
 case class BindExchange(name: String, declare: Config)
 
-case class ProducerConfig(exchange: String, declare: Config, name: String)
+case class ProducerConfig(exchange: String, declare: Config, useKluzo: Boolean, name: String)
 
 case class AutoDeclareExchange(enabled: Boolean, `type`: String, durable: Boolean, autoDelete: Boolean)

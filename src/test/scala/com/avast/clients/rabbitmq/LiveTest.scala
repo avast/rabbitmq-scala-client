@@ -4,7 +4,10 @@ import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.{CountDownLatch, Executors, TimeUnit}
 
 import com.avast.bytes.Bytes
+import com.avast.continuity.Continuity
+import com.avast.kluzo.{Kluzo, TraceId}
 import com.avast.metrics.test.NoOpMonitor
+import com.rabbitmq.client.AMQP.BasicProperties
 import com.typesafe.config.{Config, ConfigFactory, ConfigValueFactory}
 import net.ceedubs.ficus.Ficus._
 import org.scalatest.FunSuite
@@ -40,6 +43,8 @@ class LiveTest extends FunSuite with Eventually {
       Random.alphanumeric.take(length).mkString("")
     }
 
+
+    implicit val ex = Continuity.wrapExecutionContextExecutorService(ExecutionContext.fromExecutorService(Executors.newCachedThreadPool()))
   }
 
   val testHelper = new TestHelper(System.getProperty("rabbit.host"), System.getProperty("rabbit.tcp.15672").toInt)
@@ -48,14 +53,13 @@ class LiveTest extends FunSuite with Eventually {
     val c = createConfig()
     import c._
 
-    implicit val ex = ExecutionContext.fromExecutorService(Executors.newCachedThreadPool())
-
     val latch = new CountDownLatch(1)
 
     val channelFactory = RabbitMQChannelFactory.fromConfig(config, Some(ex))
 
     RabbitMQClientFactory.Consumer.fromConfig(config.getConfig("consumer"), channelFactory, NoOpMonitor.INSTANCE) { delivery =>
       latch.countDown()
+      assertResult(true)(Kluzo.getTraceId.nonEmpty)
       Future.successful(true)
     }
 
@@ -72,8 +76,6 @@ class LiveTest extends FunSuite with Eventually {
   test("bunch") {
     val c = createConfig()
     import c._
-
-    implicit val ex = ExecutionContext.fromExecutorService(Executors.newCachedThreadPool())
 
     val cnt = Random.nextInt(100)
     val count = cnt + 100 // random 100 - 300 messages
@@ -99,7 +101,7 @@ class LiveTest extends FunSuite with Eventually {
       sender.send("test", Bytes.copyFromUtf8(Random.nextString(10)))
     }
 
-    eventually(timeout(Span(1, Seconds)), interval(Span(0.1, Seconds))) {
+    eventually(timeout(Span(2, Seconds)), interval(Span(0.1, Seconds))) {
       assertResult(true)(latch.await(1000, TimeUnit.MILLISECONDS))
       assertResult(0)(testHelper.getMessagesCount(queueName))
     }
@@ -108,8 +110,6 @@ class LiveTest extends FunSuite with Eventually {
   test("multiple producers to single consumer") {
     val c = createConfig()
     import c._
-
-    implicit val ex = ExecutionContext.fromExecutorService(Executors.newCachedThreadPool())
 
     val latch = new CountDownLatch(20)
 
@@ -138,16 +138,16 @@ class LiveTest extends FunSuite with Eventually {
     val c = createConfig()
     import c._
 
-    implicit val ex = ExecutionContext.fromExecutorService(Executors.newCachedThreadPool())
-
     val channelFactory = RabbitMQChannelFactory.fromConfig(config, Some(ex))
 
     val cnt = new AtomicInteger(0)
 
     RabbitMQClientFactory.Consumer.fromConfig(config.getConfig("consumer"), channelFactory, NoOpMonitor.INSTANCE) { delivery =>
       cnt.incrementAndGet()
+      assertResult(true)(Kluzo.getTraceId.nonEmpty)
 
       Future {
+        assertResult(true)(Kluzo.getTraceId.nonEmpty)
         Thread.sleep(800) // timeout is set to 500 ms
         true
       }
@@ -169,8 +169,6 @@ class LiveTest extends FunSuite with Eventually {
     val c = createConfig()
     import c._
 
-    implicit val ex = ExecutionContext.fromExecutorService(Executors.newCachedThreadPool())
-
     val channelFactory = RabbitMQChannelFactory.fromConfig(config, Some(ex))
 
     val cnt = new AtomicInteger(0)
@@ -191,6 +189,68 @@ class LiveTest extends FunSuite with Eventually {
     eventually(timeout(Span(2, Seconds)), interval(Span(0.25, Seconds))) {
       assert(cnt.get() >= 40)
       assert(testHelper.getMessagesCount(queueName) <= 20)
+    }
+  }
+
+  test("passes TraceId through the queue") {
+    val c = createConfig()
+    import c._
+
+    val channelFactory = RabbitMQChannelFactory.fromConfig(config, Some(ex))
+
+    val cnt = new AtomicInteger(0)
+
+    val traceId = TraceId.generate
+
+    RabbitMQClientFactory.Consumer.fromConfig(config.getConfig("consumer"), channelFactory, NoOpMonitor.INSTANCE) { delivery =>
+      cnt.incrementAndGet()
+      assertResult(Some(traceId))(Kluzo.getTraceId)
+      Future.successful(true)
+    }
+
+    val sender = RabbitMQClientFactory.Producer.fromConfig(config.getConfig("producer"), channelFactory, NoOpMonitor.INSTANCE)
+
+    for (_ <- 1 to 10) {
+      Kluzo.withTraceId(Some(traceId)) {
+        sender.send("test", Bytes.copyFromUtf8(Random.nextString(10)))
+      }
+    }
+
+    eventually(timeout(Span(2, Seconds)), interval(Span(0.25, Seconds))) {
+      assert(cnt.get() >= 10)
+      assert(testHelper.getMessagesCount(queueName) <= 0)
+    }
+  }
+
+  test("passes user-specified TraceId through the queue") {
+    val c = createConfig()
+    import c._
+
+    val channelFactory = RabbitMQChannelFactory.fromConfig(config, Some(ex))
+
+    val cnt = new AtomicInteger(0)
+
+    val traceId = "someTraceId"
+
+    RabbitMQClientFactory.Consumer.fromConfig(config.getConfig("consumer"), channelFactory, NoOpMonitor.INSTANCE) { delivery =>
+      cnt.incrementAndGet()
+      assertResult(Some(TraceId(traceId)))(Kluzo.getTraceId)
+      Future.successful(true)
+    }
+
+    val sender = RabbitMQClientFactory.Producer.fromConfig(config.getConfig("producer"), channelFactory, NoOpMonitor.INSTANCE)
+
+    for (_ <- 1 to 10) {
+      val properties = new BasicProperties.Builder()
+        .headers(Map(Kluzo.HttpHeaderName -> traceId.asInstanceOf[AnyRef]).asJava)
+        .build()
+
+      sender.send("test", Bytes.copyFromUtf8(Random.nextString(10)), properties)
+    }
+
+    eventually(timeout(Span(2, Seconds)), interval(Span(0.25, Seconds))) {
+      assert(cnt.get() >= 10)
+      assert(testHelper.getMessagesCount(queueName) <= 0)
     }
   }
 }

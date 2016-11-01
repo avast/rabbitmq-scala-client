@@ -7,7 +7,7 @@ import com.rabbitmq.client.impl.recovery.AutorecoveringChannel
 import org.mockito.Mockito._
 import org.scalatest.FunSuite
 import org.scalatest.concurrent.Eventually
-import org.scalatest.mock.MockitoSugar
+import org.scalatest.mockito.MockitoSugar
 
 import scala.util.Random
 
@@ -22,7 +22,8 @@ class DefaultRabbitMQProducerTest extends FunSuite with MockitoSugar with Eventu
       name = "test",
       exchangeName = exchangeName,
       channel = channel,
-      monitor = NoOpMonitor.INSTANCE
+      monitor = NoOpMonitor.INSTANCE,
+      useKluzo = true
     )
 
     val properties = new AMQP.BasicProperties.Builder()
