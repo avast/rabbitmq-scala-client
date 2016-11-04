@@ -27,7 +27,12 @@ class DefaultRabbitMQProducer(name: String,
       // Kluzo enabled and ID available?
       val finalProperties = if (useKluzo && Kluzo.getTraceId.nonEmpty) {
         // create mutable copy or brand new map
-        val headers: java.util.Map[String, AnyRef] = Option(properties.getHeaders).map(new util.HashMap(_)).getOrElse(new util.HashMap(2))
+        val headers: java.util.Map[String, AnyRef] = Option(properties.getHeaders)
+          .map { h =>
+            val m = new util.HashMap[String, AnyRef]()
+            m.putAll(h)
+            m
+          }.getOrElse(new util.HashMap(2))
 
         // set TraceId if not already set
         Option(headers.get(Kluzo.HttpHeaderName))
