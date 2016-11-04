@@ -1,7 +1,7 @@
 package com.avast.clients.rabbitmq
 
 import java.util
-import java.util.{Collections, UUID}
+import java.util.UUID
 
 import com.avast.bytes.Bytes
 import com.avast.clients.rabbitmq.RabbitMQChannelFactory.ServerChannel
@@ -26,7 +26,8 @@ class DefaultRabbitMQProducer(name: String,
     try {
       // Kluzo enabled and ID available?
       val finalProperties = if (useKluzo && Kluzo.getTraceId.nonEmpty) {
-        val headers: java.util.Map[String, AnyRef] = Option(properties.getHeaders).getOrElse(Collections.emptyMap())
+        // create mutable copy or brand new map
+        val headers: java.util.Map[String, AnyRef] = Option(properties.getHeaders).map(new util.HashMap(_)).getOrElse(new util.HashMap(2))
 
         // set TraceId if not already set
         Option(headers.get(Kluzo.HttpHeaderName))
