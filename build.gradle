@@ -56,10 +56,6 @@ ext {
 
 rootProject.dockerCompose.isRequiredBy(test)
 
-dockerCompose {
-    removeImages = false
-}
-
 test.doFirst {
     dockerCompose.exposeAsSystemProperties(test)
 }
