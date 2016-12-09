@@ -19,6 +19,7 @@ import net.ceedubs.ficus.Ficus._
 import net.ceedubs.ficus.readers.ArbitraryTypeReader._
 import net.ceedubs.ficus.readers.ValueReader
 
+import scala.collection.immutable
 import scala.concurrent.{ExecutionContext, Future}
 import scala.util.control.NonFatal
 
@@ -284,12 +285,12 @@ case class ConsumerConfig(queueName: String,
                           prefetchCount: Int,
                           useKluzo: Boolean,
                           declare: AutoDeclareQueue,
-                          bindings: Seq[AutoBindQueue],
+                          bindings: immutable.Seq[AutoBindQueue],
                           name: String)
 
 case class AutoDeclareQueue(enabled: Boolean, durable: Boolean, exclusive: Boolean, autoDelete: Boolean)
 
-case class AutoBindQueue(exchange: BindExchange, routingKeys: Seq[String])
+case class AutoBindQueue(exchange: BindExchange, routingKeys: immutable.Seq[String])
 
 case class BindExchange(name: String, declare: Config)
 

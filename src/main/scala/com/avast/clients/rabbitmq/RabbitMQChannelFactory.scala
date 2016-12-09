@@ -13,6 +13,7 @@ import net.ceedubs.ficus.Ficus._
 import net.ceedubs.ficus.readers.ArbitraryTypeReader._
 import net.ceedubs.ficus.readers.ValueReader
 
+import scala.collection.immutable
 import scala.util.control.NonFatal
 
 trait RabbitMQChannelFactory {
@@ -191,4 +192,4 @@ case class Ssl(enabled: Boolean, trustStore: TrustStore)
 
 case class TrustStore(path: Path, password: String)
 
-case class RabbitMqChannelFactoryInfo(hosts: Seq[String], virtualHost: String)
+case class RabbitMqChannelFactoryInfo(hosts: immutable.Seq[String], virtualHost: String)
