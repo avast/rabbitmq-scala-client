@@ -8,18 +8,21 @@ import com.avast.clients.rabbitmq.RabbitMQChannelFactory.ServerChannel
 import com.avast.utils2.ssl.{KeyStoreTypes, SSLBuilder}
 import com.rabbitmq.client.{Channel, Consumer, TopologyRecoveryException, _}
 import com.typesafe.config.{Config, ConfigFactory}
-import com.typesafe.scalalogging.LazyLogging
+import com.typesafe.scalalogging.{LazyLogging, StrictLogging}
 import net.ceedubs.ficus.Ficus._
 import net.ceedubs.ficus.readers.ArbitraryTypeReader._
 import net.ceedubs.ficus.readers.ValueReader
 
+import scala.collection.immutable
 import scala.util.control.NonFatal
 
 trait RabbitMQChannelFactory {
   def createChannel(): ServerChannel
+
+  def info: RabbitMqChannelFactoryInfo
 }
 
-object RabbitMQChannelFactory {
+object RabbitMQChannelFactory extends StrictLogging {
   type ServerConnection = Connection with Recoverable
   type ServerChannel = Channel with Recoverable
 
@@ -54,6 +57,12 @@ object RabbitMQChannelFactory {
     val connection = createConnection(connectionConfig, executor)
 
     new RabbitMQChannelFactory {
+
+      override val info: RabbitMqChannelFactoryInfo = RabbitMqChannelFactoryInfo(
+        hosts = connectionConfig.hosts.toVector,
+        virtualHost = connectionConfig.virtualHost
+      )
+
       override def createChannel(): ServerChannel = {
         connection.createChannel() match {
           case c: ServerChannel => c
@@ -69,6 +78,26 @@ object RabbitMQChannelFactory {
     import config._
 
     val factory = new ConnectionFactory
+    setUpConnection(config, factory, executor)
+
+    val addresses = try {
+      hosts.map(Address.parseAddress)
+    } catch {
+      case NonFatal(e) => throw new IllegalArgumentException("Invalid format of hosts", e)
+    }
+
+    logger.info(s"Connecting to ${hosts.mkString("[", ", ", "]")}, virtual host '$virtualHost'")
+
+    factory.newConnection(addresses) match {
+      case c: ServerConnection => c
+      // since we set `factory.setAutomaticRecoveryEnabled(true)` it should always be `Recoverable` (based on docs), so the exception will never be thrown
+      case _ => throw new IllegalStateException("Required Recoverable Connection")
+    }
+  }
+
+  private def setUpConnection(connectionConfig: RabbitMQConnectionConfig, factory: ConnectionFactory, executor: Option[ExecutorService]): Unit = {
+    import connectionConfig._
+
     factory.setVirtualHost(virtualHost)
 
     factory.setTopologyRecoveryEnabled(topologyRecovery)
@@ -102,18 +131,6 @@ object RabbitMQChannelFactory {
     }
 
     factory.setConnectionTimeout(connectionTimeout.toMillis.toInt)
-
-    val addresses = try {
-      hosts.map(Address.parseAddress)
-    } catch {
-      case NonFatal(e) => throw new IllegalArgumentException("Invalid format of hosts", e)
-    }
-
-    factory.newConnection(addresses) match {
-      case c: ServerConnection => c
-      // since we set `factory.setAutomaticRecoveryEnabled(true)` it should always be `Recoverable` (based on docs), so the exception will never be thrown
-      case _ => throw new IllegalStateException("Required Recoverable Connection")
-    }
   }
 
   private[rabbitmq] object UncaughtExceptionHandler extends ExceptionHandler with LazyLogging {
@@ -174,3 +191,5 @@ case class Credentials(enabled: Boolean, username: String, password: String)
 case class Ssl(enabled: Boolean, trustStore: TrustStore)
 
 case class TrustStore(path: Path, password: String)
+
+case class RabbitMqChannelFactoryInfo(hosts: immutable.Seq[String], virtualHost: String)
