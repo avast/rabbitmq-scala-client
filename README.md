@@ -72,7 +72,7 @@ myConfig {
     }
 
     // bindings from exchanges to the queue
-    binds = [
+    bindings = [
       {
         // all routing keys the queue should bind with
         // leave empty or use "" for binding to fanout exchange
