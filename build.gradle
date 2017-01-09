@@ -36,7 +36,7 @@ avast {
     }
 
     scala {
-        version = '2.12'
+        version = '2.11'
         crossVersions = ['2.11', '2.12']
         versionCatalog = ['2.11': '2.11.8', '2.12': '2.12.1']
     }
