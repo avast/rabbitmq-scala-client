@@ -38,7 +38,6 @@ avast {
     scala {
         version = '2.11'
         crossVersions = ['2.11', '2.12']
-        versionCatalog = ['2.11': '2.11.8', '2.12': '2.12.1']
     }
 }
 
@@ -49,7 +48,7 @@ tasks.withType(ScalaCompile) {
 }
 
 ext {
-    utilsVersion = "4.6.37"
+    utilsVersion = "5.0.39"
     metricsVersion = "1.11.51"
     bytesVersion = "1.0.9"
 }
@@ -70,10 +69,10 @@ dependencies {
 
     compile 'com.rabbitmq:amqp-client:4.0.1'
     compile 'com.typesafe:config:1.3.1'
-    compile 'com.iheart:ficus_?:1.3.3'
+    compile 'com.iheart:ficus_?:1.4.0'
 
-    compile 'com.avast:kluzo-scala_?:1.3.16'
-    compile 'com.avast.continuity:continuity-core-scala_?:1.4.18'
+    compile 'com.avast:kluzo-scala_?:2.0.17'
+    compile 'com.avast.continuity:continuity-core-scala_?:2.0.19'
 
     testCompile "com.avast.metrics:metrics-dropwizard:${metricsVersion}"
 
@@ -83,7 +82,7 @@ dependencies {
     testCompile 'io.circe:circe-parser_?:0.6.1'
 
     testCompile 'junit:junit:4.12'
-    testCompile 'org.scalatest:scalatest_2.11:3.0.0'
+    testCompile 'org.scalatest:scalatest_?:3.0.1'
     testCompile 'org.mockito:mockito-all:1.10.19'
     testCompile 'ch.qos.logback:logback-classic:1.1.8'
 
