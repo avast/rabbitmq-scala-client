@@ -60,7 +60,7 @@ class LiveTest extends FunSuite with Eventually {
     RabbitMQClientFactory.Consumer.fromConfig(config.getConfig("consumer"), channelFactory, NoOpMonitor.INSTANCE) { delivery =>
       latch.countDown()
       assertResult(true)(Kluzo.getTraceId.nonEmpty)
-      Future.successful(true)
+      Future.successful(Acknowledge)
     }
 
     val sender = RabbitMQClientFactory.Producer.fromConfig(config.getConfig("producer"), channelFactory, NoOpMonitor.INSTANCE)
@@ -91,7 +91,7 @@ class LiveTest extends FunSuite with Eventually {
         Thread.sleep(if (d.get() % 2 == 0) 300 else 0)
         latch.countDown()
 
-        d.incrementAndGet() > 5
+        if (d.incrementAndGet() > 5) Acknowledge else Retry
       }
     }
 
@@ -117,7 +117,7 @@ class LiveTest extends FunSuite with Eventually {
 
     RabbitMQClientFactory.Consumer.fromConfig(config.getConfig("consumer"), channelFactory, NoOpMonitor.INSTANCE) { delivery =>
       latch.countDown()
-      Future.successful(true)
+      Future.successful(Acknowledge)
     }
 
     val sender1 = RabbitMQClientFactory.Producer.fromConfig(config.getConfig("producer"), channelFactory, NoOpMonitor.INSTANCE)
@@ -149,7 +149,7 @@ class LiveTest extends FunSuite with Eventually {
       Future {
         assertResult(true)(Kluzo.getTraceId.nonEmpty)
         Thread.sleep(800) // timeout is set to 500 ms
-        true
+        Acknowledge
       }
     }
 
@@ -177,7 +177,7 @@ class LiveTest extends FunSuite with Eventually {
       cnt.incrementAndGet()
 
       Thread.sleep(800) // timeout is set to 500 ms
-      Future.successful(true)
+      Future.successful(Acknowledge)
     }
 
     val sender = RabbitMQClientFactory.Producer.fromConfig(config.getConfig("producer"), channelFactory, NoOpMonitor.INSTANCE)
@@ -205,7 +205,7 @@ class LiveTest extends FunSuite with Eventually {
     RabbitMQClientFactory.Consumer.fromConfig(config.getConfig("consumer"), channelFactory, NoOpMonitor.INSTANCE) { delivery =>
       cnt.incrementAndGet()
       assertResult(Some(traceId))(Kluzo.getTraceId)
-      Future.successful(true)
+      Future.successful(Acknowledge)
     }
 
     val sender = RabbitMQClientFactory.Producer.fromConfig(config.getConfig("producer"), channelFactory, NoOpMonitor.INSTANCE)
@@ -235,7 +235,7 @@ class LiveTest extends FunSuite with Eventually {
     RabbitMQClientFactory.Consumer.fromConfig(config.getConfig("consumer"), channelFactory, NoOpMonitor.INSTANCE) { delivery =>
       cnt.incrementAndGet()
       assertResult(Some(TraceId(traceId)))(Kluzo.getTraceId)
-      Future.successful(true)
+      Future.successful(Acknowledge)
     }
 
     val sender = RabbitMQClientFactory.Producer.fromConfig(config.getConfig("producer"), channelFactory, NoOpMonitor.INSTANCE)

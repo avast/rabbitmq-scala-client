@@ -20,7 +20,7 @@ class DefaultRabbitMQConsumer(name: String,
                               useKluzo: Boolean,
                               monitor: Monitor,
                               bindToAction: (String, String) => BindOk)
-                             (readAction: Delivery => Future[Boolean])
+                             (readAction: Delivery => Future[DeliveryResult])
                              (implicit ec: ExecutionContext)
   extends DefaultConsumer(channel) with RabbitMQConsumer with StrictLogging {
 
@@ -53,19 +53,20 @@ class DefaultRabbitMQConsumer(name: String,
 
           readAction(message)
             .andThen {
-              case Success(true) => ack(messageId, deliveryTag)
-              case Success(false) => nack(messageId, deliveryTag)
+              case Success(Acknowledge) => ack(messageId, deliveryTag)
+              case Success(Reject) => reject(messageId, deliveryTag)
+              case Success(Retry) => retry(messageId, deliveryTag)
               case Failure(NonFatal(e)) =>
                 processingFailedMeter.mark()
                 logger.error("Error while executing callback, it's probably u BUG")
-                nack(messageId, deliveryTag)
+                retry(messageId, deliveryTag)
             }
           ()
         } catch {
           case NonFatal(e) =>
             processingFailedMeter.mark()
             logger.error("Error while executing callback, it's probably u BUG")
-            nack(messageId, deliveryTag)
+            retry(messageId, deliveryTag)
         }
       })
     }
@@ -88,12 +89,21 @@ class DefaultRabbitMQConsumer(name: String,
     }
   }
 
-  private def nack(messageId: String, deliveryTag: Long): Unit = {
+  private def reject(messageId: String, deliveryTag: Long): Unit = {
     try {
-      logger.debug(s"[$name] NACK delivery $messageId, deliveryTag $deliveryTag")
-      channel.basicNack(deliveryTag, false, true)
+      logger.debug(s"[$name] REJECT delivery $messageId, deliveryTag $deliveryTag")
+      channel.basicReject(deliveryTag, false)
     } catch {
-      case NonFatal(e) => logger.warn(s"[$name] Error while confirming the delivery", e)
+      case NonFatal(e) => logger.warn(s"[$name] Error while rejecting the delivery", e)
+    }
+  }
+
+  private def retry(messageId: String, deliveryTag: Long): Unit = {
+    try {
+      logger.debug(s"[$name] REJECT (with requeue) delivery $messageId, deliveryTag $deliveryTag")
+      channel.basicReject(deliveryTag, true)
+    } catch {
+      case NonFatal(e) => logger.warn(s"[$name] Error while rejecting (with requeue) the delivery", e)
     }
   }
 }

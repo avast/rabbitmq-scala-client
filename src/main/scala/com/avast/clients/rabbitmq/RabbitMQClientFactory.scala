@@ -75,15 +75,14 @@ object RabbitMQClientFactory extends LazyLogging {
       * @param channelFactory           See [[RabbitMQChannelFactory]].
       * @param monitor                  Monitor for metrics.
       * @param scheduledExecutorService [[ScheduledExecutorService]] used for timeouting tasks (after specified timeout).
-      * @param readAction               Action executed for each delivered message. The action has to return `Future[Boolean]`, where the `Boolean` means
-      *                                 "should the delivery be marked as done?". You should never return a failed future.
+      * @param readAction               Action executed for each delivered message. You should never return a failed future.
       * @param ec                       [[ExecutionContext]] used for callbacks.
       */
     def fromConfig(providedConfig: Config,
                    channelFactory: RabbitMQChannelFactory,
                    monitor: Monitor,
                    scheduledExecutorService: ScheduledExecutorService = FutureTimeouter.Implicits.DefaultScheduledExecutor)
-                  (readAction: Delivery => Future[Boolean])
+                  (readAction: Delivery => Future[DeliveryResult])
                   (implicit ec: ExecutionContext): RabbitMQConsumer = {
 
       val mergedConfig = providedConfig.withFallback(ConsumerDefaultConfig)
@@ -110,12 +109,11 @@ object RabbitMQClientFactory extends LazyLogging {
       * @param channelFactory           See [[RabbitMQChannelFactory]].
       * @param monitor                  Monitor for metrics.
       * @param scheduledExecutorService [[ScheduledExecutorService]] used for timeouting tasks (after specified timeout).
-      * @param readAction               Action executed for each delivered message. The action has to return `Future[Boolean]`, where the `Boolean` means
-      *                                 "should the delivery be marked as done?". You should never return a failed future.
+      * @param readAction               Action executed for each delivered message. You should never return a failed future.
       * @param ec                       [[ExecutionContext]] used for callbacks.
       */
     def create(consumerConfig: ConsumerConfig, channelFactory: RabbitMQChannelFactory, monitor: Monitor, scheduledExecutorService: ScheduledExecutorService)
-              (readAction: (Delivery) => Future[Boolean])
+              (readAction: (Delivery) => Future[DeliveryResult])
               (implicit ec: ExecutionContext): RabbitMQConsumer = {
       val channel = channelFactory.createChannel()
 
@@ -154,7 +152,7 @@ object RabbitMQClientFactory extends LazyLogging {
   }
 
   private def prepareConsumer(consumerConfig: ConsumerConfig,
-                              readAction: (Delivery) => Future[Boolean],
+                              readAction: (Delivery) => Future[DeliveryResult],
                               channelFactoryInfo: RabbitMqChannelFactoryInfo,
                               channel: ServerChannel,
                               monitor: Monitor,
@@ -226,7 +224,7 @@ object RabbitMQClientFactory extends LazyLogging {
   private def prepareConsumer(consumerConfig: ConsumerConfig,
                               channelFactoryInfo: RabbitMqChannelFactoryInfo,
                               channel: ServerChannel,
-                              userReadAction: Delivery => Future[Boolean],
+                              userReadAction: Delivery => Future[DeliveryResult],
                               monitor: Monitor,
                               scheduledExecutor: ScheduledExecutorService)
                              (ec: ExecutionContext): RabbitMQConsumer = {
@@ -254,12 +252,12 @@ object RabbitMQClientFactory extends LazyLogging {
               traceId.foreach(Kluzo.setTraceId)
 
               logger.warn("Error while executing callback, will be redelivered", e)
-              false
+              Retry
           }(finalExecutor)
       } catch {
         case NonFatal(e) =>
           logger.error("Error while executing callback, will be redelivered", e)
-          Future.successful(false)
+          Future.successful(Retry)
       }
     }
 
