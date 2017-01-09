@@ -148,7 +148,7 @@ object RabbitMQClientFactory extends LazyLogging {
 
     if (enabled) {
       logger.info(s"Declaring exchange '$name' of type ${`type`} in virtual host '${channelFactoryInfo.virtualHost}'")
-      channel.exchangeDeclare(name, `type`, durable, autoDelete, new util.HashMap())
+      channel.exchangeDeclare(name, `type`, durable, autoDelete, null)
     }
     ()
   }
