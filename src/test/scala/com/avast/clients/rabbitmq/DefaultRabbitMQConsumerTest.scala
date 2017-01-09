@@ -79,7 +79,7 @@ class DefaultRabbitMQConsumerTest extends FunSuite with MockitoSugar with Eventu
 
     eventually(timeout(Span(1, Seconds)), interval(Span(0.1, Seconds))) {
       verify(channel, times(0)).basicAck(deliveryTag, false)
-      verify(channel, times(1)).basicNack(deliveryTag, false, true)
+      verify(channel, times(1)).basicReject(deliveryTag, true)
     }
   }
 
@@ -112,7 +112,7 @@ class DefaultRabbitMQConsumerTest extends FunSuite with MockitoSugar with Eventu
 
     eventually(timeout(Span(1, Seconds)), interval(Span(0.1, Seconds))) {
       verify(channel, times(0)).basicAck(deliveryTag, false)
-      verify(channel, times(1)).basicNack(deliveryTag, false, true)
+      verify(channel, times(1)).basicReject(deliveryTag, true)
     }
   }
 
@@ -145,7 +145,7 @@ class DefaultRabbitMQConsumerTest extends FunSuite with MockitoSugar with Eventu
 
     eventually(timeout(Span(1, Seconds)), interval(Span(0.1, Seconds))) {
       verify(channel, times(0)).basicAck(deliveryTag, false)
-      verify(channel, times(1)).basicNack(deliveryTag, false, true)
+      verify(channel, times(1)).basicReject(deliveryTag, true)
     }
   }
 
