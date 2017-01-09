@@ -9,4 +9,5 @@ tmp
 *.pem
 *.xlsx
 Test.java
-
+.gradle
+build/
