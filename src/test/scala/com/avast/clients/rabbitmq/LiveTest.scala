@@ -19,6 +19,9 @@ import scala.concurrent.{ExecutionContext, Future}
 import scala.util.Random
 
 class LiveTest extends FunSuite with Eventually {
+
+  import DeliveryResult._
+
   private def createConfig() = new {
 
     val queueName = randomString(10)
@@ -60,7 +63,7 @@ class LiveTest extends FunSuite with Eventually {
     RabbitMQClientFactory.Consumer.fromConfig(config.getConfig("consumer"), channelFactory, NoOpMonitor.INSTANCE) { delivery =>
       latch.countDown()
       assertResult(true)(Kluzo.getTraceId.nonEmpty)
-      Future.successful(Ack)
+      Future.successful(DeliveryResult.Ack)
     }
 
     val sender = RabbitMQClientFactory.Producer.fromConfig(config.getConfig("producer"), channelFactory, NoOpMonitor.INSTANCE)

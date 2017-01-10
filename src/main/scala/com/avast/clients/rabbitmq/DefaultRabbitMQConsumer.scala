@@ -51,6 +51,8 @@ class DefaultRabbitMQConsumer(name: String,
 
           val message = Delivery(Bytes.copyFrom(body), properties, Option(envelope.getRoutingKey).getOrElse(""))
 
+          import DeliveryResult._
+
           readAction(message)
             .andThen {
               case Success(Ack) => ack(messageId, deliveryTag)

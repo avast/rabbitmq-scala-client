@@ -39,7 +39,7 @@ class DefaultRabbitMQConsumerTest extends FunSuite with MockitoSugar with Eventu
     )({ delivery =>
       assertResult(messageId)(delivery.properties.getMessageId)
 
-      Future.successful(Ack)
+      Future.successful(DeliveryResult.Ack)
     })
 
     consumer.handleDelivery("abcd", envelope, properties, Random.nextString(5).getBytes)
@@ -72,7 +72,7 @@ class DefaultRabbitMQConsumerTest extends FunSuite with MockitoSugar with Eventu
     )({ delivery =>
       assertResult(messageId)(delivery.properties.getMessageId)
 
-      Future.successful(Retry)
+      Future.successful(DeliveryResult.Retry)
     })
 
     consumer.handleDelivery("abcd", envelope, properties, Random.nextString(5).getBytes)
