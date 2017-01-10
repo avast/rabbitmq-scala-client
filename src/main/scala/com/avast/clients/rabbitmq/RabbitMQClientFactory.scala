@@ -135,7 +135,7 @@ object RabbitMQClientFactory extends LazyLogging {
       declareExchange(exchange, channelFactoryInfo, channel, d)
     }
 
-    new DefaultRabbitMQProducer(producerConfig.name, exchange, channel, useKluzo, monitor)
+    new DefaultRabbitMQProducer(producerConfig.name, exchange, channel, useKluzo, reportUnroutable, monitor)
   }
 
   private def declareExchange(name: String,
@@ -252,12 +252,12 @@ object RabbitMQClientFactory extends LazyLogging {
               traceId.foreach(Kluzo.setTraceId)
 
               logger.warn("Error while executing callback, will be redelivered", e)
-              Retry
+              DeliveryResult.Retry
           }(finalExecutor)
       } catch {
         case NonFatal(e) =>
           logger.error("Error while executing callback, will be redelivered", e)
-          Future.successful(Retry)
+          Future.successful(DeliveryResult.Retry)
       }
     }
 
@@ -292,6 +292,6 @@ case class AutoBindQueue(exchange: BindExchange, routingKeys: immutable.Seq[Stri
 
 case class BindExchange(name: String, declare: Config)
 
-case class ProducerConfig(exchange: String, declare: Config, useKluzo: Boolean, name: String)
+case class ProducerConfig(exchange: String, declare: Config, useKluzo: Boolean, reportUnroutable: Boolean, name: String)
 
 case class AutoDeclareExchange(enabled: Boolean, `type`: String, durable: Boolean, autoDelete: Boolean)

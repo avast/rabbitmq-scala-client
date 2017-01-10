@@ -8,7 +8,8 @@ import com.avast.clients.rabbitmq.RabbitMQChannelFactory.ServerChannel
 import com.avast.clients.rabbitmq.api.RabbitMQProducer
 import com.avast.kluzo.Kluzo
 import com.avast.metrics.api.Monitor
-import com.rabbitmq.client.AMQP
+import com.rabbitmq.client.AMQP.BasicProperties
+import com.rabbitmq.client.{AMQP, ReturnListener}
 import com.typesafe.scalalogging.StrictLogging
 
 import scala.util.control.NonFatal
@@ -17,10 +18,14 @@ class DefaultRabbitMQProducer(name: String,
                               exchangeName: String,
                               channel: ServerChannel,
                               useKluzo: Boolean,
+                              reportUnroutable: Boolean,
                               monitor: Monitor) extends RabbitMQProducer with StrictLogging {
 
   private val sentMeter = monitor.newMeter("sent")
   private val sentFailedMeter = monitor.newMeter("sentFailed")
+  private val unroutableMeter = monitor.newMeter("unroutable")
+
+  channel.addReturnListener(if (reportUnroutable) LoggingReturnListener else NoOpReturnListener)
 
   override def send(routingKey: String, body: Bytes, properties: AMQP.BasicProperties): Unit = {
     try {
@@ -49,7 +54,8 @@ class DefaultRabbitMQProducer(name: String,
         properties
       }
 
-      sentMeter.synchronized { // see https://www.rabbitmq.com/api-guide.html#channel-threads
+      sentMeter.synchronized {
+        // see https://www.rabbitmq.com/api-guide.html#channel-threads
         channel.basicPublish(exchangeName, routingKey, finalProperties, body.toByteArray)
       }
 
@@ -72,4 +78,20 @@ class DefaultRabbitMQProducer(name: String,
   override def close(): Unit = {
     channel.close()
   }
+
+  // scalastyle:off
+  private object LoggingReturnListener extends ReturnListener {
+    override def handleReturn(replyCode: Int, replyText: String, exchange: String, routingKey: String, properties: BasicProperties, body: Array[Byte]): Unit = {
+      unroutableMeter.mark()
+      logger.warn(s"[$name] Message sent with routingKey '$routingKey' to exchange '$exchange' (message ID '${properties.getMessageId}', body size ${body.length} B) is unroutable ($replyCode: $replyText)")
+    }
+  }
+
+  private object NoOpReturnListener extends ReturnListener {
+    override def handleReturn(replyCode: Int, replyText: String, exchange: String, routingKey: String, properties: BasicProperties, body: Array[Byte]): Unit = {
+      unroutableMeter.mark()
+    }
+  }
+
 }
+
