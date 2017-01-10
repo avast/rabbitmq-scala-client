@@ -53,7 +53,7 @@ class DefaultRabbitMQConsumer(name: String,
 
           readAction(message)
             .andThen {
-              case Success(Acknowledge) => ack(messageId, deliveryTag)
+              case Success(Ack) => ack(messageId, deliveryTag)
               case Success(Reject) => reject(messageId, deliveryTag)
               case Success(Retry) => retry(messageId, deliveryTag)
               case Failure(NonFatal(e)) =>
