@@ -49,7 +49,10 @@ class DefaultRabbitMQProducer(name: String,
         properties
       }
 
-      channel.basicPublish(exchangeName, routingKey, finalProperties, body.toByteArray)
+      sentMeter.synchronized { // see https://www.rabbitmq.com/api-guide.html#channel-threads
+        channel.basicPublish(exchangeName, routingKey, finalProperties, body.toByteArray)
+      }
+
       sentMeter.mark()
     } catch {
       case NonFatal(e) =>
