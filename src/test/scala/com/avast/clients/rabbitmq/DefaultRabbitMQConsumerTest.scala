@@ -39,7 +39,7 @@ class DefaultRabbitMQConsumerTest extends FunSuite with MockitoSugar with Eventu
     )({ delivery =>
       assertResult(messageId)(delivery.properties.getMessageId)
 
-      Future.successful(true)
+      Future.successful(Ack)
     })
 
     consumer.handleDelivery("abcd", envelope, properties, Random.nextString(5).getBytes)
@@ -72,14 +72,14 @@ class DefaultRabbitMQConsumerTest extends FunSuite with MockitoSugar with Eventu
     )({ delivery =>
       assertResult(messageId)(delivery.properties.getMessageId)
 
-      Future.successful(false)
+      Future.successful(Retry)
     })
 
     consumer.handleDelivery("abcd", envelope, properties, Random.nextString(5).getBytes)
 
     eventually(timeout(Span(1, Seconds)), interval(Span(0.1, Seconds))) {
       verify(channel, times(0)).basicAck(deliveryTag, false)
-      verify(channel, times(1)).basicNack(deliveryTag, false, true)
+      verify(channel, times(1)).basicReject(deliveryTag, true)
     }
   }
 
@@ -112,7 +112,7 @@ class DefaultRabbitMQConsumerTest extends FunSuite with MockitoSugar with Eventu
 
     eventually(timeout(Span(1, Seconds)), interval(Span(0.1, Seconds))) {
       verify(channel, times(0)).basicAck(deliveryTag, false)
-      verify(channel, times(1)).basicNack(deliveryTag, false, true)
+      verify(channel, times(1)).basicReject(deliveryTag, true)
     }
   }
 
@@ -145,7 +145,7 @@ class DefaultRabbitMQConsumerTest extends FunSuite with MockitoSugar with Eventu
 
     eventually(timeout(Span(1, Seconds)), interval(Span(0.1, Seconds))) {
       verify(channel, times(0)).basicAck(deliveryTag, false)
-      verify(channel, times(1)).basicNack(deliveryTag, false, true)
+      verify(channel, times(1)).basicReject(deliveryTag, true)
     }
   }
 
