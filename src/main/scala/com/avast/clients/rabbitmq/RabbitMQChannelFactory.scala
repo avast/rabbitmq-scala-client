@@ -45,7 +45,8 @@ object RabbitMQChannelFactory extends StrictLogging {
     */
   def fromConfig(providedConfig: Config, executor: Option[ExecutorService] = None): RabbitMQChannelFactory = {
     // we need to wrap it with one level, to be able to parse it with Ficus
-    val config = ConfigFactory.empty()
+    val config = ConfigFactory
+      .empty()
       .withValue("root", providedConfig.withFallback(DefaultConfig).root())
 
     val connectionConfig = config.as[RabbitMQConnectionConfig]("root")
@@ -95,7 +96,9 @@ object RabbitMQChannelFactory extends StrictLogging {
     }
   }
 
-  private def setUpConnection(connectionConfig: RabbitMQConnectionConfig, factory: ConnectionFactory, executor: Option[ExecutorService]): Unit = {
+  private def setUpConnection(connectionConfig: RabbitMQConnectionConfig,
+                              factory: ConnectionFactory,
+                              executor: Option[ExecutorService]): Unit = {
     import connectionConfig._
 
     factory.setVirtualHost(virtualHost)
@@ -120,7 +123,8 @@ object RabbitMQChannelFactory extends StrictLogging {
       import ssl.trustStore._
 
       if (ssl.trustStore.path.toString.trim.nonEmpty) {
-        val sslContext = SSLBuilder.empty()
+        val sslContext = SSLBuilder
+          .empty()
           .loadAllFromBundle(path, KeyStoreTypes.JKSTrustStore, password)
           .build
 
@@ -139,7 +143,11 @@ object RabbitMQChannelFactory extends StrictLogging {
       conn.abort()
     }
 
-    override def handleConsumerException(channel: Channel, exception: Throwable, consumer: Consumer, consumerTag: String, methodName: String): Unit = {
+    override def handleConsumerException(channel: Channel,
+                                         exception: Throwable,
+                                         consumer: Consumer,
+                                         consumerTag: String,
+                                         methodName: String): Unit = {
       logger.warn(s"Error in consumer $consumerTag (while calling $methodName)", exception)
     }
 

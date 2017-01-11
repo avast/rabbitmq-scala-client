@@ -15,14 +15,15 @@ import scala.concurrent.{ExecutionContext, Future}
 import scala.util.control.NonFatal
 import scala.util.{Failure, Success, Try}
 
-class DefaultRabbitMQConsumer(name: String,
-                              channel: ServerChannel,
-                              useKluzo: Boolean,
-                              monitor: Monitor,
-                              bindToAction: (String, String) => BindOk)
-                             (readAction: Delivery => Future[DeliveryResult])
-                             (implicit ec: ExecutionContext)
-  extends DefaultConsumer(channel) with RabbitMQConsumer with StrictLogging {
+class DefaultRabbitMQConsumer(
+    name: String,
+    channel: ServerChannel,
+    useKluzo: Boolean,
+    monitor: Monitor,
+    bindToAction: (String, String) => BindOk)(readAction: Delivery => Future[DeliveryResult])(implicit ec: ExecutionContext)
+    extends DefaultConsumer(channel)
+    with RabbitMQConsumer
+    with StrictLogging {
 
   private val readMeter = monitor.newMeter("read")
   private val processingFailedMeter = monitor.newMeter("processingFailed")
