@@ -27,6 +27,8 @@ class DefaultRabbitMQProducer(name: String,
   private val sentFailedMeter = monitor.newMeter("sentFailed")
   private val unroutableMeter = monitor.newMeter("unroutable")
 
+  private val sendLock = new Object
+
   channel.addReturnListener(if (reportUnroutable) LoggingReturnListener else NoOpReturnListener)
 
   override def send(routingKey: String, body: Bytes, properties: AMQP.BasicProperties): Unit = {
@@ -58,7 +60,7 @@ class DefaultRabbitMQProducer(name: String,
         properties
       }
 
-      sentMeter.synchronized {
+      sendLock.synchronized {
         // see https://www.rabbitmq.com/api-guide.html#channel-threads
         channel.basicPublish(exchangeName, routingKey, finalProperties, body.toByteArray)
       }
