@@ -19,6 +19,9 @@ import scala.concurrent.{ExecutionContext, Future}
 import scala.util.Random
 
 class LiveTest extends FunSuite with Eventually {
+
+  import DeliveryResult._
+
   private def createConfig() = new {
 
     val queueName = randomString(10)
@@ -31,7 +34,6 @@ class LiveTest extends FunSuite with Eventually {
     bindConfigs(0) = bindConfigs(0).withValue("exchange.name", ConfigValueFactory.fromAnyRef(exchange1))
     bindConfigs(1) = bindConfigs(1).withValue("exchange.name", ConfigValueFactory.fromAnyRef(exchange2))
 
-
     val config = original
       .withValue("consumer.queueName", ConfigValueFactory.fromAnyRef(queueName))
       .withValue("consumer.bindings", ConfigValueFactory.fromIterable(bindConfigs.toSeq.map(_.root()).asJava))
@@ -42,7 +44,6 @@ class LiveTest extends FunSuite with Eventually {
     def randomString(length: Int): String = {
       Random.alphanumeric.take(length).mkString("")
     }
-
 
     implicit val ex = Continuity.wrapExecutionContextExecutorService(ExecutionContext.fromExecutorService(Executors.newCachedThreadPool()))
   }
@@ -60,11 +61,10 @@ class LiveTest extends FunSuite with Eventually {
     RabbitMQClientFactory.Consumer.fromConfig(config.getConfig("consumer"), channelFactory, NoOpMonitor.INSTANCE) { delivery =>
       latch.countDown()
       assertResult(true)(Kluzo.getTraceId.nonEmpty)
-      Future.successful(Ack)
+      Future.successful(DeliveryResult.Ack)
     }
 
     val sender = RabbitMQClientFactory.Producer.fromConfig(config.getConfig("producer"), channelFactory, NoOpMonitor.INSTANCE)
-
 
     sender.send("test", Bytes.copyFromUtf8(Random.nextString(10)))
 

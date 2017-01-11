@@ -23,7 +23,8 @@ class DefaultRabbitMQProducerTest extends FunSuite with MockitoSugar with Eventu
       exchangeName = exchangeName,
       channel = channel,
       monitor = NoOpMonitor.INSTANCE,
-      useKluzo = true
+      useKluzo = true,
+      reportUnroutable = false
     )
 
     val properties = new AMQP.BasicProperties.Builder()

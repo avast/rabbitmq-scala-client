@@ -15,17 +15,22 @@ import scala.concurrent.{ExecutionContext, Future}
 import scala.util.control.NonFatal
 import scala.util.{Failure, Success, Try}
 
-class DefaultRabbitMQConsumer(name: String,
-                              channel: ServerChannel,
-                              useKluzo: Boolean,
-                              monitor: Monitor,
-                              bindToAction: (String, String) => BindOk)
-                             (readAction: Delivery => Future[DeliveryResult])
-                             (implicit ec: ExecutionContext)
-  extends DefaultConsumer(channel) with RabbitMQConsumer with StrictLogging {
+class DefaultRabbitMQConsumer(
+    name: String,
+    channel: ServerChannel,
+    useKluzo: Boolean,
+    monitor: Monitor,
+    bindToAction: (String, String) => BindOk)(readAction: Delivery => Future[DeliveryResult])(implicit ec: ExecutionContext)
+    extends DefaultConsumer(channel)
+    with RabbitMQConsumer
+    with StrictLogging {
 
   private val readMeter = monitor.newMeter("read")
-  private val processingFailedMeter = monitor.newMeter("processingFailed")
+  private val resultsMonitor = monitor.named("results")
+  private val resultAckMeter = resultsMonitor.newMeter("ack")
+  private val resultRejectMeter = resultsMonitor.newMeter("reject")
+  private val resultRetryMeter = resultsMonitor.newMeter("retry")
+  private val processingFailedMeter = resultsMonitor.newMeter("processingFailed")
 
   override def handleDelivery(consumerTag: String, envelope: Envelope, properties: BasicProperties, body: Array[Byte]): Unit = {
     val traceId = if (useKluzo && properties.getHeaders != null) {
@@ -50,6 +55,8 @@ class DefaultRabbitMQConsumer(name: String,
           logger.debug(s"[$name] Read delivery with ID $messageId, deliveryTag $deliveryTag")
 
           val message = Delivery(Bytes.copyFrom(body), properties, Option(envelope.getRoutingKey).getOrElse(""))
+
+          import DeliveryResult._
 
           readAction(message)
             .andThen {
@@ -84,6 +91,7 @@ class DefaultRabbitMQConsumer(name: String,
     try {
       logger.debug(s"[$name] ACK delivery $messageId, deliveryTag $deliveryTag")
       channel.basicAck(deliveryTag, false)
+      resultAckMeter.mark()
     } catch {
       case NonFatal(e) => logger.warn(s"[$name] Error while confirming the delivery", e)
     }
@@ -93,6 +101,7 @@ class DefaultRabbitMQConsumer(name: String,
     try {
       logger.debug(s"[$name] REJECT delivery $messageId, deliveryTag $deliveryTag")
       channel.basicReject(deliveryTag, false)
+      resultRejectMeter.mark()
     } catch {
       case NonFatal(e) => logger.warn(s"[$name] Error while rejecting the delivery", e)
     }
@@ -102,6 +111,7 @@ class DefaultRabbitMQConsumer(name: String,
     try {
       logger.debug(s"[$name] REJECT (with requeue) delivery $messageId, deliveryTag $deliveryTag")
       channel.basicReject(deliveryTag, true)
+      resultRetryMeter.mark()
     } catch {
       case NonFatal(e) => logger.warn(s"[$name] Error while rejecting (with requeue) the delivery", e)
     }
