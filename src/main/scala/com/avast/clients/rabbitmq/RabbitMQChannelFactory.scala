@@ -26,6 +26,8 @@ object RabbitMQChannelFactory extends StrictLogging {
   type ServerConnection = Connection with Recoverable
   type ServerChannel = Channel with Recoverable
 
+  final lazy val DefaultExceptionHandler: ExceptionHandler = new LoggingUncaughtExceptionHandler
+
   private[rabbitmq] final val RootConfigKey = "ffRabbitMQConnectionDefaults"
 
   private[rabbitmq] final val DefaultConfig = ConfigFactory.defaultReference().getConfig(RootConfigKey)
@@ -45,7 +47,7 @@ object RabbitMQChannelFactory extends StrictLogging {
     */
   def fromConfig(providedConfig: Config,
                  executor: Option[ExecutorService] = None,
-                 ownExceptionHandler: Option[ExceptionHandler] = None): RabbitMQChannelFactory = {
+                 exceptionHandler: ExceptionHandler = DefaultExceptionHandler): RabbitMQChannelFactory = {
     // we need to wrap it with one level, to be able to parse it with Ficus
     val config = ConfigFactory
       .empty()
@@ -53,13 +55,12 @@ object RabbitMQChannelFactory extends StrictLogging {
 
     val connectionConfig = config.as[RabbitMQConnectionConfig]("root")
 
-    create(connectionConfig, executor, ownExceptionHandler)
+    create(connectionConfig, executor, exceptionHandler)
   }
 
   def create(connectionConfig: RabbitMQConnectionConfig,
              executor: Option[ExecutorService] = None,
-             ownExceptionHandler: Option[ExceptionHandler] = None): RabbitMQChannelFactory = {
-    val exceptionHandler = ownExceptionHandler.getOrElse(new LoggingUncaughtExceptionHandler)
+             exceptionHandler: ExceptionHandler = DefaultExceptionHandler): RabbitMQChannelFactory = {
 
     val connection = createConnection(connectionConfig, executor, exceptionHandler)
 
