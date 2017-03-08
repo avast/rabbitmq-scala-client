@@ -6,9 +6,9 @@ import java.util.concurrent.ExecutorService
 
 import com.avast.clients.rabbitmq.RabbitMQChannelFactory.ServerChannel
 import com.avast.utils2.ssl.{KeyStoreTypes, SSLBuilder}
-import com.rabbitmq.client.{Channel, Consumer, TopologyRecoveryException, _}
+import com.rabbitmq.client.{Channel, _}
 import com.typesafe.config.{Config, ConfigFactory}
-import com.typesafe.scalalogging.{LazyLogging, StrictLogging}
+import com.typesafe.scalalogging.StrictLogging
 import net.ceedubs.ficus.Ficus._
 import net.ceedubs.ficus.readers.ArbitraryTypeReader._
 import net.ceedubs.ficus.readers.ValueReader
@@ -43,7 +43,9 @@ object RabbitMQChannelFactory extends StrictLogging {
     * @param providedConfig The configuration.
     * @param executor       [[ExecutorService]] which should be used as shared for all channels from this factory. Optional parameter.
     */
-  def fromConfig(providedConfig: Config, executor: Option[ExecutorService] = None): RabbitMQChannelFactory = {
+  def fromConfig(providedConfig: Config,
+                 executor: Option[ExecutorService] = None,
+                 ownExceptionHandler: Option[ExceptionHandler] = None): RabbitMQChannelFactory = {
     // we need to wrap it with one level, to be able to parse it with Ficus
     val config = ConfigFactory
       .empty()
@@ -51,11 +53,13 @@ object RabbitMQChannelFactory extends StrictLogging {
 
     val connectionConfig = config.as[RabbitMQConnectionConfig]("root")
 
-    create(connectionConfig, executor)
+    create(connectionConfig, executor, ownExceptionHandler)
   }
 
-  def create(connectionConfig: RabbitMQConnectionConfig, executor: Option[ExecutorService] = None): RabbitMQChannelFactory = {
-    val connection = createConnection(connectionConfig, executor)
+  def create(connectionConfig: RabbitMQConnectionConfig,
+             executor: Option[ExecutorService] = None,
+             ownExceptionHandler: Option[ExceptionHandler] = None): RabbitMQChannelFactory = {
+    val connection = createConnection(connectionConfig, executor, ownExceptionHandler)
 
     new RabbitMQChannelFactory {
 
@@ -75,11 +79,13 @@ object RabbitMQChannelFactory extends StrictLogging {
     }
   }
 
-  protected def createConnection(config: RabbitMQConnectionConfig, executor: Option[ExecutorService]): ServerConnection = {
+  protected def createConnection(config: RabbitMQConnectionConfig,
+                                 executor: Option[ExecutorService],
+                                 ownExceptionHandler: Option[ExceptionHandler]): ServerConnection = {
     import config._
 
     val factory = new ConnectionFactory
-    setUpConnection(config, factory, executor)
+    setUpConnection(config, factory, executor, ownExceptionHandler)
 
     val addresses = try {
       hosts.map(Address.parseAddress)
@@ -98,7 +104,8 @@ object RabbitMQChannelFactory extends StrictLogging {
 
   private def setUpConnection(connectionConfig: RabbitMQConnectionConfig,
                               factory: ConnectionFactory,
-                              executor: Option[ExecutorService]): Unit = {
+                              executor: Option[ExecutorService],
+                              ownExceptionHandler: Option[ExceptionHandler]): Unit = {
     import connectionConfig._
 
     factory.setVirtualHost(virtualHost)
@@ -108,7 +115,7 @@ object RabbitMQChannelFactory extends StrictLogging {
     factory.setNetworkRecoveryInterval(5000)
     factory.setRequestedHeartbeat(heartBeatInterval.getSeconds.toInt)
 
-    factory.setExceptionHandler(UncaughtExceptionHandler)
+    factory.setExceptionHandler(ownExceptionHandler.getOrElse(new LoggingUncaughtExceptionHandler))
 
     executor.foreach(factory.setSharedExecutor)
 
@@ -135,50 +142,6 @@ object RabbitMQChannelFactory extends StrictLogging {
     }
 
     factory.setConnectionTimeout(connectionTimeout.toMillis.toInt)
-  }
-
-  private[rabbitmq] object UncaughtExceptionHandler extends ExceptionHandler with LazyLogging {
-    override def handleUnexpectedConnectionDriverException(conn: Connection, exception: Throwable): Unit = {
-      logger.error("Unexpected connection driver exception, closing the connection", exception)
-      conn.abort()
-    }
-
-    override def handleConsumerException(channel: Channel,
-                                         exception: Throwable,
-                                         consumer: Consumer,
-                                         consumerTag: String,
-                                         methodName: String): Unit = {
-      logger.warn(s"Error in consumer $consumerTag (while calling $methodName)", exception)
-    }
-
-    override def handleBlockedListenerException(connection: Connection, exception: Throwable): Unit = {
-      logger.error("Unexpected blocked listener exception, closing the connection", exception)
-      connection.abort()
-    }
-
-    override def handleFlowListenerException(channel: Channel, exception: Throwable): Unit = {
-      logger.error("Unexpected flow listener exception", exception)
-    }
-
-    override def handleReturnListenerException(channel: Channel, exception: Throwable): Unit = {
-      logger.error("Unexpected return listener exception", exception)
-    }
-
-    override def handleConfirmListenerException(channel: Channel, exception: Throwable): Unit = {
-      logger.error("Unexpected confirm listener exception", exception)
-    }
-
-    override def handleTopologyRecoveryException(conn: Connection, ch: Channel, exception: TopologyRecoveryException): Unit = {
-      logger.warn(s"Error in topology recovery to ${conn.getAddress}", exception)
-    }
-
-    override def handleChannelRecoveryException(ch: Channel, exception: Throwable): Unit = {
-      logger.warn(s"Error in channel recovery (of connection to ${ch.getConnection})", exception)
-    }
-
-    override def handleConnectionRecoveryException(conn: Connection, exception: Throwable): Unit = {
-      logger.warn(s"Error in connection recovery to ${conn.getAddress}", exception)
-    }
   }
 
 }
