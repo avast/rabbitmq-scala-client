@@ -48,7 +48,7 @@ tasks.withType(ScalaCompile) {
 }
 
 ext {
-    utilsVersion = "5.0.39"
+    utilsVersion = "5.2.52"
     metricsVersion = "1.12.52"
     bytesVersion = "1.0.9"
     circeVersion = "0.7.0"
