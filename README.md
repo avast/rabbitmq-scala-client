@@ -3,7 +3,7 @@ This client is lightweight wrapper over standard [RabbitMQ java client](https://
 It's API may be difficult to use for inexperienced RabbitMQ users. Goal of this library is to simplify basic use cases and shadow the programmer
 from the underlying client.
 
-Currently only Scala API is available. Contact the author for discussion about Java API if you want it.
+Currently only Scala API is available. Contact the author for discussion about Java API if you want it or look at the example below.
 
 Author: [Jenda Kolena](mailto:kolena@avast.com)
 
@@ -114,3 +114,22 @@ For full list of options please see [reference.conf](src/main/resources/referenc
 As you may have noticed, there are `producer` and `consumer` configurations *inside* the `myConfig` block. Even though they are NOT dependent and they don't
 have to be this structured, it seems like a good strategy to have all producers/consumers in block which configures connection to the RabbitMQ server. In case
 there are more of them, proper naming like `producer-testing` should be used.
+
+### Usage from Java
+Even though the API is for Scala it should be usable also from Java. Use something like:
+```java
+import com.avast.clients.rabbitmq.RabbitMQChannelFactory;
+import com.avast.clients.rabbitmq.RabbitMQChannelFactory$;
+import com.avast.clients.rabbitmq.RabbitMQClientFactory;
+import com.avast.clients.rabbitmq.api.RabbitMQConsumer;
+import scala.Option;
+
+public class Test {
+    public static void main(String[] args) {
+        final RabbitMQChannelFactory rabbitMQChannelFactory = RabbitMQChannelFactory$.MODULE$.fromConfig(config, Option.apply(executor));
+        final RabbitMQConsumer rabbitMQConsumer = RabbitMQClientFactory.Consumer.fromConfig(config,rabbitMQChannelFactory,monitor, ...)
+        final RabbitMQProducer producer = RabbitMQClientFactory.Producer$.MODULE$.fromConfig(config, rabbitMQChannelFactory, monitor);
+    }
+}
+
+```
