@@ -59,7 +59,9 @@ object RabbitMQChannelFactory extends StrictLogging {
   def create(connectionConfig: RabbitMQConnectionConfig,
              executor: Option[ExecutorService] = None,
              ownExceptionHandler: Option[ExceptionHandler] = None): RabbitMQChannelFactory = {
-    val connection = createConnection(connectionConfig, executor, ownExceptionHandler)
+    val exceptionHandler = ownExceptionHandler.getOrElse(new LoggingUncaughtExceptionHandler)
+
+    val connection = createConnection(connectionConfig, executor, exceptionHandler)
 
     new RabbitMQChannelFactory {
 
@@ -81,11 +83,11 @@ object RabbitMQChannelFactory extends StrictLogging {
 
   protected def createConnection(config: RabbitMQConnectionConfig,
                                  executor: Option[ExecutorService],
-                                 ownExceptionHandler: Option[ExceptionHandler]): ServerConnection = {
+                                 exceptionHandler: ExceptionHandler): ServerConnection = {
     import config._
 
     val factory = new ConnectionFactory
-    setUpConnection(config, factory, executor, ownExceptionHandler)
+    setUpConnection(config, factory, executor, exceptionHandler)
 
     val addresses = try {
       hosts.map(Address.parseAddress)
@@ -105,7 +107,7 @@ object RabbitMQChannelFactory extends StrictLogging {
   private def setUpConnection(connectionConfig: RabbitMQConnectionConfig,
                               factory: ConnectionFactory,
                               executor: Option[ExecutorService],
-                              ownExceptionHandler: Option[ExceptionHandler]): Unit = {
+                              exceptionHandler: ExceptionHandler): Unit = {
     import connectionConfig._
 
     factory.setVirtualHost(virtualHost)
@@ -115,7 +117,7 @@ object RabbitMQChannelFactory extends StrictLogging {
     factory.setNetworkRecoveryInterval(5000)
     factory.setRequestedHeartbeat(heartBeatInterval.getSeconds.toInt)
 
-    factory.setExceptionHandler(ownExceptionHandler.getOrElse(new LoggingUncaughtExceptionHandler))
+    factory.setExceptionHandler(exceptionHandler)
 
     executor.foreach(factory.setSharedExecutor)
 
