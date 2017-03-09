@@ -71,7 +71,7 @@ myConfig {
 
     queueName = "test"
 
-    prefetchCount = 100 // don't change if you have a reason to do so ;-)
+    prefetchCount = 100 // don't change unless you have a reason to do so ;-)
 
     // should the consumer declare queue he wants to read from?
     declare {
