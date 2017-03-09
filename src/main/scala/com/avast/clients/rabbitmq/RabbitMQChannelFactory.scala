@@ -1,6 +1,6 @@
 package com.avast.clients.rabbitmq
 
-import java.net.SocketException
+import java.net.{SocketException, UnknownHostException}
 import java.nio.file.{Path, Paths}
 import java.time.Duration
 import java.util.concurrent.ExecutorService
@@ -34,9 +34,14 @@ object RabbitMQChannelFactory extends StrictLogging {
   type ServerChannel = Channel
 
   object DefaultListeners {
-    final lazy val DefaultConnectionListener = new LoggingConnectionListener
-    final lazy val DefaultChannelListener = new LoggingChannelListener
-    final lazy val DefaultConsumerListener = new LoggingConsumerListener
+    final lazy val DefaultConnectionListener = new net.jodah.lyra.event.DefaultConnectionListener {}
+    final lazy val DefaultChannelListener = new net.jodah.lyra.event.DefaultChannelListener {}
+    final lazy val DefaultConsumerListener = new net.jodah.lyra.event.DefaultConsumerListener {}
+  }
+
+  private object Exceptions {
+    private[RabbitMQChannelFactory] final val RecoverableExceptions = Set(classOf[UnknownHostException], classOf[SocketException]).asJava
+    private[RabbitMQChannelFactory] final val RetryableExceptions = Set(classOf[UnknownHostException], classOf[SocketException]).asJava
   }
 
   private[rabbitmq] final val RootConfigKey = "ffRabbitMQConnectionDefaults"
@@ -130,7 +135,8 @@ object RabbitMQChannelFactory extends StrictLogging {
         .withRetryPolicy(RetryPolicies.retryAlways().withInterval(networkRecovery.period))
     }
 
-    lyraConfig.getRecoverableExceptions.add(classOf[SocketException])
+    lyraConfig.getRecoverableExceptions.addAll(Exceptions.RecoverableExceptions)
+    lyraConfig.getRetryableExceptions.addAll(Exceptions.RetryableExceptions)
 
     Connections.create(connectionOptions, lyraConfig)
   }
