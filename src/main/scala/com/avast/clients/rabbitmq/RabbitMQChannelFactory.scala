@@ -1,5 +1,6 @@
 package com.avast.clients.rabbitmq
 
+import java.net.SocketException
 import java.nio.file.{Path, Paths}
 import java.time.Duration
 import java.util.concurrent.ExecutorService
@@ -12,8 +13,14 @@ import com.typesafe.scalalogging.StrictLogging
 import net.ceedubs.ficus.Ficus._
 import net.ceedubs.ficus.readers.ArbitraryTypeReader._
 import net.ceedubs.ficus.readers.ValueReader
+import net.jodah.lyra.config.{ConfigurableConnection, RecoveryPolicies, RetryPolicies, Config => LyraConfig}
+import net.jodah.lyra.event.{ChannelListener, ConnectionListener, ConsumerListener}
+import net.jodah.lyra.util.{Duration => LyraDuration}
+import net.jodah.lyra.{ConnectionOptions, Connections}
 
+import scala.collection.JavaConverters._
 import scala.collection.immutable
+import scala.language.implicitConversions
 import scala.util.control.NonFatal
 
 trait RabbitMQChannelFactory {
@@ -23,10 +30,14 @@ trait RabbitMQChannelFactory {
 }
 
 object RabbitMQChannelFactory extends StrictLogging {
-  type ServerConnection = Connection with Recoverable
-  type ServerChannel = Channel with Recoverable
+  type ServerConnection = ConfigurableConnection
+  type ServerChannel = Channel
 
-  final lazy val DefaultExceptionHandler: ExceptionHandler = new LoggingUncaughtExceptionHandler
+  object DefaultListeners {
+    final lazy val DefaultConnectionListener = new LoggingConnectionListener
+    final lazy val DefaultChannelListener = new LoggingChannelListener
+    final lazy val DefaultConsumerListener = new LoggingConsumerListener
+  }
 
   private[rabbitmq] final val RootConfigKey = "ffRabbitMQConnectionDefaults"
 
@@ -47,7 +58,9 @@ object RabbitMQChannelFactory extends StrictLogging {
     */
   def fromConfig(providedConfig: Config,
                  executor: Option[ExecutorService] = None,
-                 exceptionHandler: ExceptionHandler = DefaultExceptionHandler): RabbitMQChannelFactory = {
+                 connectionListener: ConnectionListener = DefaultListeners.DefaultConnectionListener,
+                 channelListener: ChannelListener = DefaultListeners.DefaultChannelListener,
+                 consumerListener: ConsumerListener = DefaultListeners.DefaultConsumerListener): RabbitMQChannelFactory = {
     // we need to wrap it with one level, to be able to parse it with Ficus
     val config = ConfigFactory
       .empty()
@@ -55,14 +68,16 @@ object RabbitMQChannelFactory extends StrictLogging {
 
     val connectionConfig = config.as[RabbitMQConnectionConfig]("root")
 
-    create(connectionConfig, executor, exceptionHandler)
+    create(connectionConfig, executor, connectionListener, channelListener, consumerListener)
   }
 
   def create(connectionConfig: RabbitMQConnectionConfig,
              executor: Option[ExecutorService] = None,
-             exceptionHandler: ExceptionHandler = DefaultExceptionHandler): RabbitMQChannelFactory = {
+             connectionListener: ConnectionListener = DefaultListeners.DefaultConnectionListener,
+             channelListener: ChannelListener = DefaultListeners.DefaultChannelListener,
+             consumerListener: ConsumerListener = DefaultListeners.DefaultConsumerListener): RabbitMQChannelFactory = {
 
-    val connection = createConnection(connectionConfig, executor, exceptionHandler)
+    val connection = createConnection(connectionConfig, executor, connectionListener, channelListener, consumerListener)
 
     new RabbitMQChannelFactory {
 
@@ -72,23 +87,24 @@ object RabbitMQChannelFactory extends StrictLogging {
       )
 
       override def createChannel(): ServerChannel = {
-        connection.createChannel() match {
-          case c: ServerChannel => c
-
-          // since the connection is `Recoverable`, the channel should always be `Recoverable` too (based on docs), so the exception will never be thrown
-          case _ => throw new IllegalStateException(s"Required Recoverable Channel")
-        }
+        connection.createChannel()
       }
     }
   }
 
-  protected def createConnection(config: RabbitMQConnectionConfig,
+  private implicit def javaDurationToLyraDuration(d: Duration): LyraDuration = {
+    LyraDuration.millis(d.toMillis)
+  }
+
+  protected def createConnection(connectionConfig: RabbitMQConnectionConfig,
                                  executor: Option[ExecutorService],
-                                 exceptionHandler: ExceptionHandler): ServerConnection = {
-    import config._
+                                 connectionListener: ConnectionListener,
+                                 channelListener: ChannelListener,
+                                 consumerListener: ConsumerListener): ServerConnection = {
+    import connectionConfig._
 
     val factory = new ConnectionFactory
-    setUpConnection(config, factory, executor, exceptionHandler)
+    setUpConnection(connectionConfig, factory, executor)
 
     val addresses = try {
       hosts.map(Address.parseAddress)
@@ -98,27 +114,37 @@ object RabbitMQChannelFactory extends StrictLogging {
 
     logger.info(s"Connecting to ${hosts.mkString("[", ", ", "]")}, virtual host '$virtualHost'")
 
-    factory.newConnection(addresses) match {
-      case c: ServerConnection => c
-      // since we set `factory.setAutomaticRecoveryEnabled(true)` it should always be `Recoverable` (based on docs), so the exception will never be thrown
-      case _ => throw new IllegalStateException("Required Recoverable Connection")
+    val connectionOptions = new ConnectionOptions(factory)
+      .withAddresses(addresses: _*)
+      .withName(name)
+      .withClientProperties(Map("connection_name" -> name.asInstanceOf[AnyRef]).asJava) // this is workaround of Lyras bug in ConnectionHandler:243
+
+    val lyraConfig = new LyraConfig()
+      .withConnectionListeners(connectionListener)
+      .withChannelListeners(channelListener)
+      .withConsumerListeners(consumerListener)
+
+    if (networkRecovery.enabled) {
+      lyraConfig
+        .withRecoveryPolicy(RecoveryPolicies.recoverAlways().withInterval(networkRecovery.period))
+        .withRetryPolicy(RetryPolicies.retryAlways().withInterval(networkRecovery.period))
     }
+
+    lyraConfig.getRecoverableExceptions.add(classOf[SocketException])
+
+    Connections.create(connectionOptions, lyraConfig)
   }
 
   private def setUpConnection(connectionConfig: RabbitMQConnectionConfig,
                               factory: ConnectionFactory,
-                              executor: Option[ExecutorService],
-                              exceptionHandler: ExceptionHandler): Unit = {
+                              executor: Option[ExecutorService]): Unit = {
     import connectionConfig._
 
     factory.setVirtualHost(virtualHost)
 
     factory.setTopologyRecoveryEnabled(topologyRecovery)
-    factory.setAutomaticRecoveryEnabled(true)
-    factory.setNetworkRecoveryInterval(5000)
+    factory.setAutomaticRecoveryEnabled(false) // Lyra will handle the recovery
     factory.setRequestedHeartbeat(heartBeatInterval.getSeconds.toInt)
-
-    factory.setExceptionHandler(exceptionHandler)
 
     executor.foreach(factory.setSharedExecutor)
 
@@ -150,6 +176,7 @@ object RabbitMQChannelFactory extends StrictLogging {
 }
 
 case class RabbitMQConnectionConfig(hosts: Array[String],
+                                    name: String,
                                     virtualHost: String,
                                     connectionTimeout: Duration,
                                     heartBeatInterval: Duration,
