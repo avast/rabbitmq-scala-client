@@ -39,6 +39,8 @@ This is how to configuration should look like:
 myConfig {
   hosts = ["localhost:5672"]
   virtualHost = "/"
+  
+  name="Cluster01Connection" // used for logging AND is also visible in client properties in RabbitMQ management console
 
   ssl {
     enabled = false // enabled by default
@@ -53,6 +55,11 @@ myConfig {
 
   connectionTimeout = 5s // default value
 
+  networkRecovery {
+    enabled = true // default value
+    period = 5s // default value
+  }
+
 
   // CONSUMERS AND PRODUCERS:
 
@@ -60,7 +67,11 @@ myConfig {
   consumer {
     name = "Testing" // this is used for metrics, logging etc.
 
+    consumerTag = Default // string or "Default"; default is randomly generated string (like "amq.ctag-ov2Sp8MYKE6ysJ9SchKeqQ"); visible in RabbitMQ management console
+
     queueName = "test"
+
+    prefetchCount = 100 // don't change if you have a reason to do so ;-)
 
     // should the consumer declare queue he wants to read from?
     declare {
