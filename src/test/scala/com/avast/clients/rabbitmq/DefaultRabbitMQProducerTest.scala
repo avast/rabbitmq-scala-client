@@ -1,6 +1,7 @@
 package com.avast.clients.rabbitmq
 
 import com.avast.bytes.Bytes
+import com.avast.metrics.scalaapi.Monitor
 import com.avast.metrics.test.NoOpMonitor
 import com.rabbitmq.client.AMQP
 import com.rabbitmq.client.impl.recovery.AutorecoveringChannel
@@ -22,7 +23,7 @@ class DefaultRabbitMQProducerTest extends FunSuite with MockitoSugar with Eventu
       name = "test",
       exchangeName = exchangeName,
       channel = channel,
-      monitor = NoOpMonitor.INSTANCE,
+      monitor = Monitor.noOp,
       useKluzo = true,
       reportUnroutable = false
     )

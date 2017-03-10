@@ -9,7 +9,7 @@ import com.avast.clients.rabbitmq.RabbitMQChannelFactory.ServerChannel
 import com.avast.clients.rabbitmq.api.{RabbitMQConsumer, RabbitMQProducer}
 import com.avast.continuity.Continuity
 import com.avast.kluzo.Kluzo
-import com.avast.metrics.api.Monitor
+import com.avast.metrics.scalaapi.Monitor
 import com.avast.utils2.errorhandling.FutureTimeouter
 import com.rabbitmq.client.AMQP
 import com.rabbitmq.client.AMQP.Queue
