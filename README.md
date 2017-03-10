@@ -137,9 +137,9 @@ depending on your usage).
 Don't get confused by the Java API actually implemented in Scala.
 
 ```java
-final RabbitMQChannelFactory rabbitMQChannelFactory = RabbitMQChannelFactory.fromConfig(config, executor, null, null, null);
+final RabbitMQChannelFactory rabbitMQChannelFactory = RabbitMQChannelFactory.fromConfig(config).withExecutor(executor).build();
 
-final RabbitMQConsumer rabbitMQConsumer = RabbitMQClientFactory.Consumer().fromConfig(
+final RabbitMQConsumer rabbitMQConsumer = RabbitMQClientFactory.createConsumerfromConfig(
     config.getConfig("consumer"),
     rabbitMQChannelFactory,
     NoOpMonitor.INSTANCE,
@@ -148,7 +148,7 @@ final RabbitMQConsumer rabbitMQConsumer = RabbitMQClientFactory.Consumer().fromC
     ExampleJava::handleDelivery
 );
 
-final RabbitMQProducer rabbitMQProducer = RabbitMQClientFactory.Producer().fromConfig(
+final RabbitMQProducer rabbitMQProducer = RabbitMQClientFactory.createProducerfromConfig(
     config.getConfig("producer"),
     rabbitMQChannelFactory,
     NoOpMonitor.INSTANCE

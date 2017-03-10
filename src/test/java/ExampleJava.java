@@ -20,11 +20,12 @@ public class ExampleJava {
         Config config = ConfigFactory.parseFile(file).getConfig("myConfig");
         String routingKey = config.getString("consumer.queueName");
 
+
         final ExecutorService executor = Executors.newCachedThreadPool();
 
-        final RabbitMQChannelFactory rabbitMQChannelFactory = RabbitMQChannelFactory.newBuilder(config).build();
+        final RabbitMQChannelFactory rabbitMQChannelFactory = RabbitMQChannelFactory.newBuilder(config).withExecutor(executor).build();
 
-        final RabbitMQConsumer rabbitMQConsumer = RabbitMQClientFactory.Consumer().fromConfig(
+        final RabbitMQConsumer rabbitMQConsumer = RabbitMQClientFactory.createConsumerfromConfig(
                 config.getConfig("consumer"),
                 rabbitMQChannelFactory,
                 NoOpMonitor.INSTANCE,
@@ -33,7 +34,7 @@ public class ExampleJava {
                 ExampleJava::handleDelivery
         );
 
-        final RabbitMQProducer rabbitMQProducer = RabbitMQClientFactory.Producer().fromConfig(
+        final RabbitMQProducer rabbitMQProducer = RabbitMQClientFactory.createProducerfromConfig(
                 config.getConfig("producer"),
                 rabbitMQChannelFactory,
                 NoOpMonitor.INSTANCE
