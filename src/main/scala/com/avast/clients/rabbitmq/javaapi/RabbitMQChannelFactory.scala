@@ -1,7 +1,6 @@
 package com.avast.clients.rabbitmq.javaapi
 
 import java.util.concurrent.ExecutorService
-import javax.annotation.{Nonnull, Nullable}
 
 import com.avast.clients.rabbitmq.RabbitMQChannelFactory.{DefaultListeners, ServerChannel}
 import com.avast.clients.rabbitmq.{RabbitMQConnectionConfig, RabbitMqChannelFactoryInfo, RabbitMQChannelFactory => ScalaFactory}
@@ -16,53 +15,65 @@ class RabbitMQChannelFactory(scalaFactory: ScalaFactory) extends ScalaFactory {
 
 object RabbitMQChannelFactory {
 
-  /** Creates new instance of channel factory, using the passed configuration.
-    *
-    * @param config   The configuration.
-    * @param executor [[ExecutorService]] which should be used as shared for all channels from this factory. Optional parameter.
-    */
-  def fromConfig(@Nonnull config: Config,
-                 @Nullable executor: ExecutorService,
-                 @Nullable connectionListener: ConnectionListener,
-                 @Nullable channelListener: ChannelListener,
-                 @Nullable consumerListener: ConsumerListener): RabbitMQChannelFactory = {
-    new RabbitMQChannelFactory(
-      ScalaFactory.fromConfig(
-        config,
-        Option(executor),
-        Option(connectionListener).getOrElse(DefaultListeners.DefaultConnectionListener),
-        Option(channelListener).getOrElse(DefaultListeners.DefaultChannelListener),
-        Option(consumerListener).getOrElse(DefaultListeners.DefaultConsumerListener)
-      ))
+  def newBuilder(config: Config): Builder = {
+    new Builder(Left(config))
   }
 
-  /** Creates new instance of channel factory, using the passed configuration.
-    *
-    * @param config   The configuration.
-    * @param executor [[ExecutorService]] which should be used as shared for all channels from this factory. Optional parameter.
-    */
-  def fromConfig(@Nonnull config: Config,
-                 @Nullable executor: ExecutorService): RabbitMQChannelFactory = {
-    fromConfig(config, executor, null, null, null)
+  def newBuilder(connectionConfig: RabbitMQConnectionConfig): Builder = {
+    new Builder(Right(connectionConfig))
   }
 
-  def create(@Nonnull connectionConfig: RabbitMQConnectionConfig,
-             @Nullable executor: ExecutorService,
-             @Nullable connectionListener: ConnectionListener,
-             @Nullable channelListener: ChannelListener,
-             @Nullable consumerListener: ConsumerListener): RabbitMQChannelFactory = {
-    new RabbitMQChannelFactory(
-      ScalaFactory.create(
-        connectionConfig,
-        Option(executor),
-        Option(connectionListener).getOrElse(DefaultListeners.DefaultConnectionListener),
-        Option(channelListener).getOrElse(DefaultListeners.DefaultChannelListener),
-        Option(consumerListener).getOrElse(DefaultListeners.DefaultConsumerListener)
-      ))
+  //scalastyle:off
+  class Builder(config: Either[Config, RabbitMQConnectionConfig]) {
+    private var executor: Option[ExecutorService] = None
+    private var connectionListener: ConnectionListener = DefaultListeners.DefaultConnectionListener
+    private var channelListener: ChannelListener = DefaultListeners.DefaultChannelListener
+    private var consumerListener: ConsumerListener = DefaultListeners.DefaultConsumerListener
+
+    def withExecutor(executor: ExecutorService): Builder = {
+      this.executor = Option(executor)
+      this
+    }
+
+    def withConnectionListener(connectionListener: ConnectionListener): Builder = {
+      this.connectionListener = connectionListener
+      this
+    }
+
+    def withChannelListener(channelListener: ChannelListener): Builder = {
+      this.channelListener = channelListener
+      this
+    }
+
+    def withConsumerListener(consumerListener: ConsumerListener): Builder = {
+      this.consumerListener = consumerListener
+      this
+    }
+
+    def build(): RabbitMQChannelFactory = {
+      config match {
+        case Left(providedConfig) =>
+          new RabbitMQChannelFactory(
+            ScalaFactory.fromConfig(
+              providedConfig,
+              executor,
+              Option(connectionListener).getOrElse(DefaultListeners.DefaultConnectionListener),
+              Option(channelListener).getOrElse(DefaultListeners.DefaultChannelListener),
+              Option(consumerListener).getOrElse(DefaultListeners.DefaultConsumerListener)
+            ))
+
+        case Right(connectionConfig) =>
+          new RabbitMQChannelFactory(
+            ScalaFactory.create(
+              connectionConfig,
+              executor,
+              Option(connectionListener).getOrElse(DefaultListeners.DefaultConnectionListener),
+              Option(channelListener).getOrElse(DefaultListeners.DefaultChannelListener),
+              Option(consumerListener).getOrElse(DefaultListeners.DefaultConsumerListener)
+            ))
+      }
+    }
+
   }
 
-  def create(@Nonnull connectionConfig: RabbitMQConnectionConfig,
-             @Nullable executor: ExecutorService): RabbitMQChannelFactory = {
-    create(connectionConfig, executor, null, null, null)
-  }
 }

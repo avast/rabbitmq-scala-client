@@ -22,7 +22,7 @@ public class ExampleJava {
 
         final ExecutorService executor = Executors.newCachedThreadPool();
 
-        final RabbitMQChannelFactory rabbitMQChannelFactory = RabbitMQChannelFactory.fromConfig(config, executor, null, null, null);
+        final RabbitMQChannelFactory rabbitMQChannelFactory = RabbitMQChannelFactory.newBuilder(config).build();
 
         final RabbitMQConsumer rabbitMQConsumer = RabbitMQClientFactory.Consumer().fromConfig(
                 config.getConfig("consumer"),
