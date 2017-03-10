@@ -36,11 +36,21 @@ object RabbitMQChannelFactory {
       ))
   }
 
+  /** Creates new instance of channel factory, using the passed configuration.
+    *
+    * @param config   The configuration.
+    * @param executor [[ExecutorService]] which should be used as shared for all channels from this factory. Optional parameter.
+    */
+  def fromConfig(@Nonnull config: Config,
+                 @Nullable executor: ExecutorService): RabbitMQChannelFactory = {
+    fromConfig(config, executor, null, null, null)
+  }
+
   def create(@Nonnull connectionConfig: RabbitMQConnectionConfig,
              @Nullable executor: ExecutorService,
              @Nullable connectionListener: ConnectionListener,
              @Nullable channelListener: ChannelListener,
-             @Nullable consumerListener: ConsumerListener): RabbitMQChannelFactory =
+             @Nullable consumerListener: ConsumerListener): RabbitMQChannelFactory = {
     new RabbitMQChannelFactory(
       ScalaFactory.create(
         connectionConfig,
@@ -49,4 +59,10 @@ object RabbitMQChannelFactory {
         Option(channelListener).getOrElse(DefaultListeners.DefaultChannelListener),
         Option(consumerListener).getOrElse(DefaultListeners.DefaultConsumerListener)
       ))
+  }
+
+  def create(@Nonnull connectionConfig: RabbitMQConnectionConfig,
+             @Nullable executor: ExecutorService): RabbitMQChannelFactory = {
+    create(connectionConfig, executor, null, null, null)
+  }
 }
