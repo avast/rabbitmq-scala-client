@@ -6,7 +6,7 @@ import java.util.concurrent.{CountDownLatch, Executors, TimeUnit}
 import com.avast.bytes.Bytes
 import com.avast.continuity.Continuity
 import com.avast.kluzo.{Kluzo, TraceId}
-import com.avast.metrics.test.NoOpMonitor
+import com.avast.metrics.scalaapi.Monitor
 import com.rabbitmq.client.AMQP.BasicProperties
 import com.typesafe.config.{Config, ConfigFactory, ConfigValueFactory}
 import net.ceedubs.ficus.Ficus._
@@ -58,13 +58,13 @@ class LiveTest extends FunSuite with Eventually {
 
     val channelFactory = RabbitMQChannelFactory.fromConfig(config, Some(ex))
 
-    RabbitMQClientFactory.Consumer.fromConfig(config.getConfig("consumer"), channelFactory, NoOpMonitor.INSTANCE) { delivery =>
+    RabbitMQClientFactory.Consumer.fromConfig(config.getConfig("consumer"), channelFactory, Monitor.noOp) { delivery =>
       latch.countDown()
       assertResult(true)(Kluzo.getTraceId.nonEmpty)
       Future.successful(DeliveryResult.Ack)
     }
 
-    val sender = RabbitMQClientFactory.Producer.fromConfig(config.getConfig("producer"), channelFactory, NoOpMonitor.INSTANCE)
+    val sender = RabbitMQClientFactory.Producer.fromConfig(config.getConfig("producer"), channelFactory, Monitor.noOp)
 
     sender.send("test", Bytes.copyFromUtf8(Random.nextString(10)))
 
@@ -86,7 +86,7 @@ class LiveTest extends FunSuite with Eventually {
 
     val d = new AtomicInteger(0)
 
-    RabbitMQClientFactory.Consumer.fromConfig(config.getConfig("consumer"), channelFactory, NoOpMonitor.INSTANCE) { delivery =>
+    RabbitMQClientFactory.Consumer.fromConfig(config.getConfig("consumer"), channelFactory, Monitor.noOp) { delivery =>
       Future {
         Thread.sleep(if (d.get() % 2 == 0) 300 else 0)
         latch.countDown()
@@ -95,7 +95,7 @@ class LiveTest extends FunSuite with Eventually {
       }
     }
 
-    val sender = RabbitMQClientFactory.Producer.fromConfig(config.getConfig("producer"), channelFactory, NoOpMonitor.INSTANCE)
+    val sender = RabbitMQClientFactory.Producer.fromConfig(config.getConfig("producer"), channelFactory, Monitor.noOp)
 
     for (_ <- 1 to count) {
       sender.send("test", Bytes.copyFromUtf8(Random.nextString(10)))
@@ -115,14 +115,14 @@ class LiveTest extends FunSuite with Eventually {
 
     val channelFactory = RabbitMQChannelFactory.fromConfig(config, Some(ex))
 
-    RabbitMQClientFactory.Consumer.fromConfig(config.getConfig("consumer"), channelFactory, NoOpMonitor.INSTANCE) { delivery =>
+    RabbitMQClientFactory.Consumer.fromConfig(config.getConfig("consumer"), channelFactory, Monitor.noOp) { delivery =>
       latch.countDown()
       Future.successful(Ack)
     }
 
-    val sender1 = RabbitMQClientFactory.Producer.fromConfig(config.getConfig("producer"), channelFactory, NoOpMonitor.INSTANCE)
+    val sender1 = RabbitMQClientFactory.Producer.fromConfig(config.getConfig("producer"), channelFactory, Monitor.noOp)
 
-    val sender2 = RabbitMQClientFactory.Producer.fromConfig(config.getConfig("producer2"), channelFactory, NoOpMonitor.INSTANCE)
+    val sender2 = RabbitMQClientFactory.Producer.fromConfig(config.getConfig("producer2"), channelFactory, Monitor.noOp)
 
     for (_ <- 1 to 10) {
       sender1.send("test", Bytes.copyFromUtf8(Random.nextString(10)))
@@ -142,7 +142,7 @@ class LiveTest extends FunSuite with Eventually {
 
     val cnt = new AtomicInteger(0)
 
-    RabbitMQClientFactory.Consumer.fromConfig(config.getConfig("consumer"), channelFactory, NoOpMonitor.INSTANCE) { delivery =>
+    RabbitMQClientFactory.Consumer.fromConfig(config.getConfig("consumer"), channelFactory, Monitor.noOp) { delivery =>
       cnt.incrementAndGet()
       assertResult(true)(Kluzo.getTraceId.nonEmpty)
 
@@ -153,7 +153,7 @@ class LiveTest extends FunSuite with Eventually {
       }
     }
 
-    val sender = RabbitMQClientFactory.Producer.fromConfig(config.getConfig("producer"), channelFactory, NoOpMonitor.INSTANCE)
+    val sender = RabbitMQClientFactory.Producer.fromConfig(config.getConfig("producer"), channelFactory, Monitor.noOp)
 
     for (_ <- 1 to 10) {
       sender.send("test", Bytes.copyFromUtf8(Random.nextString(10)))
@@ -173,14 +173,14 @@ class LiveTest extends FunSuite with Eventually {
 
     val cnt = new AtomicInteger(0)
 
-    RabbitMQClientFactory.Consumer.fromConfig(config.getConfig("consumer"), channelFactory, NoOpMonitor.INSTANCE) { delivery =>
+    RabbitMQClientFactory.Consumer.fromConfig(config.getConfig("consumer"), channelFactory, Monitor.noOp) { delivery =>
       cnt.incrementAndGet()
 
       Thread.sleep(800) // timeout is set to 500 ms
       Future.successful(Ack)
     }
 
-    val sender = RabbitMQClientFactory.Producer.fromConfig(config.getConfig("producer"), channelFactory, NoOpMonitor.INSTANCE)
+    val sender = RabbitMQClientFactory.Producer.fromConfig(config.getConfig("producer"), channelFactory, Monitor.noOp)
 
     for (_ <- 1 to 10) {
       sender.send("test", Bytes.copyFromUtf8(Random.nextString(10)))
@@ -202,13 +202,13 @@ class LiveTest extends FunSuite with Eventually {
 
     val traceId = TraceId.generate
 
-    RabbitMQClientFactory.Consumer.fromConfig(config.getConfig("consumer"), channelFactory, NoOpMonitor.INSTANCE) { delivery =>
+    RabbitMQClientFactory.Consumer.fromConfig(config.getConfig("consumer"), channelFactory, Monitor.noOp) { delivery =>
       cnt.incrementAndGet()
       assertResult(Some(traceId))(Kluzo.getTraceId)
       Future.successful(Ack)
     }
 
-    val sender = RabbitMQClientFactory.Producer.fromConfig(config.getConfig("producer"), channelFactory, NoOpMonitor.INSTANCE)
+    val sender = RabbitMQClientFactory.Producer.fromConfig(config.getConfig("producer"), channelFactory, Monitor.noOp)
 
     for (_ <- 1 to 10) {
       Kluzo.withTraceId(Some(traceId)) {
@@ -232,13 +232,13 @@ class LiveTest extends FunSuite with Eventually {
 
     val traceId = "someTraceId"
 
-    RabbitMQClientFactory.Consumer.fromConfig(config.getConfig("consumer"), channelFactory, NoOpMonitor.INSTANCE) { delivery =>
+    RabbitMQClientFactory.Consumer.fromConfig(config.getConfig("consumer"), channelFactory, Monitor.noOp) { delivery =>
       cnt.incrementAndGet()
       assertResult(Some(TraceId(traceId)))(Kluzo.getTraceId)
       Future.successful(Ack)
     }
 
-    val sender = RabbitMQClientFactory.Producer.fromConfig(config.getConfig("producer"), channelFactory, NoOpMonitor.INSTANCE)
+    val sender = RabbitMQClientFactory.Producer.fromConfig(config.getConfig("producer"), channelFactory, Monitor.noOp)
 
     for (_ <- 1 to 10) {
       val properties = new BasicProperties.Builder()

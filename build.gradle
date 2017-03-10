@@ -76,6 +76,8 @@ dependencies {
     compile 'com.avast:kluzo-scala_?:2.0.17'
     compile 'com.avast.continuity:continuity-core-scala_?:2.0.20'
 
+    compile 'org.xbib:jsr-305:1.0.0'
+
     testCompile "com.avast.metrics:metrics-dropwizard:${metricsVersion}"
 
     testCompile "org.scalaj:scalaj-http_?:2.3.0"

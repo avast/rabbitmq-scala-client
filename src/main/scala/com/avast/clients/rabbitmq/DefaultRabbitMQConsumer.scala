@@ -4,7 +4,7 @@ import com.avast.bytes.Bytes
 import com.avast.clients.rabbitmq.RabbitMQChannelFactory.ServerChannel
 import com.avast.clients.rabbitmq.api.RabbitMQConsumer
 import com.avast.kluzo.{Kluzo, TraceId}
-import com.avast.metrics.api.Monitor
+import com.avast.metrics.scalaapi.Monitor
 import com.avast.utils2.JavaConversions._
 import com.rabbitmq.client.AMQP.BasicProperties
 import com.rabbitmq.client.AMQP.Queue.BindOk
@@ -25,12 +25,12 @@ class DefaultRabbitMQConsumer(
     with RabbitMQConsumer
     with StrictLogging {
 
-  private val readMeter = monitor.newMeter("read")
+  private val readMeter = monitor.meter("read")
   private val resultsMonitor = monitor.named("results")
-  private val resultAckMeter = resultsMonitor.newMeter("ack")
-  private val resultRejectMeter = resultsMonitor.newMeter("reject")
-  private val resultRetryMeter = resultsMonitor.newMeter("retry")
-  private val processingFailedMeter = resultsMonitor.newMeter("processingFailed")
+  private val resultAckMeter = resultsMonitor.meter("ack")
+  private val resultRejectMeter = resultsMonitor.meter("reject")
+  private val resultRetryMeter = resultsMonitor.meter("retry")
+  private val processingFailedMeter = resultsMonitor.meter("processingFailed")
 
   override def handleDelivery(consumerTag: String, envelope: Envelope, properties: BasicProperties, body: Array[Byte]): Unit = {
     val traceId = if (useKluzo && properties.getHeaders != null) {

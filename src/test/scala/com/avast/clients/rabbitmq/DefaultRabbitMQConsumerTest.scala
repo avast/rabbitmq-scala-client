@@ -2,7 +2,7 @@ package com.avast.clients.rabbitmq
 
 import java.util.UUID
 
-import com.avast.metrics.test.NoOpMonitor
+import com.avast.metrics.scalaapi.Monitor
 import com.rabbitmq.client.AMQP.BasicProperties
 import com.rabbitmq.client.Envelope
 import com.rabbitmq.client.impl.recovery.AutorecoveringChannel
@@ -34,7 +34,7 @@ class DefaultRabbitMQConsumerTest extends FunSuite with MockitoSugar with Eventu
       "test",
       channel,
       true,
-      NoOpMonitor.INSTANCE,
+      Monitor.noOp,
       (_, _) => ???
     )({ delivery =>
       assertResult(messageId)(delivery.properties.getMessageId)
@@ -67,7 +67,7 @@ class DefaultRabbitMQConsumerTest extends FunSuite with MockitoSugar with Eventu
       "test",
       channel,
       true,
-      NoOpMonitor.INSTANCE,
+      Monitor.noOp,
       (_, _) => ???
     )({ delivery =>
       assertResult(messageId)(delivery.properties.getMessageId)
@@ -100,7 +100,7 @@ class DefaultRabbitMQConsumerTest extends FunSuite with MockitoSugar with Eventu
       "test",
       channel,
       true,
-      NoOpMonitor.INSTANCE,
+      Monitor.noOp,
       (_, _) => ???
     )({ delivery =>
       assertResult(messageId)(delivery.properties.getMessageId)
@@ -133,7 +133,7 @@ class DefaultRabbitMQConsumerTest extends FunSuite with MockitoSugar with Eventu
       "test",
       channel,
       true,
-      NoOpMonitor.INSTANCE,
+      Monitor.noOp,
       (_, _) => ???
     )({ delivery =>
       assertResult(messageId)(delivery.properties.getMessageId)
@@ -170,7 +170,7 @@ class DefaultRabbitMQConsumerTest extends FunSuite with MockitoSugar with Eventu
       "test",
       channel,
       true,
-      NoOpMonitor.INSTANCE,
+      Monitor.noOp,
       (exchange, routingKey) => {
         channel.queueBind(queueName, exchange, routingKey)
       }

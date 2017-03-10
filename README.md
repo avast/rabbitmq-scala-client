@@ -12,29 +12,9 @@ Author: [Jenda Kolena](mailto:kolena@avast.com)
 For most current version see the [Teamcity](https://teamcity.int.avast.com/viewType.html?buildTypeId=CloudSystems_RabbitMQClient_ReleasePublish).
 
 ## Usage
-```scala
-  val config = ConfigFactory.load().getConfig("myConfig")
 
-  // you need both `ExecutorService` (optionally passed to `RabbitMQChannelFactory`) and `ExecutionContext` (implicitly passed to consumer), both are
-  // used for callbacks execution, so why not to use a `ExecutionContextExecutionService`?
-  implicit val ex: ExecutionContextExecutorService = ???
+### Configuration
 
-  val monitor = new JmxMetricsMonitor("TestDomain")
-
-  // here you create the channel factory; by default, use it for all producers/consumers amongst one RabbitMQ server - they will share a single TCP connection
-  // but have separated channels
-  // if you expect very high load, you can
-  val channelFactory = RabbitMQChannelFactory.fromConfig(config, Some(ex))
-
-  val receiver = RabbitMQClientFactory.Consumer.fromConfig(config.getConfig("consumer"), channelFactory, monitor) { delivery =>
-    println(delivery)
-    Future.successful(true)
-  }
-
-  val sender = RabbitMQClientFactory.Producer.fromConfig(config.getConfig("producer"), channelFactory, monitor)
-```
-
-This is how to configuration should look like:
 ```
 myConfig {
   hosts = ["localhost:5672"]
@@ -126,21 +106,54 @@ As you may have noticed, there are `producer` and `consumer` configurations *ins
 have to be this structured, it seems like a good strategy to have all producers/consumers in block which configures connection to the RabbitMQ server. In case
 there are more of them, proper naming like `producer-testing` should be used.
 
-### Usage from Java
-Even though the API is for Scala it should be usable also from Java. Use something like:
-```java
-import com.avast.clients.rabbitmq.RabbitMQChannelFactory;
-import com.avast.clients.rabbitmq.RabbitMQChannelFactory$;
-import com.avast.clients.rabbitmq.RabbitMQClientFactory;
-import com.avast.clients.rabbitmq.api.RabbitMQConsumer;
-import scala.Option;
+### Scala usage
 
-public class Test {
-    public static void main(String[] args) {
-        final RabbitMQChannelFactory rabbitMQChannelFactory = RabbitMQChannelFactory$.MODULE$.fromConfig(config, Option.apply(executor));
-        final RabbitMQConsumer rabbitMQConsumer = RabbitMQClientFactory.Consumer.fromConfig(config,rabbitMQChannelFactory,monitor, ...)
-        final RabbitMQProducer producer = RabbitMQClientFactory.Producer$.MODULE$.fromConfig(config, rabbitMQChannelFactory, monitor);
-    }
-}
+```scala
+  val config = ConfigFactory.load().getConfig("myConfig")
+
+  // you need both `ExecutorService` (optionally passed to `RabbitMQChannelFactory`) and `ExecutionContext` (implicitly passed to consumer), both are
+  // used for callbacks execution, so why not to use a `ExecutionContextExecutionService`?
+  implicit val ex: ExecutionContextExecutorService = ???
+
+  val monitor = new JmxMetricsMonitor("TestDomain")
+
+  // here you create the channel factory; by default, use it for all producers/consumers amongst one RabbitMQ server - they will share a single TCP connection
+  // but have separated channels
+  // if you expect very high load, you can
+  val channelFactory = RabbitMQChannelFactory.fromConfig(config, Some(ex))
+
+  val receiver = RabbitMQClientFactory.Consumer.fromConfig(config.getConfig("consumer"), channelFactory, monitor) { delivery =>
+    println(delivery)
+    Future.successful(true)
+  }
+
+  val sender = RabbitMQClientFactory.Producer.fromConfig(config.getConfig("producer"), channelFactory, monitor)
+```
+
+### Java usage
+
+The Java api is placed in subpackage `javaapi` (but not all classes have their Java counterparts, some have to be imported from Scala API,
+depending on your usage).  
+Don't get confused by the Java API actually implemented in Scala.
+
+```java
+final RabbitMQChannelFactory rabbitMQChannelFactory = RabbitMQChannelFactory.fromConfig(config, executor, null, null, null);
+
+final RabbitMQConsumer rabbitMQConsumer = RabbitMQClientFactory.Consumer().fromConfig(
+    config.getConfig("consumer"),
+    rabbitMQChannelFactory,
+    NoOpMonitor.INSTANCE,
+    null,
+    executor,
+    ExampleJava::handleDelivery
+);
+
+final RabbitMQProducer rabbitMQProducer = RabbitMQClientFactory.Producer().fromConfig(
+    config.getConfig("producer"),
+    rabbitMQChannelFactory,
+    NoOpMonitor.INSTANCE
+);
 
 ```
+
+See [full example](/src/test/java/ExampleJava.java)
