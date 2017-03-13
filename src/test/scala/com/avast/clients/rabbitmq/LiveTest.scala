@@ -91,7 +91,10 @@ class LiveTest extends FunSuite with Eventually {
         Thread.sleep(if (d.get() % 2 == 0) 300 else 0)
         latch.countDown()
 
-        if (d.incrementAndGet() > 5) Ack else Retry
+        if (d.incrementAndGet() > 5) Ack
+        else {
+          if (d.incrementAndGet() > 50) Retry else Republish
+        }
       }
     }
 

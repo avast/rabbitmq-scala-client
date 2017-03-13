@@ -15,7 +15,7 @@ For most current version see the [Teamcity](https://teamcity.int.avast.com/viewT
 
 ### Configuration
 
-```
+```hocon
 myConfig {
   hosts = ["localhost:5672"]
   virtualHost = "/"
@@ -157,3 +157,46 @@ final RabbitMQProducer rabbitMQProducer = RabbitMQClientFactory.createProducerfr
 ```
 
 See [full example](/src/test/java/ExampleJava.java)
+
+## Notes
+
+### Structured config
+It's highly recommended to have the config structured ad in the example, that means:
+```hocon
+rabbitConfig {
+  // connection config
+  
+  consumer1 {
+    //consumer config
+  }
+  
+  consumer2 {
+    //consumer config
+  }
+  
+  producer1 {
+    //consumer config
+  }
+  
+  producer2 {
+    //consumer config
+  }
+}
+
+```
+It usually leads to much more clear config.
+
+### DeliveryResult
+The consumers `readAction` returns `Future` of `DeliveryResult`. The `DeliveryResult` has 4 possible values
+(descriptions of usual use-cases):
+1. Ack - the message was processed; it will be removed form the queue
+1. Reject - the message is corrupted or for some other reason we don't want to see it again; it will be removed from the queue
+1. Retry - the message couldn't be processed at this moment (unreachable 3rd party services?); it will be requeued (inserted on the top of
+the queue)
+1. Republish - the message may be corrupted but we're not sure; it will be re-published to the bottom of the queue (as a new message and the
+original one will be removed). It's usually wise to use some customized header as a counter to prevent an infinite republishing of the message.
+
+####Difference between _Retry_ and _Republish_
+When using _Retry_ the message can effectively cause starvation of other messages in the queue
+until the message itself can be processed; on the other hand _Republish_ inserts the message to the original queue as a new message and it
+lets the consumer handle other messages (if they can be processed).

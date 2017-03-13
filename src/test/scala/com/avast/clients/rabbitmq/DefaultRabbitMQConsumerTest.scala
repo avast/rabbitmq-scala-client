@@ -33,6 +33,7 @@ class DefaultRabbitMQConsumerTest extends FunSuite with MockitoSugar with Eventu
     val consumer = new DefaultRabbitMQConsumer(
       "test",
       channel,
+      "queueName",
       true,
       Monitor.noOp,
       (_, _) => ???
@@ -42,15 +43,18 @@ class DefaultRabbitMQConsumerTest extends FunSuite with MockitoSugar with Eventu
       Future.successful(DeliveryResult.Ack)
     })
 
-    consumer.handleDelivery("abcd", envelope, properties, Random.nextString(5).getBytes)
+    val body = Random.nextString(5).getBytes
+    consumer.handleDelivery("abcd", envelope, properties, body)
 
     eventually(timeout(Span(1, Seconds)), interval(Span(0.1, Seconds))) {
       verify(channel, times(1)).basicAck(deliveryTag, false)
-      verify(channel, times(0)).basicNack(deliveryTag, false, true)
+      verify(channel, times(0)).basicReject(deliveryTag, true)
+      verify(channel, times(0)).basicReject(deliveryTag, false)
+      verify(channel, times(0)).basicPublish("", "queueName", properties, body)
     }
   }
 
-  test("should NACK") {
+  test("should RETRY") {
     val messageId = UUID.randomUUID().toString
 
     val deliveryTag = Random.nextInt(1000)
@@ -66,6 +70,7 @@ class DefaultRabbitMQConsumerTest extends FunSuite with MockitoSugar with Eventu
     val consumer = new DefaultRabbitMQConsumer(
       "test",
       channel,
+      "queueName",
       true,
       Monitor.noOp,
       (_, _) => ???
@@ -75,11 +80,88 @@ class DefaultRabbitMQConsumerTest extends FunSuite with MockitoSugar with Eventu
       Future.successful(DeliveryResult.Retry)
     })
 
-    consumer.handleDelivery("abcd", envelope, properties, Random.nextString(5).getBytes)
+    val body = Random.nextString(5).getBytes
+    consumer.handleDelivery("abcd", envelope, properties, body)
 
     eventually(timeout(Span(1, Seconds)), interval(Span(0.1, Seconds))) {
       verify(channel, times(0)).basicAck(deliveryTag, false)
       verify(channel, times(1)).basicReject(deliveryTag, true)
+      verify(channel, times(0)).basicReject(deliveryTag, false)
+      verify(channel, times(0)).basicPublish("", "queueName", properties, body)
+    }
+  }
+
+  test("should REJECT") {
+    val messageId = UUID.randomUUID().toString
+
+    val deliveryTag = Random.nextInt(1000)
+
+    val envelope = mock[Envelope]
+    when(envelope.getDeliveryTag).thenReturn(deliveryTag)
+
+    val properties = mock[BasicProperties]
+    when(properties.getMessageId).thenReturn(messageId)
+
+    val channel = mock[AutorecoveringChannel]
+
+    val consumer = new DefaultRabbitMQConsumer(
+      "test",
+      channel,
+      "queueName",
+      true,
+      Monitor.noOp,
+      (_, _) => ???
+    )({ delivery =>
+      assertResult(messageId)(delivery.properties.getMessageId)
+
+      Future.successful(DeliveryResult.Reject)
+    })
+
+    val body = Random.nextString(5).getBytes
+    consumer.handleDelivery("abcd", envelope, properties, body)
+
+    eventually(timeout(Span(1, Seconds)), interval(Span(0.1, Seconds))) {
+      verify(channel, times(0)).basicAck(deliveryTag, false)
+      verify(channel, times(0)).basicReject(deliveryTag, true)
+      verify(channel, times(1)).basicReject(deliveryTag, false)
+      verify(channel, times(0)).basicPublish("", "queueName", properties, body)
+    }
+  }
+
+  test("should REPUBLISH") {
+    val messageId = UUID.randomUUID().toString
+
+    val deliveryTag = Random.nextInt(1000)
+
+    val envelope = mock[Envelope]
+    when(envelope.getDeliveryTag).thenReturn(deliveryTag)
+
+    val properties = mock[BasicProperties]
+    when(properties.getMessageId).thenReturn(messageId)
+
+    val channel = mock[AutorecoveringChannel]
+
+    val consumer = new DefaultRabbitMQConsumer(
+      "test",
+      channel,
+      "queueName",
+      true,
+      Monitor.noOp,
+      (_, _) => ???
+    )({ delivery =>
+      assertResult(messageId)(delivery.properties.getMessageId)
+
+      Future.successful(DeliveryResult.Republish)
+    })
+
+    val body = Random.nextString(5).getBytes
+    consumer.handleDelivery("abcd", envelope, properties, body)
+
+    eventually(timeout(Span(1, Seconds)), interval(Span(0.1, Seconds))) {
+      verify(channel, times(1)).basicAck(deliveryTag, false)
+      verify(channel, times(0)).basicReject(deliveryTag, true)
+      verify(channel, times(0)).basicReject(deliveryTag, false)
+      verify(channel, times(1)).basicPublish("", "queueName", properties, body)
     }
   }
 
@@ -99,6 +181,7 @@ class DefaultRabbitMQConsumerTest extends FunSuite with MockitoSugar with Eventu
     val consumer = new DefaultRabbitMQConsumer(
       "test",
       channel,
+      "queueName",
       true,
       Monitor.noOp,
       (_, _) => ???
@@ -132,6 +215,7 @@ class DefaultRabbitMQConsumerTest extends FunSuite with MockitoSugar with Eventu
     val consumer = new DefaultRabbitMQConsumer(
       "test",
       channel,
+      "queueName",
       true,
       Monitor.noOp,
       (_, _) => ???
@@ -169,6 +253,7 @@ class DefaultRabbitMQConsumerTest extends FunSuite with MockitoSugar with Eventu
     val consumer = new DefaultRabbitMQConsumer(
       "test",
       channel,
+      "queueName",
       true,
       Monitor.noOp,
       (exchange, routingKey) => {

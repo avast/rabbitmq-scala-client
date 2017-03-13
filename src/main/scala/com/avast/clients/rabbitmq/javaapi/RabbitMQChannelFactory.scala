@@ -24,7 +24,7 @@ object RabbitMQChannelFactory {
   }
 
   //scalastyle:off
-  class Builder private[RabbitMQChannelFactory](config: Either[Config, RabbitMQConnectionConfig]) {
+  class Builder private[RabbitMQChannelFactory] (config: Either[Config, RabbitMQConnectionConfig]) {
     private var executor: Option[ExecutorService] = None
     private var connectionListener: ConnectionListener = DefaultListeners.DefaultConnectionListener
     private var channelListener: ChannelListener = DefaultListeners.DefaultChannelListener

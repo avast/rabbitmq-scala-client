@@ -84,7 +84,7 @@ object RabbitMQClientFactory extends LazyLogging {
                    channelFactory: RabbitMQChannelFactory,
                    monitor: Monitor,
                    scheduledExecutorService: ScheduledExecutorService = FutureTimeouter.Implicits.DefaultScheduledExecutor)(
-                    readAction: Delivery => Future[DeliveryResult])(implicit ec: ExecutionContext): RabbitMQConsumer = {
+        readAction: Delivery => Future[DeliveryResult])(implicit ec: ExecutionContext): RabbitMQConsumer = {
 
       val mergedConfig = providedConfig.withFallback(ConsumerDefaultConfig)
 
@@ -117,7 +117,7 @@ object RabbitMQClientFactory extends LazyLogging {
                channelFactory: RabbitMQChannelFactory,
                monitor: Monitor,
                scheduledExecutorService: ScheduledExecutorService)(readAction: (Delivery) => Future[DeliveryResult])(
-                implicit ec: ExecutionContext): RabbitMQConsumer = {
+        implicit ec: ExecutionContext): RabbitMQConsumer = {
       val channel = channelFactory.createChannel()
 
       prepareConsumer(consumerConfig, readAction, channelFactory.info, channel, monitor, scheduledExecutorService)
@@ -221,8 +221,8 @@ object RabbitMQClientFactory extends LazyLogging {
   }
 
   private[rabbitmq] def bindQueue(channelFactoryInfo: RabbitMqChannelFactoryInfo)(channel: ServerChannel, queueName: String)(
-    exchangeName: String,
-    routingKey: String): AMQP.Queue.BindOk = {
+      exchangeName: String,
+      routingKey: String): AMQP.Queue.BindOk = {
     logger.info(s"Binding $exchangeName($routingKey) -> '$queueName' in virtual host '${channelFactoryInfo.virtualHost}'")
 
     channel.queueBind(queueName, exchangeName, routingKey)
@@ -268,8 +268,9 @@ object RabbitMQClientFactory extends LazyLogging {
       }
     }
 
-    val consumer = new DefaultRabbitMQConsumer(name, channel, useKluzo, monitor, bindQueue(channelFactoryInfo)(channel, queueName))(
-      readAction)(finalExecutor)
+    val consumer =
+      new DefaultRabbitMQConsumer(name, channel, queueName, useKluzo, monitor, bindQueue(channelFactoryInfo)(channel, queueName))(
+        readAction)(finalExecutor)
 
     val tag = if (consumerTag == "Default") "" else consumerTag
 
