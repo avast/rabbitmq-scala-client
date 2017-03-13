@@ -18,8 +18,10 @@ import scala.util.{Failure, Success, Try}
 class DefaultRabbitMQConsumer(
     name: String,
     channel: ServerChannel,
+    queueName: String,
     useKluzo: Boolean,
     monitor: Monitor,
+    failureAction: DeliveryResult,
     bindToAction: (String, String) => BindOk)(readAction: Delivery => Future[DeliveryResult])(implicit ec: ExecutionContext)
     extends DefaultConsumer(channel)
     with RabbitMQConsumer
@@ -30,6 +32,7 @@ class DefaultRabbitMQConsumer(
   private val resultAckMeter = resultsMonitor.meter("ack")
   private val resultRejectMeter = resultsMonitor.meter("reject")
   private val resultRetryMeter = resultsMonitor.meter("retry")
+  private val resultRepublishMeter = resultsMonitor.meter("republish")
   private val processingFailedMeter = resultsMonitor.meter("processingFailed")
 
   override def handleDelivery(consumerTag: String, envelope: Envelope, properties: BasicProperties, body: Array[Byte]): Unit = {
@@ -56,26 +59,40 @@ class DefaultRabbitMQConsumer(
 
           val message = Delivery(Bytes.copyFrom(body), properties, Option(envelope.getRoutingKey).getOrElse(""))
 
-          import DeliveryResult._
+          readAction(message).andThen(handleResult(messageId, deliveryTag, properties, body))
 
-          readAction(message)
-            .andThen {
-              case Success(Ack) => ack(messageId, deliveryTag)
-              case Success(Reject) => reject(messageId, deliveryTag)
-              case Success(Retry) => retry(messageId, deliveryTag)
-              case Failure(NonFatal(e)) =>
-                processingFailedMeter.mark()
-                logger.error("Error while executing callback, it's probably u BUG")
-                retry(messageId, deliveryTag)
-            }
           ()
         } catch {
           case NonFatal(e) =>
             processingFailedMeter.mark()
-            logger.error("Error while executing callback, it's probably u BUG")
+            logger.error("Error while executing callback, it's probably u BUG", e)
             retry(messageId, deliveryTag)
         }
       })
+    }
+  }
+
+  private def handleResult(messageId: String,
+                           deliveryTag: Long,
+                           properties: BasicProperties,
+                           body: Array[Byte]): PartialFunction[Try[DeliveryResult], Unit] = {
+    import DeliveryResult._
+
+    {
+      case Success(Ack) => ack(messageId, deliveryTag)
+      case Success(Reject) => reject(messageId, deliveryTag)
+      case Success(Retry) => retry(messageId, deliveryTag)
+      case Success(Republish) => republish(messageId, deliveryTag, properties, body)
+      case Failure(NonFatal(e)) =>
+        processingFailedMeter.mark()
+        logger.error("Error while executing callback, it's probably a BUG")
+
+        failureAction match {
+          case (Ack) => ack(messageId, deliveryTag)
+          case (Reject) => reject(messageId, deliveryTag)
+          case (Retry) => retry(messageId, deliveryTag)
+          case (Republish) => republish(messageId, deliveryTag, properties, body)
+        }
     }
   }
 
@@ -112,6 +129,17 @@ class DefaultRabbitMQConsumer(
       logger.debug(s"[$name] REJECT (with requeue) delivery $messageId, deliveryTag $deliveryTag")
       channel.basicReject(deliveryTag, true)
       resultRetryMeter.mark()
+    } catch {
+      case NonFatal(e) => logger.warn(s"[$name] Error while rejecting (with requeue) the delivery", e)
+    }
+  }
+
+  private def republish(messageId: String, deliveryTag: Long, properties: BasicProperties, body: Array[Byte]): Unit = {
+    try {
+      logger.debug(s"[$name] Republishing delivery ($messageId, deliveryTag $deliveryTag) to end of queue '$queueName'")
+      channel.basicPublish("", queueName, properties, body)
+      channel.basicAck(deliveryTag, false)
+      resultRepublishMeter.mark()
     } catch {
       case NonFatal(e) => logger.warn(s"[$name] Error while rejecting (with requeue) the delivery", e)
     }

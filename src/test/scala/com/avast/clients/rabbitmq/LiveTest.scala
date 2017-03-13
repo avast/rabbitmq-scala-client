@@ -91,7 +91,10 @@ class LiveTest extends FunSuite with Eventually {
         Thread.sleep(if (d.get() % 2 == 0) 300 else 0)
         latch.countDown()
 
-        if (d.incrementAndGet() > 5) Ack else Retry
+        if (d.incrementAndGet() < (cnt - 50)) Ack
+        else {
+          if (d.incrementAndGet() < (cnt - 10)) Retry else Republish
+        }
       }
     }
 
@@ -101,7 +104,7 @@ class LiveTest extends FunSuite with Eventually {
       sender.send("test", Bytes.copyFromUtf8(Random.nextString(10)))
     }
 
-    eventually(timeout(Span(2, Seconds)), interval(Span(0.1, Seconds))) {
+    eventually(timeout(Span(3, Seconds)), interval(Span(0.1, Seconds))) {
       assertResult(true)(latch.await(1000, TimeUnit.MILLISECONDS))
       assertResult(0)(testHelper.getMessagesCount(queueName))
     }
@@ -159,7 +162,7 @@ class LiveTest extends FunSuite with Eventually {
       sender.send("test", Bytes.copyFromUtf8(Random.nextString(10)))
     }
 
-    eventually(timeout(Span(2, Seconds)), interval(Span(0.25, Seconds))) {
+    eventually(timeout(Span(3, Seconds)), interval(Span(0.25, Seconds))) {
       assert(cnt.get() >= 40)
       assert(testHelper.getMessagesCount(queueName) <= 20)
     }
@@ -186,7 +189,7 @@ class LiveTest extends FunSuite with Eventually {
       sender.send("test", Bytes.copyFromUtf8(Random.nextString(10)))
     }
 
-    eventually(timeout(Span(2, Seconds)), interval(Span(0.25, Seconds))) {
+    eventually(timeout(Span(3, Seconds)), interval(Span(0.25, Seconds))) {
       assert(cnt.get() >= 40)
       assert(testHelper.getMessagesCount(queueName) <= 20)
     }
@@ -216,8 +219,8 @@ class LiveTest extends FunSuite with Eventually {
       }
     }
 
-    eventually(timeout(Span(2, Seconds)), interval(Span(0.25, Seconds))) {
-      assert(cnt.get() >= 10)
+    eventually(timeout(Span(3, Seconds)), interval(Span(0.25, Seconds))) {
+      assert(cnt.get() == 10)
       assert(testHelper.getMessagesCount(queueName) <= 0)
     }
   }
@@ -248,7 +251,7 @@ class LiveTest extends FunSuite with Eventually {
       sender.send("test", Bytes.copyFromUtf8(Random.nextString(10)), properties)
     }
 
-    eventually(timeout(Span(2, Seconds)), interval(Span(0.25, Seconds))) {
+    eventually(timeout(Span(3, Seconds)), interval(Span(0.25, Seconds))) {
       assert(cnt.get() >= 10)
       assert(testHelper.getMessagesCount(queueName) <= 0)
     }
