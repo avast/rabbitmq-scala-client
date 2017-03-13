@@ -161,7 +161,7 @@ See [full example](/src/test/java/ExampleJava.java)
 ## Notes
 
 ### Structured config
-It's highly recommended to have the config structured ad in the example, that means:
+It's highly recommended to have the config structured as in the example, that means:
 ```hocon
 rabbitConfig {
   // connection config
@@ -175,11 +175,11 @@ rabbitConfig {
   }
   
   producer1 {
-    //consumer config
+    //producer config
   }
   
   producer2 {
-    //consumer config
+    //producer config
   }
 }
 
@@ -187,9 +187,9 @@ rabbitConfig {
 It usually leads to much more clear config.
 
 ### DeliveryResult
-The consumers `readAction` returns `Future` of `DeliveryResult`. The `DeliveryResult` has 4 possible values
+The consumers `readAction` returns `Future` of [`DeliveryResult`](src/main/scala/com/avast/clients/rabbitmq/DeliveryResult.scala). The `DeliveryResult` has 4 possible values
 (descriptions of usual use-cases):
-1. Ack - the message was processed; it will be removed form the queue
+1. Ack - the message was processed; it will be removed from the queue
 1. Reject - the message is corrupted or for some other reason we don't want to see it again; it will be removed from the queue
 1. Retry - the message couldn't be processed at this moment (unreachable 3rd party services?); it will be requeued (inserted on the top of
 the queue)
