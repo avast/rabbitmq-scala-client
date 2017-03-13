@@ -42,6 +42,18 @@ object RabbitMQClientFactory extends LazyLogging {
     override def read(config: Config, path: String): Path = Paths.get(config.getString(path))
   }
 
+  private implicit final val DeliveryResultReader: ValueReader[DeliveryResult] = new ValueReader[DeliveryResult] {
+
+    import DeliveryResult._
+
+    override def read(config: Config, path: String): DeliveryResult = config.getString(path).toLowerCase match {
+      case "ack" => Ack
+      case "reject" => Reject
+      case "retry" => Retry
+      case "republish" => Republish
+    }
+  }
+
   object Producer {
 
     /** Creates new instance of producer, using the passed TypeSafe configuration.
@@ -234,16 +246,41 @@ object RabbitMQClientFactory extends LazyLogging {
                               userReadAction: Delivery => Future[DeliveryResult],
                               monitor: Monitor,
                               scheduledExecutor: ScheduledExecutorService)(ec: ExecutionContext): RabbitMQConsumer = {
-    import FutureTimeouter._
     import consumerConfig._
 
-    implicit val finalExecutor = if (useKluzo) {
+    val finalExecutor = if (useKluzo) {
       Continuity.wrapExecutionContext(ec)
     } else {
       ec
     }
 
-    val readAction = { (delivery: Delivery) =>
+    val readAction = wrapReadAction(consumerConfig, userReadAction, finalExecutor, scheduledExecutor)(finalExecutor)
+
+    val consumer =
+      new DefaultRabbitMQConsumer(name,
+                                  channel,
+                                  queueName,
+                                  useKluzo,
+                                  monitor,
+                                  failureAction,
+                                  bindQueue(channelFactoryInfo)(channel, queueName))(readAction)(finalExecutor)
+
+    val tag = if (consumerTag == "Default") "" else consumerTag
+
+    channel.basicConsume(queueName, false, tag, consumer)
+
+    consumer
+  }
+
+  private def wrapReadAction(
+      consumerConfig: ConsumerConfig,
+      userReadAction: Delivery => Future[DeliveryResult],
+      finalExecutor: ExecutionContext,
+      scheduledExecutor: ScheduledExecutorService)(implicit ec: ExecutionContext): (Delivery) => Future[DeliveryResult] = {
+    import FutureTimeouter._
+    import consumerConfig._
+
+    (delivery: Delivery) =>
       try {
         // we try to catch also long-lasting synchronous work on the thread
         val action = Future {
@@ -266,17 +303,7 @@ object RabbitMQClientFactory extends LazyLogging {
           logger.error("Error while executing callback, will be redelivered", e)
           Future.successful(DeliveryResult.Retry)
       }
-    }
 
-    val consumer =
-      new DefaultRabbitMQConsumer(name, channel, queueName, useKluzo, monitor, bindQueue(channelFactoryInfo)(channel, queueName))(
-        readAction)(finalExecutor)
-
-    val tag = if (consumerTag == "Default") "" else consumerTag
-
-    channel.basicConsume(queueName, false, tag, consumer)
-
-    consumer
   }
 
   implicit class WrapConfig(val c: Config) extends AnyVal {
@@ -292,6 +319,7 @@ object RabbitMQClientFactory extends LazyLogging {
 
 case class ConsumerConfig(queueName: String,
                           processTimeout: Duration,
+                          failureAction: DeliveryResult,
                           prefetchCount: Int,
                           useKluzo: Boolean,
                           declare: AutoDeclareQueue,

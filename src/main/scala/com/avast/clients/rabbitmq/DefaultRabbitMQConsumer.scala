@@ -21,6 +21,7 @@ class DefaultRabbitMQConsumer(
     queueName: String,
     useKluzo: Boolean,
     monitor: Monitor,
+    failureAction: DeliveryResult,
     bindToAction: (String, String) => BindOk)(readAction: Delivery => Future[DeliveryResult])(implicit ec: ExecutionContext)
     extends DefaultConsumer(channel)
     with RabbitMQConsumer
@@ -58,27 +59,40 @@ class DefaultRabbitMQConsumer(
 
           val message = Delivery(Bytes.copyFrom(body), properties, Option(envelope.getRoutingKey).getOrElse(""))
 
-          import DeliveryResult._
+          readAction(message).andThen(handleResult(messageId, deliveryTag, properties, body))
 
-          readAction(message)
-            .andThen {
-              case Success(Ack) => ack(messageId, deliveryTag)
-              case Success(Reject) => reject(messageId, deliveryTag)
-              case Success(Retry) => retry(messageId, deliveryTag)
-              case Success(Republish) => republish(messageId, deliveryTag, properties, body)
-              case Failure(NonFatal(e)) =>
-                processingFailedMeter.mark()
-                logger.error("Error while executing callback, it's probably u BUG")
-                retry(messageId, deliveryTag)
-            }
           ()
         } catch {
           case NonFatal(e) =>
             processingFailedMeter.mark()
-            logger.error("Error while executing callback, it's probably u BUG")
+            logger.error("Error while executing callback, it's probably u BUG", e)
             retry(messageId, deliveryTag)
         }
       })
+    }
+  }
+
+  private def handleResult(messageId: String,
+                           deliveryTag: Long,
+                           properties: BasicProperties,
+                           body: Array[Byte]): PartialFunction[Try[DeliveryResult], Unit] = {
+    import DeliveryResult._
+
+    {
+      case Success(Ack) => ack(messageId, deliveryTag)
+      case Success(Reject) => reject(messageId, deliveryTag)
+      case Success(Retry) => retry(messageId, deliveryTag)
+      case Success(Republish) => republish(messageId, deliveryTag, properties, body)
+      case Failure(NonFatal(e)) =>
+        processingFailedMeter.mark()
+        logger.error("Error while executing callback, it's probably a BUG")
+
+        failureAction match {
+          case (Ack) => ack(messageId, deliveryTag)
+          case (Reject) => reject(messageId, deliveryTag)
+          case (Retry) => retry(messageId, deliveryTag)
+          case (Republish) => republish(messageId, deliveryTag, properties, body)
+        }
     }
   }
 
