@@ -188,7 +188,7 @@ class DefaultRabbitMQConsumerTest extends FunSuite with MockitoSugar with Eventu
       "queueName",
       true,
       Monitor.noOp,
-      DeliveryResult.Reject,
+      DeliveryResult.Retry,
       (_, _) => ???
     )({ delivery =>
       assertResult(messageId)(delivery.properties.getMessageId)
@@ -223,7 +223,7 @@ class DefaultRabbitMQConsumerTest extends FunSuite with MockitoSugar with Eventu
       "queueName",
       true,
       Monitor.noOp,
-      DeliveryResult.Reject,
+      DeliveryResult.Retry,
       (_, _) => ???
     )({ delivery =>
       assertResult(messageId)(delivery.properties.getMessageId)
@@ -262,7 +262,7 @@ class DefaultRabbitMQConsumerTest extends FunSuite with MockitoSugar with Eventu
       "queueName",
       true,
       Monitor.noOp,
-      DeliveryResult.Reject,
+      DeliveryResult.Retry,
       (exchange, routingKey) => {
         channel.queueBind(queueName, exchange, routingKey)
       }

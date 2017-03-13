@@ -248,13 +248,13 @@ object RabbitMQClientFactory extends LazyLogging {
                               scheduledExecutor: ScheduledExecutorService)(ec: ExecutionContext): RabbitMQConsumer = {
     import consumerConfig._
 
-    val finalExecutor = if (useKluzo) {
+    implicit val finalExecutor = if (useKluzo) {
       Continuity.wrapExecutionContext(ec)
     } else {
       ec
     }
 
-    val readAction = wrapReadAction(consumerConfig, userReadAction, finalExecutor, scheduledExecutor)(finalExecutor)
+    val readAction = wrapReadAction(consumerConfig, userReadAction, scheduledExecutor)
 
     val consumer =
       new DefaultRabbitMQConsumer(name,
@@ -263,7 +263,7 @@ object RabbitMQClientFactory extends LazyLogging {
                                   useKluzo,
                                   monitor,
                                   failureAction,
-                                  bindQueue(channelFactoryInfo)(channel, queueName))(readAction)(finalExecutor)
+                                  bindQueue(channelFactoryInfo)(channel, queueName))(readAction)
 
     val tag = if (consumerTag == "Default") "" else consumerTag
 
@@ -275,8 +275,7 @@ object RabbitMQClientFactory extends LazyLogging {
   private def wrapReadAction(
       consumerConfig: ConsumerConfig,
       userReadAction: Delivery => Future[DeliveryResult],
-      finalExecutor: ExecutionContext,
-      scheduledExecutor: ScheduledExecutorService)(implicit ec: ExecutionContext): (Delivery) => Future[DeliveryResult] = {
+      scheduledExecutor: ScheduledExecutorService)(implicit finalExecutor: ExecutionContext): (Delivery) => Future[DeliveryResult] = {
     import FutureTimeouter._
     import consumerConfig._
 
