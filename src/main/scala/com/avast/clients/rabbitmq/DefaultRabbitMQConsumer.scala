@@ -1,5 +1,7 @@
 package com.avast.clients.rabbitmq
 
+import java.util.concurrent.atomic.AtomicInteger
+
 import com.avast.bytes.Bytes
 import com.avast.clients.rabbitmq.RabbitMQChannelFactory.ServerChannel
 import com.avast.clients.rabbitmq.api.RabbitMQConsumer
@@ -16,14 +18,14 @@ import scala.util.control.NonFatal
 import scala.util.{Failure, Success, Try}
 
 class DefaultRabbitMQConsumer(
-    name: String,
-    channel: ServerChannel,
-    queueName: String,
-    useKluzo: Boolean,
-    monitor: Monitor,
-    failureAction: DeliveryResult,
-    bindToAction: (String, String) => BindOk)(readAction: Delivery => Future[DeliveryResult])(implicit ec: ExecutionContext)
-    extends DefaultConsumer(channel)
+                               name: String,
+                               channel: ServerChannel,
+                               queueName: String,
+                               useKluzo: Boolean,
+                               monitor: Monitor,
+                               failureAction: DeliveryResult,
+                               bindToAction: (String, String) => BindOk)(readAction: Delivery => Future[DeliveryResult])(implicit ec: ExecutionContext)
+  extends DefaultConsumer(channel)
     with RabbitMQConsumer
     with StrictLogging {
 
@@ -35,40 +37,53 @@ class DefaultRabbitMQConsumer(
   private val resultRepublishMeter = resultsMonitor.meter("republish")
   private val processingFailedMeter = resultsMonitor.meter("processingFailed")
 
+  private val tasksMonitor = monitor.named("tasks")
+
+  private val processingCount = new AtomicInteger(0)
+
+  tasksMonitor.gauge("processing")(() => processingCount.get())
+
+  private val processedTimer = tasksMonitor.timerPair("processed")
+
   override def handleDelivery(consumerTag: String, envelope: Envelope, properties: BasicProperties, body: Array[Byte]): Unit = {
-    val traceId = if (useKluzo && properties.getHeaders != null) {
-      val traceId = Option(properties.getHeaders.get(Kluzo.HttpHeaderName))
-        .map(_.toString)
-        .map(TraceId(_))
-        .getOrElse(TraceId.generate)
+    processedTimer.time {
+      processingCount.incrementAndGet()
 
-      Some(traceId)
-    } else {
-      None
-    }
+      val traceId = if (useKluzo && properties.getHeaders != null) {
+        val traceId = Option(properties.getHeaders.get(Kluzo.HttpHeaderName))
+          .map(_.toString)
+          .map(TraceId(_))
+          .getOrElse(TraceId.generate)
 
-    Kluzo.withTraceId(traceId) {
-      ec.execute(() => {
-        val messageId = properties.getMessageId
-        val deliveryTag = envelope.getDeliveryTag
+        Some(traceId)
+      } else {
+        None
+      }
 
-        try {
-          readMeter.mark()
+      Kluzo.withTraceId(traceId) {
+        ec.execute(() => {
+          val messageId = properties.getMessageId
+          val deliveryTag = envelope.getDeliveryTag
 
-          logger.debug(s"[$name] Read delivery with ID $messageId, deliveryTag $deliveryTag")
+          try {
+            readMeter.mark()
 
-          val message = Delivery(Bytes.copyFrom(body), properties, Option(envelope.getRoutingKey).getOrElse(""))
+            logger.debug(s"[$name] Read delivery with ID $messageId, deliveryTag $deliveryTag")
 
-          readAction(message).andThen(handleResult(messageId, deliveryTag, properties, body))
+            val message = Delivery(Bytes.copyFrom(body), properties, Option(envelope.getRoutingKey).getOrElse(""))
 
-          ()
-        } catch {
-          case NonFatal(e) =>
-            processingFailedMeter.mark()
-            logger.error("Error while executing callback, it's probably u BUG", e)
-            retry(messageId, deliveryTag)
-        }
-      })
+            readAction(message).andThen(handleResult(messageId, deliveryTag, properties, body))
+
+            ()
+          } catch {
+            case NonFatal(e) =>
+              processingCount.decrementAndGet()
+              processingFailedMeter.mark()
+              logger.error("Error while executing callback, it's probably u BUG", e)
+              executeFailureAction(messageId, deliveryTag, properties, body)
+          }
+        })
+      }
     }
   }
 
@@ -77,6 +92,8 @@ class DefaultRabbitMQConsumer(
                            properties: BasicProperties,
                            body: Array[Byte]): PartialFunction[Try[DeliveryResult], Unit] = {
     import DeliveryResult._
+
+    processingCount.decrementAndGet()
 
     {
       case Success(Ack) => ack(messageId, deliveryTag)
@@ -87,12 +104,18 @@ class DefaultRabbitMQConsumer(
         processingFailedMeter.mark()
         logger.error("Error while executing callback, it's probably a BUG")
 
-        failureAction match {
-          case (Ack) => ack(messageId, deliveryTag)
-          case (Reject) => reject(messageId, deliveryTag)
-          case (Retry) => retry(messageId, deliveryTag)
-          case (Republish) => republish(messageId, deliveryTag, properties, body)
-        }
+        executeFailureAction(messageId, deliveryTag, properties, body)
+    }
+  }
+
+  private def executeFailureAction(messageId: String, deliveryTag: Long, properties: BasicProperties, body: Array[Byte]): Unit = {
+    import DeliveryResult._
+
+    failureAction match {
+      case (Ack) => ack(messageId, deliveryTag)
+      case (Reject) => reject(messageId, deliveryTag)
+      case (Retry) => retry(messageId, deliveryTag)
+      case (Republish) => republish(messageId, deliveryTag, properties, body)
     }
   }
 
