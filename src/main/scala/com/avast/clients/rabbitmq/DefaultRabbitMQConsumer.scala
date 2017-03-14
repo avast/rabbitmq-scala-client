@@ -106,7 +106,7 @@ class DefaultRabbitMQConsumer(
 
   private def ack(messageId: String, deliveryTag: Long): Unit = {
     try {
-      logger.debug(s"[$name] ACK delivery $messageId, deliveryTag $deliveryTag")
+      logger.debug(s"[$name] ACK delivery ID $messageId, deliveryTag $deliveryTag")
       channel.basicAck(deliveryTag, false)
       resultAckMeter.mark()
     } catch {
@@ -116,7 +116,7 @@ class DefaultRabbitMQConsumer(
 
   private def reject(messageId: String, deliveryTag: Long): Unit = {
     try {
-      logger.debug(s"[$name] REJECT delivery $messageId, deliveryTag $deliveryTag")
+      logger.debug(s"[$name] REJECT delivery ID $messageId, deliveryTag $deliveryTag")
       channel.basicReject(deliveryTag, false)
       resultRejectMeter.mark()
     } catch {
@@ -126,7 +126,7 @@ class DefaultRabbitMQConsumer(
 
   private def retry(messageId: String, deliveryTag: Long): Unit = {
     try {
-      logger.debug(s"[$name] REJECT (with requeue) delivery $messageId, deliveryTag $deliveryTag")
+      logger.debug(s"[$name] REJECT (with requeue) delivery ID $messageId, deliveryTag $deliveryTag")
       channel.basicReject(deliveryTag, true)
       resultRetryMeter.mark()
     } catch {
@@ -136,7 +136,7 @@ class DefaultRabbitMQConsumer(
 
   private def republish(messageId: String, deliveryTag: Long, properties: BasicProperties, body: Array[Byte]): Unit = {
     try {
-      logger.debug(s"[$name] Republishing delivery ($messageId, deliveryTag $deliveryTag) to end of queue '$queueName'")
+      logger.debug(s"[$name] Republishing delivery (ID $messageId, deliveryTag $deliveryTag) to end of queue '$queueName'")
       channel.basicPublish("", queueName, properties, body)
       channel.basicAck(deliveryTag, false)
       resultRepublishMeter.mark()
