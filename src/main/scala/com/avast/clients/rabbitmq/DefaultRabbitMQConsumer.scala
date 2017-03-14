@@ -18,14 +18,14 @@ import scala.util.control.NonFatal
 import scala.util.{Failure, Success, Try}
 
 class DefaultRabbitMQConsumer(
-    name: String,
-    channel: ServerChannel,
-    queueName: String,
-    useKluzo: Boolean,
-    monitor: Monitor,
-    failureAction: DeliveryResult,
-    bindToAction: (String, String) => BindOk)(readAction: Delivery => Future[DeliveryResult])(implicit ec: ExecutionContext)
-    extends DefaultConsumer(channel)
+                               name: String,
+                               channel: ServerChannel,
+                               queueName: String,
+                               useKluzo: Boolean,
+                               monitor: Monitor,
+                               failureAction: DeliveryResult,
+                               bindToAction: (String, String) => BindOk)(readAction: Delivery => Future[DeliveryResult])(implicit ec: ExecutionContext)
+  extends DefaultConsumer(channel)
     with RabbitMQConsumer
     with StrictLogging {
 
@@ -77,9 +77,10 @@ class DefaultRabbitMQConsumer(
             ()
           } catch {
             case NonFatal(e) =>
+              processingCount.decrementAndGet()
               processingFailedMeter.mark()
               logger.error("Error while executing callback, it's probably u BUG", e)
-              retry(messageId, deliveryTag)
+              executeFailureAction(messageId, deliveryTag, properties, body)
           }
         })
       }
@@ -103,12 +104,18 @@ class DefaultRabbitMQConsumer(
         processingFailedMeter.mark()
         logger.error("Error while executing callback, it's probably a BUG")
 
-        failureAction match {
-          case (Ack) => ack(messageId, deliveryTag)
-          case (Reject) => reject(messageId, deliveryTag)
-          case (Retry) => retry(messageId, deliveryTag)
-          case (Republish) => republish(messageId, deliveryTag, properties, body)
-        }
+        executeFailureAction(messageId, deliveryTag, properties, body)
+    }
+  }
+
+  private def executeFailureAction(messageId: String, deliveryTag: Long, properties: BasicProperties, body: Array[Byte]): Unit = {
+    import DeliveryResult._
+
+    failureAction match {
+      case (Ack) => ack(messageId, deliveryTag)
+      case (Reject) => reject(messageId, deliveryTag)
+      case (Retry) => retry(messageId, deliveryTag)
+      case (Republish) => republish(messageId, deliveryTag, properties, body)
     }
   }
 
