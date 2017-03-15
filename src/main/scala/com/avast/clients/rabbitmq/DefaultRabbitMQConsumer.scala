@@ -18,14 +18,14 @@ import scala.util.control.NonFatal
 import scala.util.{Failure, Success, Try}
 
 class DefaultRabbitMQConsumer(
-                               name: String,
-                               channel: ServerChannel,
-                               queueName: String,
-                               useKluzo: Boolean,
-                               monitor: Monitor,
-                               failureAction: DeliveryResult,
-                               bindToAction: (String, String) => BindOk)(readAction: Delivery => Future[DeliveryResult])(implicit ec: ExecutionContext)
-  extends DefaultConsumer(channel)
+    name: String,
+    channel: ServerChannel,
+    queueName: String,
+    useKluzo: Boolean,
+    monitor: Monitor,
+    failureAction: DeliveryResult,
+    bindToAction: (String, String) => BindOk)(readAction: Delivery => Future[DeliveryResult])(implicit ec: ExecutionContext)
+    extends DefaultConsumer(channel)
     with RabbitMQConsumer
     with StrictLogging {
 
@@ -46,44 +46,44 @@ class DefaultRabbitMQConsumer(
   private val processedTimer = tasksMonitor.timerPair("processed")
 
   override def handleDelivery(consumerTag: String, envelope: Envelope, properties: BasicProperties, body: Array[Byte]): Unit = {
-    processedTimer.time {
-      processingCount.incrementAndGet()
+    processingCount.incrementAndGet()
 
-      val traceId = if (useKluzo && properties.getHeaders != null) {
-        val traceId = Option(properties.getHeaders.get(Kluzo.HttpHeaderName))
-          .map(_.toString)
-          .map(TraceId(_))
-          .getOrElse(TraceId.generate)
+    val traceId = if (useKluzo && properties.getHeaders != null) {
+      val traceId = Option(properties.getHeaders.get(Kluzo.HttpHeaderName))
+        .map(_.toString)
+        .map(TraceId(_))
+        .getOrElse(TraceId.generate)
 
-        Some(traceId)
-      } else {
-        None
-      }
+      Some(traceId)
+    } else {
+      None
+    }
 
-      Kluzo.withTraceId(traceId) {
-        ec.execute(() => {
-          val messageId = properties.getMessageId
-          val deliveryTag = envelope.getDeliveryTag
+    Kluzo.withTraceId(traceId) {
+      ec.execute(() => {
+        val messageId = properties.getMessageId
+        val deliveryTag = envelope.getDeliveryTag
 
-          try {
-            readMeter.mark()
+        try {
+          readMeter.mark()
 
-            logger.debug(s"[$name] Read delivery with ID $messageId, deliveryTag $deliveryTag")
+          logger.debug(s"[$name] Read delivery with ID $messageId, deliveryTag $deliveryTag")
 
-            val message = Delivery(Bytes.copyFrom(body), properties, Option(envelope.getRoutingKey).getOrElse(""))
+          val message = Delivery(Bytes.copyFrom(body), properties, Option(envelope.getRoutingKey).getOrElse(""))
 
+          processedTimer.time {
             readAction(message).andThen(handleResult(messageId, deliveryTag, properties, body))
-
-            ()
-          } catch {
-            case NonFatal(e) =>
-              processingCount.decrementAndGet()
-              processingFailedMeter.mark()
-              logger.error("Error while executing callback, it's probably u BUG", e)
-              executeFailureAction(messageId, deliveryTag, properties, body)
           }
-        })
-      }
+
+          ()
+        } catch {
+          case NonFatal(e) =>
+            processingCount.decrementAndGet()
+            processingFailedMeter.mark()
+            logger.error("Error while executing callback, it's probably u BUG", e)
+            executeFailureAction(messageId, deliveryTag, properties, body)
+        }
+      })
     }
   }
 
