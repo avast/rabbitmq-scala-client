@@ -1,6 +1,6 @@
 # RabbitMQ client
 
-[![](https://teamcity.int.avast.com/app/rest/builds/buildType:(id:CloudSystems_RabbitMQClient_Build)/statusIcon)] (https://teamcity.int.avast.com/viewType.html?buildTypeId=CloudSystems_Clients_Build)
+[![](https://teamcity.int.avast.com/app/rest/builds/buildType:(id:CloudSystems_RabbitMQClient_Build)/statusIcon)] (https://teamcity.int.avast.com/viewType.html?buildTypeId=CloudSystems_RabbitMQClient_Build)
 
 ![](http://badges.ff.int.avast.com/image/maven-local/com.avast.clients/rabbitmq-client_2.11?title=RabbitMQClient)
 
