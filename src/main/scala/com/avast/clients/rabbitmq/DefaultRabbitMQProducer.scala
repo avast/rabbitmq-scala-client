@@ -7,7 +7,7 @@ import com.avast.bytes.Bytes
 import com.avast.clients.rabbitmq.RabbitMQChannelFactory.ServerChannel
 import com.avast.clients.rabbitmq.api.RabbitMQProducer
 import com.avast.kluzo.Kluzo
-import com.avast.metrics.api.Monitor
+import com.avast.metrics.scalaapi.Monitor
 import com.rabbitmq.client.AMQP.BasicProperties
 import com.rabbitmq.client.{AMQP, ReturnListener}
 import com.typesafe.scalalogging.StrictLogging
@@ -23,9 +23,9 @@ class DefaultRabbitMQProducer(name: String,
     extends RabbitMQProducer
     with StrictLogging {
 
-  private val sentMeter = monitor.newMeter("sent")
-  private val sentFailedMeter = monitor.newMeter("sentFailed")
-  private val unroutableMeter = monitor.newMeter("unroutable")
+  private val sentMeter = monitor.meter("sent")
+  private val sentFailedMeter = monitor.meter("sentFailed")
+  private val unroutableMeter = monitor.meter("unroutable")
 
   private val sendLock = new Object
 
@@ -69,7 +69,7 @@ class DefaultRabbitMQProducer(name: String,
     } catch {
       case NonFatal(e) =>
         sentFailedMeter.mark()
-        logger.error("Error while sending message", e)
+        logger.error(s"[$name] Error while sending message", e)
     }
   }
 

@@ -12,33 +12,15 @@ Author: [Jenda Kolena](mailto:kolena@avast.com)
 For most current version see the [Teamcity](https://teamcity.int.avast.com/viewType.html?buildTypeId=CloudSystems_RabbitMQClient_ReleasePublish).
 
 ## Usage
-```scala
-  val config = ConfigFactory.load().getConfig("myConfig")
 
-  // you need both `ExecutorService` (optionally passed to `RabbitMQChannelFactory`) and `ExecutionContext` (implicitly passed to consumer), both are
-  // used for callbacks execution, so why not to use a `ExecutionContextExecutionService`?
-  implicit val ex: ExecutionContextExecutorService = ???
+### Configuration
 
-  val monitor = new JmxMetricsMonitor("TestDomain")
-
-  // here you create the channel factory; by default, use it for all producers/consumers amongst one RabbitMQ server - they will share a single TCP connection
-  // but have separated channels
-  // if you expect very high load, you can
-  val channelFactory = RabbitMQChannelFactory.fromConfig(config, Some(ex))
-
-  val receiver = RabbitMQClientFactory.Consumer.fromConfig(config.getConfig("consumer"), channelFactory, monitor) { delivery =>
-    println(delivery)
-    Future.successful(true)
-  }
-
-  val sender = RabbitMQClientFactory.Producer.fromConfig(config.getConfig("producer"), channelFactory, monitor)
-```
-
-This is how to configuration should look like:
-```
+```hocon
 myConfig {
   hosts = ["localhost:5672"]
   virtualHost = "/"
+  
+  name="Cluster01Connection" // used for logging AND is also visible in client properties in RabbitMQ management console
 
   ssl {
     enabled = false // enabled by default
@@ -53,6 +35,11 @@ myConfig {
 
   connectionTimeout = 5s // default value
 
+  networkRecovery {
+    enabled = true // default value
+    period = 5s // default value
+  }
+
 
   // CONSUMERS AND PRODUCERS:
 
@@ -60,7 +47,11 @@ myConfig {
   consumer {
     name = "Testing" // this is used for metrics, logging etc.
 
+    consumerTag = Default // string or "Default"; default is randomly generated string (like "amq.ctag-ov2Sp8MYKE6ysJ9SchKeqQ"); visible in RabbitMQ management console
+
     queueName = "test"
+
+    prefetchCount = 100 // don't change unless you have a reason to do so ;-)
 
     // should the consumer declare queue he wants to read from?
     declare {
@@ -115,21 +106,97 @@ As you may have noticed, there are `producer` and `consumer` configurations *ins
 have to be this structured, it seems like a good strategy to have all producers/consumers in block which configures connection to the RabbitMQ server. In case
 there are more of them, proper naming like `producer-testing` should be used.
 
-### Usage from Java
-Even though the API is for Scala it should be usable also from Java. Use something like:
-```java
-import com.avast.clients.rabbitmq.RabbitMQChannelFactory;
-import com.avast.clients.rabbitmq.RabbitMQChannelFactory$;
-import com.avast.clients.rabbitmq.RabbitMQClientFactory;
-import com.avast.clients.rabbitmq.api.RabbitMQConsumer;
-import scala.Option;
+### Scala usage
 
-public class Test {
-    public static void main(String[] args) {
-        final RabbitMQChannelFactory rabbitMQChannelFactory = RabbitMQChannelFactory$.MODULE$.fromConfig(config, Option.apply(executor));
-        final RabbitMQConsumer rabbitMQConsumer = RabbitMQClientFactory.Consumer.fromConfig(config,rabbitMQChannelFactory,monitor, ...)
-        final RabbitMQProducer producer = RabbitMQClientFactory.Producer$.MODULE$.fromConfig(config, rabbitMQChannelFactory, monitor);
-    }
+```scala
+  val config = ConfigFactory.load().getConfig("myConfig")
+
+  // you need both `ExecutorService` (optionally passed to `RabbitMQChannelFactory`) and `ExecutionContext` (implicitly passed to consumer), both are
+  // used for callbacks execution, so why not to use a `ExecutionContextExecutionService`?
+  implicit val ex: ExecutionContextExecutorService = ???
+
+  val monitor = new JmxMetricsMonitor("TestDomain")
+
+  // here you create the channel factory; by default, use it for all producers/consumers amongst one RabbitMQ server - they will share a single TCP connection
+  // but have separated channels
+  // if you expect very high load, you can
+  val channelFactory = RabbitMQChannelFactory.fromConfig(config, Some(ex))
+
+  val receiver = RabbitMQClientFactory.Consumer.fromConfig(config.getConfig("consumer"), channelFactory, monitor) { delivery =>
+    println(delivery)
+    Future.successful(true)
+  }
+
+  val sender = RabbitMQClientFactory.Producer.fromConfig(config.getConfig("producer"), channelFactory, monitor)
+```
+
+### Java usage
+
+The Java api is placed in subpackage `javaapi` (but not all classes have their Java counterparts, some have to be imported from Scala API,
+depending on your usage).  
+Don't get confused by the Java API actually implemented in Scala.
+
+```java
+final RabbitMQChannelFactory rabbitMQChannelFactory = RabbitMQChannelFactory.fromConfig(config).withExecutor(executor).build();
+
+final RabbitMQConsumer rabbitMQConsumer = RabbitMQClientFactory.createConsumerfromConfig(
+    config.getConfig("consumer"),
+    rabbitMQChannelFactory,
+    NoOpMonitor.INSTANCE,
+    null,
+    executor,
+    ExampleJava::handleDelivery
+);
+
+final RabbitMQProducer rabbitMQProducer = RabbitMQClientFactory.createProducerfromConfig(
+    config.getConfig("producer"),
+    rabbitMQChannelFactory,
+    NoOpMonitor.INSTANCE
+);
+
+```
+
+See [full example](/src/test/java/ExampleJava.java)
+
+## Notes
+
+### Structured config
+It's highly recommended to have the config structured as in the example, that means:
+```hocon
+rabbitConfig {
+  // connection config
+  
+  consumer1 {
+    //consumer config
+  }
+  
+  consumer2 {
+    //consumer config
+  }
+  
+  producer1 {
+    //producer config
+  }
+  
+  producer2 {
+    //producer config
+  }
 }
 
 ```
+It usually leads to much more clear config.
+
+### DeliveryResult
+The consumers `readAction` returns `Future` of [`DeliveryResult`](src/main/scala/com/avast/clients/rabbitmq/DeliveryResult.scala). The `DeliveryResult` has 4 possible values
+(descriptions of usual use-cases):
+1. Ack - the message was processed; it will be removed from the queue
+1. Reject - the message is corrupted or for some other reason we don't want to see it again; it will be removed from the queue
+1. Retry - the message couldn't be processed at this moment (unreachable 3rd party services?); it will be requeued (inserted on the top of
+the queue)
+1. Republish - the message may be corrupted but we're not sure; it will be re-published to the bottom of the queue (as a new message and the
+original one will be removed). It's usually wise to use some customized header as a counter to prevent an infinite republishing of the message.
+
+####Difference between _Retry_ and _Republish_
+When using _Retry_ the message can effectively cause starvation of other messages in the queue
+until the message itself can be processed; on the other hand _Republish_ inserts the message to the original queue as a new message and it
+lets the consumer handle other messages (if they can be processed).
