@@ -69,7 +69,7 @@ class DefaultRabbitMQProducer(name: String,
     } catch {
       case NonFatal(e) =>
         sentFailedMeter.mark()
-        logger.error("Error while sending message", e)
+        logger.error(s"[$name] Error while sending message", e)
     }
   }
 

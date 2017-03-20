@@ -80,7 +80,7 @@ class DefaultRabbitMQConsumer(
           case NonFatal(e) =>
             processingCount.decrementAndGet()
             processingFailedMeter.mark()
-            logger.error("Error while executing callback, it's probably u BUG", e)
+            logger.error(s"[$name] Error while executing callback, it's probably u BUG", e)
             executeFailureAction(messageId, deliveryTag, properties, body)
         }
       })
@@ -102,7 +102,7 @@ class DefaultRabbitMQConsumer(
       case Success(Republish) => republish(messageId, deliveryTag, properties, body)
       case Failure(NonFatal(e)) =>
         processingFailedMeter.mark()
-        logger.error("Error while executing callback, it's probably a BUG")
+        logger.error(s"[$name] Error while executing callback, it's probably a BUG", e)
 
         executeFailureAction(messageId, deliveryTag, properties, body)
     }
@@ -164,7 +164,7 @@ class DefaultRabbitMQConsumer(
       channel.basicAck(deliveryTag, false)
       resultRepublishMeter.mark()
     } catch {
-      case NonFatal(e) => logger.warn(s"[$name] Error while rejecting (with requeue) the delivery", e)
+      case NonFatal(e) => logger.warn(s"[$name] Error while republishing the delivery", e)
     }
   }
 }
