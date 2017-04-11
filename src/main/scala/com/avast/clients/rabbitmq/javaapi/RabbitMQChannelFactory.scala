@@ -3,14 +3,20 @@ package com.avast.clients.rabbitmq.javaapi
 import java.util.concurrent.ExecutorService
 
 import com.avast.clients.rabbitmq.RabbitMQChannelFactory.{DefaultListeners, ServerChannel}
+import com.avast.clients.rabbitmq.api.{ChannelListener, ConnectionListener, ConsumerListener}
 import com.avast.clients.rabbitmq.{RabbitMQConnectionConfig, RabbitMqChannelFactoryInfo, RabbitMQChannelFactory => ScalaFactory}
 import com.typesafe.config.Config
-import net.jodah.lyra.event.{ChannelListener, ConnectionListener, ConsumerListener}
 
 class RabbitMQChannelFactory(scalaFactory: ScalaFactory) extends ScalaFactory {
   override def createChannel(): ServerChannel = scalaFactory.createChannel()
 
   override def info: RabbitMqChannelFactoryInfo = scalaFactory.info
+
+  override def connectionListener: ConnectionListener = scalaFactory.connectionListener
+
+  override def channelListener: ChannelListener = scalaFactory.channelListener
+
+  override def consumerListener: ConsumerListener = scalaFactory.consumerListener
 }
 
 object RabbitMQChannelFactory {

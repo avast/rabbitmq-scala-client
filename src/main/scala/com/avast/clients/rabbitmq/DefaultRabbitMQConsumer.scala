@@ -1,10 +1,11 @@
 package com.avast.clients.rabbitmq
 
+import java.util.concurrent.RejectedExecutionException
 import java.util.concurrent.atomic.AtomicInteger
 
 import com.avast.bytes.Bytes
 import com.avast.clients.rabbitmq.RabbitMQChannelFactory.ServerChannel
-import com.avast.clients.rabbitmq.api.RabbitMQConsumer
+import com.avast.clients.rabbitmq.api.{ConsumerListener, RabbitMQConsumer}
 import com.avast.kluzo.{Kluzo, TraceId}
 import com.avast.metrics.scalaapi.Monitor
 import com.avast.utils2.JavaConversions._
@@ -24,6 +25,7 @@ class DefaultRabbitMQConsumer(
     useKluzo: Boolean,
     monitor: Monitor,
     failureAction: DeliveryResult,
+    consumerListener: ConsumerListener,
     bindToAction: (String, String) => BindOk)(readAction: Delivery => Future[DeliveryResult])(implicit ec: ExecutionContext)
     extends DefaultConsumer(channel)
     with RabbitMQConsumer
@@ -48,7 +50,49 @@ class DefaultRabbitMQConsumer(
   override def handleDelivery(consumerTag: String, envelope: Envelope, properties: BasicProperties, body: Array[Byte]): Unit = {
     processingCount.incrementAndGet()
 
-    val traceId = if (useKluzo && properties.getHeaders != null) {
+    val traceId = extractTraceId(properties)
+
+    val deliveryTag = envelope.getDeliveryTag
+    val messageId = properties.getMessageId
+
+    Kluzo.withTraceId(traceId) {
+      try {
+        ec.execute(() => {
+          try {
+            readMeter.mark()
+
+            logger.debug(s"[$name] Read delivery with ID $messageId, deliveryTag $deliveryTag")
+
+            val message = Delivery(Bytes.copyFrom(body), properties, Option(envelope.getRoutingKey).getOrElse(""))
+
+            processedTimer.time {
+              readAction(message).andThen(handleResult(messageId, deliveryTag, properties, body))
+            }
+
+            ()
+          } catch {
+            case NonFatal(e) =>
+              processingCount.decrementAndGet()
+              processingFailedMeter.mark()
+              logger.error(s"[$name] Error while executing callback, it's probably u BUG", e)
+              consumerListener.onError(this, channel, e)
+              executeFailureAction(messageId, deliveryTag, properties, body)
+          }
+        })
+      } catch {
+        // we catch this specific exception, handling of others is up to Lyra
+        case e: RejectedExecutionException =>
+          processingCount.decrementAndGet()
+          processingFailedMeter.mark()
+          logger.error(s"[$name] Executor was unable to plan the handling task", e)
+          consumerListener.onError(this, channel, e)
+          executeFailureAction(messageId, deliveryTag, properties, body)
+      }
+    }
+  }
+
+  private def extractTraceId(properties: BasicProperties) = {
+    if (useKluzo && properties.getHeaders != null) {
       val traceId = Option(properties.getHeaders.get(Kluzo.HttpHeaderName))
         .map(_.toString)
         .map(TraceId(_))
@@ -57,33 +101,6 @@ class DefaultRabbitMQConsumer(
       Some(traceId)
     } else {
       None
-    }
-
-    Kluzo.withTraceId(traceId) {
-      ec.execute(() => {
-        val messageId = properties.getMessageId
-        val deliveryTag = envelope.getDeliveryTag
-
-        try {
-          readMeter.mark()
-
-          logger.debug(s"[$name] Read delivery with ID $messageId, deliveryTag $deliveryTag")
-
-          val message = Delivery(Bytes.copyFrom(body), properties, Option(envelope.getRoutingKey).getOrElse(""))
-
-          processedTimer.time {
-            readAction(message).andThen(handleResult(messageId, deliveryTag, properties, body))
-          }
-
-          ()
-        } catch {
-          case NonFatal(e) =>
-            processingCount.decrementAndGet()
-            processingFailedMeter.mark()
-            logger.error(s"[$name] Error while executing callback, it's probably u BUG", e)
-            executeFailureAction(messageId, deliveryTag, properties, body)
-        }
-      })
     }
   }
 

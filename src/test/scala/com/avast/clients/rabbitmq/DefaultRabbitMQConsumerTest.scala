@@ -2,6 +2,7 @@ package com.avast.clients.rabbitmq
 
 import java.util.UUID
 
+import com.avast.clients.rabbitmq.RabbitMQChannelFactory.DefaultListeners
 import com.avast.metrics.scalaapi.Monitor
 import com.rabbitmq.client.AMQP.BasicProperties
 import com.rabbitmq.client.Envelope
@@ -37,6 +38,7 @@ class DefaultRabbitMQConsumerTest extends FunSuite with MockitoSugar with Eventu
       true,
       Monitor.noOp,
       DeliveryResult.Reject,
+      DefaultListeners.DefaultConsumerListener,
       (_, _) => ???
     )({ delivery =>
       assertResult(messageId)(delivery.properties.getMessageId)
@@ -75,6 +77,7 @@ class DefaultRabbitMQConsumerTest extends FunSuite with MockitoSugar with Eventu
       true,
       Monitor.noOp,
       DeliveryResult.Reject,
+      DefaultListeners.DefaultConsumerListener,
       (_, _) => ???
     )({ delivery =>
       assertResult(messageId)(delivery.properties.getMessageId)
@@ -113,6 +116,7 @@ class DefaultRabbitMQConsumerTest extends FunSuite with MockitoSugar with Eventu
       true,
       Monitor.noOp,
       DeliveryResult.Reject,
+      DefaultListeners.DefaultConsumerListener,
       (_, _) => ???
     )({ delivery =>
       assertResult(messageId)(delivery.properties.getMessageId)
@@ -151,6 +155,7 @@ class DefaultRabbitMQConsumerTest extends FunSuite with MockitoSugar with Eventu
       true,
       Monitor.noOp,
       DeliveryResult.Reject,
+      DefaultListeners.DefaultConsumerListener,
       (_, _) => ???
     )({ delivery =>
       assertResult(messageId)(delivery.properties.getMessageId)
@@ -189,6 +194,7 @@ class DefaultRabbitMQConsumerTest extends FunSuite with MockitoSugar with Eventu
       true,
       Monitor.noOp,
       DeliveryResult.Retry,
+      DefaultListeners.DefaultConsumerListener,
       (_, _) => ???
     )({ delivery =>
       assertResult(messageId)(delivery.properties.getMessageId)
@@ -224,6 +230,7 @@ class DefaultRabbitMQConsumerTest extends FunSuite with MockitoSugar with Eventu
       true,
       Monitor.noOp,
       DeliveryResult.Retry,
+      DefaultListeners.DefaultConsumerListener,
       (_, _) => ???
     )({ delivery =>
       assertResult(messageId)(delivery.properties.getMessageId)
@@ -263,6 +270,7 @@ class DefaultRabbitMQConsumerTest extends FunSuite with MockitoSugar with Eventu
       true,
       Monitor.noOp,
       DeliveryResult.Retry,
+      DefaultListeners.DefaultConsumerListener,
       (exchange, routingKey) => {
         channel.queueBind(queueName, exchange, routingKey)
       }

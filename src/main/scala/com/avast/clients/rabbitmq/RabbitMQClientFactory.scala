@@ -6,7 +6,7 @@ import java.util
 import java.util.concurrent.{ScheduledExecutorService, TimeoutException}
 
 import com.avast.clients.rabbitmq.RabbitMQChannelFactory.ServerChannel
-import com.avast.clients.rabbitmq.api.{RabbitMQConsumer, RabbitMQProducer}
+import com.avast.clients.rabbitmq.api.{ConsumerListener, RabbitMQConsumer, RabbitMQProducer}
 import com.avast.continuity.Continuity
 import com.avast.kluzo.Kluzo
 import com.avast.metrics.scalaapi.Monitor
@@ -132,7 +132,13 @@ object RabbitMQClientFactory extends LazyLogging {
         implicit ec: ExecutionContext): RabbitMQConsumer = {
       val channel = channelFactory.createChannel()
 
-      prepareConsumer(consumerConfig, readAction, channelFactory.info, channel, monitor, scheduledExecutorService)
+      prepareConsumer(consumerConfig,
+                      readAction,
+                      channelFactory.info,
+                      channel,
+                      channelFactory.consumerListener,
+                      monitor,
+                      scheduledExecutorService)
     }
   }
 
@@ -170,6 +176,7 @@ object RabbitMQClientFactory extends LazyLogging {
                               readAction: (Delivery) => Future[DeliveryResult],
                               channelFactoryInfo: RabbitMqChannelFactoryInfo,
                               channel: ServerChannel,
+                              consumerListener: ConsumerListener,
                               monitor: Monitor,
                               scheduledExecutor: ScheduledExecutorService)(implicit ec: ExecutionContext): RabbitMQConsumer = {
 
@@ -202,7 +209,7 @@ object RabbitMQClientFactory extends LazyLogging {
     // auto bind
     bindQueues(channelFactoryInfo, channel, consumerConfig)
 
-    prepareConsumer(consumerConfig, channelFactoryInfo, channel, readAction, monitor, scheduledExecutor)(ec)
+    prepareConsumer(consumerConfig, channelFactoryInfo, channel, readAction, consumerListener, monitor, scheduledExecutor)(ec)
   }
 
   private[rabbitmq] def declareQueue(channel: ServerChannel,
@@ -244,6 +251,7 @@ object RabbitMQClientFactory extends LazyLogging {
                               channelFactoryInfo: RabbitMqChannelFactoryInfo,
                               channel: ServerChannel,
                               userReadAction: Delivery => Future[DeliveryResult],
+                              consumerListener: ConsumerListener,
                               monitor: Monitor,
                               scheduledExecutor: ScheduledExecutorService)(ec: ExecutionContext): RabbitMQConsumer = {
     import consumerConfig._
@@ -263,6 +271,7 @@ object RabbitMQClientFactory extends LazyLogging {
                                   useKluzo,
                                   monitor,
                                   failureAction,
+                                  consumerListener,
                                   bindQueue(channelFactoryInfo)(channel, queueName))(readAction)
 
     val tag = if (consumerTag == "Default") "" else consumerTag
