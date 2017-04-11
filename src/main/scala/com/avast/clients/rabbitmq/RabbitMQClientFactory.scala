@@ -3,7 +3,7 @@ package com.avast.clients.rabbitmq
 import java.nio.file.{Path, Paths}
 import java.time.Duration
 import java.util
-import java.util.concurrent.ScheduledExecutorService
+import java.util.concurrent.{ScheduledExecutorService, TimeoutException}
 
 import com.avast.clients.rabbitmq.RabbitMQChannelFactory.ServerChannel
 import com.avast.clients.rabbitmq.api.{RabbitMQConsumer, RabbitMQProducer}
@@ -291,16 +291,21 @@ object RabbitMQClientFactory extends LazyLogging {
         action
           .timeoutAfter(processTimeout)(finalExecutor, scheduledExecutor)
           .recover {
+            case e: TimeoutException =>
+              traceId.foreach(Kluzo.setTraceId)
+              logger.warn(s"Task timed-out, applying DeliveryResult.${consumerConfig.timeoutAction}", e)
+              consumerConfig.timeoutAction
+
             case NonFatal(e) =>
               traceId.foreach(Kluzo.setTraceId)
 
-              logger.warn("Error while executing callback, will be redelivered", e)
-              DeliveryResult.Retry
+              logger.warn(s"Error while executing callback, applying DeliveryResult.${consumerConfig.failureAction}", e)
+              consumerConfig.failureAction
           }(finalExecutor)
       } catch {
         case NonFatal(e) =>
-          logger.error("Error while executing callback, will be redelivered", e)
-          Future.successful(DeliveryResult.Retry)
+          logger.error(s"Error while executing callback, applying DeliveryResult.${consumerConfig.failureAction}", e)
+          Future.successful(consumerConfig.failureAction)
       }
 
   }
@@ -319,6 +324,7 @@ object RabbitMQClientFactory extends LazyLogging {
 case class ConsumerConfig(queueName: String,
                           processTimeout: Duration,
                           failureAction: DeliveryResult,
+                          timeoutAction: DeliveryResult,
                           prefetchCount: Int,
                           useKluzo: Boolean,
                           declare: AutoDeclareQueue,
