@@ -6,6 +6,7 @@ import java.time.Duration
 import java.util.concurrent.ExecutorService
 
 import com.avast.clients.rabbitmq.RabbitMQChannelFactory.ServerChannel
+import com.avast.clients.rabbitmq.api.{ChannelListener, ConnectionListener, ConsumerListener}
 import com.avast.utils2.ssl.{KeyStoreTypes, SSLBuilder}
 import com.rabbitmq.client.{Channel, _}
 import com.typesafe.config.{Config, ConfigFactory}
@@ -14,7 +15,6 @@ import net.ceedubs.ficus.Ficus._
 import net.ceedubs.ficus.readers.ArbitraryTypeReader._
 import net.ceedubs.ficus.readers.ValueReader
 import net.jodah.lyra.config.{ConfigurableConnection, RecoveryPolicies, RetryPolicies, Config => LyraConfig}
-import net.jodah.lyra.event.{ChannelListener, ConnectionListener, ConsumerListener}
 import net.jodah.lyra.util.{Duration => LyraDuration}
 import net.jodah.lyra.{ConnectionOptions, Connections}
 
@@ -27,6 +27,10 @@ trait RabbitMQChannelFactory {
   def createChannel(): ServerChannel
 
   def info: RabbitMqChannelFactoryInfo
+
+  def connectionListener: ConnectionListener
+  def channelListener: ChannelListener
+  def consumerListener: ConsumerListener
 }
 
 object RabbitMQChannelFactory extends StrictLogging {
@@ -34,9 +38,11 @@ object RabbitMQChannelFactory extends StrictLogging {
   type ServerChannel = Channel
 
   object DefaultListeners {
-    final val DefaultConnectionListener = new net.jodah.lyra.event.DefaultConnectionListener {}
-    final val DefaultChannelListener = new net.jodah.lyra.event.DefaultChannelListener {}
-    final val DefaultConsumerListener = new net.jodah.lyra.event.DefaultConsumerListener {}
+    final val DefaultConnectionListener: ConnectionListener = new net.jodah.lyra.event.DefaultConnectionListener with ConnectionListener {}
+    final val DefaultChannelListener: ChannelListener = new net.jodah.lyra.event.DefaultChannelListener with ChannelListener {}
+    final val DefaultConsumerListener: ConsumerListener = new net.jodah.lyra.event.DefaultConsumerListener with ConsumerListener {
+      override def onError(consumer: Consumer, channel: ServerChannel, failure: Throwable): Unit = ()
+    }
   }
 
   private object Exceptions {
@@ -84,6 +90,11 @@ object RabbitMQChannelFactory extends StrictLogging {
 
     val connection = createConnection(connectionConfig, executor, connectionListener, channelListener, consumerListener)
 
+    // temporary variables which are used as a bridge between variables with same names
+    val connListener = connectionListener
+    val chanListener = channelListener
+    val consListener = consumerListener
+
     new RabbitMQChannelFactory {
 
       override val info: RabbitMqChannelFactoryInfo = RabbitMqChannelFactoryInfo(
@@ -94,6 +105,12 @@ object RabbitMQChannelFactory extends StrictLogging {
       override def createChannel(): ServerChannel = {
         connection.createChannel()
       }
+
+      override val connectionListener: ConnectionListener = connListener
+
+      override val channelListener: ChannelListener = chanListener
+
+      override val consumerListener: ConsumerListener = consListener
     }
   }
 
