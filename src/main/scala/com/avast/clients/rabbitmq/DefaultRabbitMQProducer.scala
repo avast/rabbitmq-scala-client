@@ -8,11 +8,12 @@ import com.avast.clients.rabbitmq.RabbitMQChannelFactory.ServerChannel
 import com.avast.clients.rabbitmq.api.RabbitMQProducer
 import com.avast.kluzo.Kluzo
 import com.avast.metrics.scalaapi.Monitor
+import com.avast.utils2.Done
 import com.rabbitmq.client.AMQP.BasicProperties
 import com.rabbitmq.client.{AMQP, ReturnListener}
 import com.typesafe.scalalogging.StrictLogging
 
-import scala.util.control.NonFatal
+import scala.util.Try
 
 class DefaultRabbitMQProducer(name: String,
                               exchangeName: String,
@@ -31,8 +32,8 @@ class DefaultRabbitMQProducer(name: String,
 
   channel.addReturnListener(if (reportUnroutable) LoggingReturnListener else NoOpReturnListener)
 
-  override def send(routingKey: String, body: Bytes, properties: AMQP.BasicProperties): Unit = {
-    try {
+  override def send(routingKey: String, body: Bytes, properties: AMQP.BasicProperties): Try[Done] = {
+    val result = Try {
       // Kluzo enabled and ID available?
       val finalProperties = if (useKluzo && Kluzo.getTraceId.nonEmpty) {
         // create mutable copy or brand new map
@@ -66,14 +67,18 @@ class DefaultRabbitMQProducer(name: String,
       }
 
       sentMeter.mark()
-    } catch {
-      case NonFatal(e) =>
-        sentFailedMeter.mark()
-        logger.error(s"[$name] Error while sending message", e)
+      Done
     }
+
+    result.failed.foreach { e =>
+      sentFailedMeter.mark()
+      logger.error(s"[$name] Error while sending message", e)
+    }
+
+    result
   }
 
-  override def send(routingKey: String, body: Bytes): Unit = {
+  override def send(routingKey: String, body: Bytes): Try[Done] = {
     val properties = new AMQP.BasicProperties.Builder()
       .messageId(UUID.randomUUID().toString)
       .build()
