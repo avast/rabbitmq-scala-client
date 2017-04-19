@@ -72,7 +72,6 @@ class DefaultRabbitMQProducer(name: String,
 
     result.failed.foreach { e =>
       sentFailedMeter.mark()
-      logger.error(s"[$name] Error while sending message", e)
     }
 
     result
