@@ -71,6 +71,7 @@ class DefaultRabbitMQProducer(name: String,
     }
 
     result.failed.foreach { e =>
+      logger.debug(s"failed to send message - routing key: $routingKey", e)
       sentFailedMeter.mark()
     }
 
