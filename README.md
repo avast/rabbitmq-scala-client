@@ -13,7 +13,7 @@ It uses [Lyra library](https://github.com/jhalterman/lyra) for better recovery a
 Author: [Jenda Kolena](mailto:kolena@avast.com)
 
 ## Dependency
-`compile 'com.avast.clients:rabbitmq-client_?:2.0.1'`
+`compile 'com.avast.clients:rabbitmq-client_?:x.x.x'`
 For most current version see the [Teamcity](https://teamcity.int.avast.com/viewType.html?buildTypeId=CloudSystems_RabbitMQClient_ReleasePublish).
 
 ## Usage
@@ -124,7 +124,7 @@ there are more of them, proper naming like `producer-testing` should be used.
 
   // here you create the channel factory; by default, use it for all producers/consumers amongst one RabbitMQ server - they will share a single TCP connection
   // but have separated channels
-  // if you expect very high load, you can
+  // if you expect very high load, you can use separate connections for each producer/consumer, but it's usually not needed
   val channelFactory = RabbitMQChannelFactory.fromConfig(config, Some(ex))
 
   val receiver = RabbitMQClientFactory.Consumer.fromConfig(config.getConfig("consumer"), channelFactory, monitor) { delivery =>
