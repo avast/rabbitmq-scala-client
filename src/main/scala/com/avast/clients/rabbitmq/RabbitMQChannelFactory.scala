@@ -39,7 +39,9 @@ object RabbitMQChannelFactory extends StrictLogging {
 
   object DefaultListeners {
     final val DefaultConnectionListener: ConnectionListener = new net.jodah.lyra.event.DefaultConnectionListener with ConnectionListener {}
-    final val DefaultChannelListener: ChannelListener = new net.jodah.lyra.event.DefaultChannelListener with ChannelListener {}
+    final val DefaultChannelListener: ChannelListener = new net.jodah.lyra.event.DefaultChannelListener with ChannelListener {
+      override def onShutdown(cause: ShutdownSignalException): Unit = ()
+    }
     final val DefaultConsumerListener: ConsumerListener = new net.jodah.lyra.event.DefaultConsumerListener with ConsumerListener {
       override def onError(consumer: Consumer, channel: ServerChannel, failure: Throwable): Unit = ()
     }
@@ -103,7 +105,11 @@ object RabbitMQChannelFactory extends StrictLogging {
       )
 
       override def createChannel(): ServerChannel = {
-        connection.createChannel()
+        val channel = connection.createChannel()
+        channel.addShutdownListener(new ShutdownListener {
+          override def shutdownCompleted(cause: ShutdownSignalException): Unit = chanListener.onShutdown(cause)
+        })
+        channel
       }
 
       override val connectionListener: ConnectionListener = connListener
@@ -139,7 +145,8 @@ object RabbitMQChannelFactory extends StrictLogging {
     val connectionOptions = new ConnectionOptions(factory)
       .withAddresses(addresses: _*)
       .withName(name)
-      .withClientProperties(Map("connection_name" -> name.asInstanceOf[AnyRef]).asJava) // this is workaround of Lyras bug in ConnectionHandler:243
+      .withClientProperties(Map("connection_name" -> name.asInstanceOf[AnyRef]).asJava)
+    // this is workaround of Lyras bug in ConnectionHandler:243
 
     val lyraConfig = new LyraConfig()
       .withConnectionListeners(connectionListener)
