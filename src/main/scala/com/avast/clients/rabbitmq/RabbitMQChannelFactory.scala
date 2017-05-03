@@ -40,7 +40,7 @@ object RabbitMQChannelFactory extends StrictLogging {
   object DefaultListeners {
     final val DefaultConnectionListener: ConnectionListener = new net.jodah.lyra.event.DefaultConnectionListener with ConnectionListener {}
     final val DefaultChannelListener: ChannelListener = new net.jodah.lyra.event.DefaultChannelListener with ChannelListener {
-      override def onShutdown(cause: ShutdownSignalException): Unit = ()
+      override def onShutdown(cause: ShutdownSignalException, channel: Channel): Unit = ()
     }
     final val DefaultConsumerListener: ConsumerListener = new net.jodah.lyra.event.DefaultConsumerListener with ConsumerListener {
       override def onError(consumer: Consumer, channel: ServerChannel, failure: Throwable): Unit = ()
@@ -107,7 +107,7 @@ object RabbitMQChannelFactory extends StrictLogging {
       override def createChannel(): ServerChannel = {
         val channel = connection.createChannel()
         channel.addShutdownListener(new ShutdownListener {
-          override def shutdownCompleted(cause: ShutdownSignalException): Unit = chanListener.onShutdown(cause)
+          override def shutdownCompleted(cause: ShutdownSignalException): Unit = chanListener.onShutdown(cause, channel)
         })
         channel
       }
