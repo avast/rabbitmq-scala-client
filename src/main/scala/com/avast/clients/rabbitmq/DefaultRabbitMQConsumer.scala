@@ -11,7 +11,7 @@ import com.avast.metrics.scalaapi.Monitor
 import com.avast.utils2.JavaConversions._
 import com.rabbitmq.client.AMQP.BasicProperties
 import com.rabbitmq.client.AMQP.Queue.BindOk
-import com.rabbitmq.client.{AMQP, DefaultConsumer, Envelope}
+import com.rabbitmq.client.{AMQP, DefaultConsumer, Envelope, ShutdownSignalException}
 import com.typesafe.scalalogging.StrictLogging
 
 import scala.concurrent.{ExecutionContext, Future}
@@ -46,6 +46,9 @@ class DefaultRabbitMQConsumer(
   tasksMonitor.gauge("processing")(() => processingCount.get())
 
   private val processedTimer = tasksMonitor.timerPair("processed")
+
+
+  override def handleShutdownSignal(consumerTag: String, sig: ShutdownSignalException): Unit = consumerListener.onShutdown(this, channel, consumerTag, sig)
 
   override def handleDelivery(consumerTag: String, envelope: Envelope, properties: BasicProperties, body: Array[Byte]): Unit = {
     processingCount.incrementAndGet()
