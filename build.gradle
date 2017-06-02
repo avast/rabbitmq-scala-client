@@ -100,3 +100,7 @@ allprojects {
         enabled = false
     }
 }
+
+task wrapper(type: Wrapper) {
+    gradleVersion = '3.5'
+}
