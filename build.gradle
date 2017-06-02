@@ -4,11 +4,12 @@ buildscript {
     }
 
     dependencies {
-        classpath 'com.avast.gradle:gradle-publish:0.11.0'
-        classpath 'com.avast.gradle:gradle-release:0.11.0'
-        classpath 'com.avast.gradle:gradle-scala:0.11.0'
-        classpath 'com.avast.gradle:docker-compose-gradle-plugin:0.3.17'
-        classpath 'com.github.maiflai:gradle-scalatest:0.14'
+        classpath 'com.avast.gradle:gradle-publish:0.13.5'
+        classpath 'com.avast.gradle:gradle-release:0.13.5'
+        classpath 'com.avast.gradle:gradle-scala:0.13.5'
+        classpath 'com.avast.gradle:docker-compose-gradle-plugin:0.4.2'
+        classpath 'com.github.maiflai:gradle-scalatest:0.15'
+        classpath 'com.github.ben-manes:gradle-versions-plugin:0.15.0'
     }
 }
 
@@ -21,6 +22,7 @@ apply plugin: 'java'
 apply plugin: 'avast-publish'
 apply plugin: 'avast-scala'
 apply plugin: 'com.github.maiflai.scalatest'
+apply plugin: 'com.github.ben-manes.versions'
 
 sourceCompatibility = '1.8'
 targetCompatibility = '1.8'
@@ -36,7 +38,7 @@ avast {
     }
 
     scala {
-        version = '2.11'
+        version = '2.12'
         crossVersions = ['2.11', '2.12']
     }
 }
@@ -48,10 +50,10 @@ tasks.withType(ScalaCompile) {
 }
 
 ext {
-    utilsVersion = "5.2.52"
-    metricsVersion = "1.12.52"
-    bytesVersion = "1.0.9"
-    circeVersion = "0.7.0"
+    utilsVersion = "5.3.57"
+    metricsVersion = "1.13.53"
+    bytesVersion = "2.0.3"
+    circeVersion = "0.8.0"
 }
 
 rootProject.dockerCompose.isRequiredBy(test)
@@ -73,7 +75,7 @@ dependencies {
     compile 'com.typesafe:config:1.3.1'
     compile 'com.iheart:ficus_?:1.4.0'
 
-    compile 'com.avast:kluzo-scala_?:2.0.17'
+    compile 'com.avast:kluzo-scala_?:2.0.18'
     compile 'com.avast.continuity:continuity-core-scala_?:2.0.20'
 
     compile 'org.xbib:jsr-305:1.0.0'
@@ -88,7 +90,7 @@ dependencies {
     testCompile 'junit:junit:4.12'
     testCompile 'org.scalatest:scalatest_?:3.0.1'
     testCompile 'org.mockito:mockito-all:1.10.19'
-    testCompile 'ch.qos.logback:logback-classic:1.1.8'
+    testCompile 'ch.qos.logback:logback-classic:1.2.3'
 
     testRuntime 'org.pegdown:pegdown:1.6.0'
 }
