@@ -80,8 +80,6 @@ dependencies {
 
     compile 'org.xbib:jsr-305:1.0.0'
 
-    compileOptional 'com.avast.yap:yap-core_?:6.7.148'
-
     testCompile "com.avast.metrics:metrics-dropwizard:${metricsVersion}"
 
     testCompile "org.scalaj:scalaj-http_?:2.3.0"
