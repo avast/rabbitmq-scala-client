@@ -164,11 +164,11 @@ final RabbitMQProducer rabbitMQProducer = RabbitMQClientFactory.createProducerfr
 See [full example](/src/test/java/ExampleJava.java)
 
 ### Healtcheck
-The library is not able to recover from all failures so it provides [HealthCheck class](/src/mai/scala/com/avast/clients/rabbitmq/HealthCheck.scala)
+The library is not able to recover from all failures so it provides [HealthCheck class](/src/main/scala/com/avast/clients/rabbitmq/HealthCheck.scala)
  that indicates if the application is OK or not - then it should be restarted.
 To use that class, simply pass the `rabbitExceptionHandler` as listener when constructing the RabbitMQ classes. Then you can call `getStatus` method.
 
-If you are using [Yap](https://git.int.avast.com/ff/yap) then you can use [YapHealthCheck class](/src/mai/scala/com/avast/clients/rabbitmq/YapHealthCheck.scala)
+If you are using [Yap](https://git.int.avast.com/ff/yap) then you can use [YapHealthCheck class](/src/main/scala/com/avast/clients/rabbitmq/YapHealthCheck.scala)
  that can be used to extend the standard Yap status endpoint (using `YapBuilder.addCustomStatusHandler` method).
 
 
