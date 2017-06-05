@@ -53,7 +53,7 @@ ext {
     utilsVersion = "5.3.57"
     metricsVersion = "1.13.53"
     bytesVersion = "2.0.3"
-    circeVersion = "0.8.0"
+    circeVersion = "0.7.1"
 }
 
 rootProject.dockerCompose.isRequiredBy(test)
