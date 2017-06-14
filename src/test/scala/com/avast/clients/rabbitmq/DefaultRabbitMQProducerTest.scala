@@ -2,7 +2,6 @@ package com.avast.clients.rabbitmq
 
 import com.avast.bytes.Bytes
 import com.avast.metrics.scalaapi.Monitor
-import com.avast.metrics.test.NoOpMonitor
 import com.rabbitmq.client.AMQP
 import com.rabbitmq.client.impl.recovery.AutorecoveringChannel
 import org.mockito.Mockito._
