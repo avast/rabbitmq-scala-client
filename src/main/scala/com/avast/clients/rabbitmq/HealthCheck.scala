@@ -1,9 +1,9 @@
 package com.avast.clients.rabbitmq
 
 import com.avast.clients.rabbitmq.HealthCheckStatus.{Failure, Ok}
-import com.rabbitmq.client.{Channel, Connection, Consumer}
+import com.rabbitmq.client.{Channel, Connection, Consumer, ShutdownSignalException}
 import com.typesafe.scalalogging.StrictLogging
-import net.jodah.lyra.event.{ChannelListener, ConnectionListener, ConsumerListener}
+import com.avast.clients.rabbitmq.api.{ChannelListener, ConnectionListener, ConsumerListener}
 
 sealed trait HealthCheckStatus
 object HealthCheckStatus {
@@ -46,6 +46,9 @@ class HealthCheck extends StrictLogging {
     override def onRecoveryCompleted(consumer: Consumer, channel: Channel): Unit = ()
     override def onRecoveryStarted(consumer: Consumer, channel: Channel): Unit = ()
     override def onRecoveryFailure(consumer: Consumer, channel: Channel, failure: Throwable): Unit = fail(failure)
+    override def onShutdown(consumer: Consumer, channel: Channel, consumerTag: String, sig: ShutdownSignalException): Unit = fail(sig)
+    override def onShutdown(cause: ShutdownSignalException, channel: Channel): Unit = fail(cause)
+    override def onError(consumer: Consumer, channel: Channel, failure: Throwable): Unit = fail(failure)
   }
 
 }
