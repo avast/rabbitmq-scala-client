@@ -1,6 +1,5 @@
 package com.avast.clients.rabbitmq
 
-import java.nio.file.{Path, Paths}
 import java.time.Duration
 import java.util
 import java.util.concurrent.{ScheduledExecutorService, TimeoutException}
@@ -37,14 +36,12 @@ object RabbitMQClientFactory extends LazyLogging {
 
   private implicit final val JavaDurationReader: ValueReader[Duration] = (config: Config, path: String) => config.getDuration(path)
 
-  private implicit final val JavaPathReader: ValueReader[Path] = (config: Config, path: String) => Paths.get(config.getString(path))
-
   private implicit final val DeliveryResultReader: ValueReader[DeliveryResult] = (config: Config, path: String) =>
     config.getString(path).toLowerCase match {
-      case "ack"       => Ack
-      case "reject"    => Reject
-      case "retry"     => Retry
-      case "republish" => Republish
+      case "ack" => Ack
+      case "reject" => Reject
+      case "retry" => Retry
+      case "republish" => Republish()
   }
 
   object Producer {

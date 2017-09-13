@@ -93,7 +93,7 @@ class LiveTest extends FunSuite with Eventually {
 
         if (d.incrementAndGet() < (cnt - 50)) Ack
         else {
-          if (d.incrementAndGet() < (cnt - 10)) Retry else Republish
+          if (d.incrementAndGet() < (cnt - 10)) Retry else Republish()
         }
       }
     }
