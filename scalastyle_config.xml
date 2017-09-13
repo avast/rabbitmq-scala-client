@@ -14,7 +14,7 @@ it tries to lay a common ground using the official style guide: http://docs.scal
     </check>
     <check class="org.scalastyle.file.FileLineLengthChecker" level="warning" enabled="true">
         <parameters>
-            <parameter name="maxLineLength">140</parameter>
+            <parameter name="maxLineLength">160</parameter>
             <parameter name="tabSize">2</parameter>
             <parameter name="ignoreImports">false</parameter>
         </parameters>

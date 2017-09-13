@@ -8,7 +8,6 @@ import com.avast.clients.rabbitmq.RabbitMQChannelFactory.ServerChannel
 import com.avast.clients.rabbitmq.api.{ConsumerListener, RabbitMQConsumer}
 import com.avast.kluzo.{Kluzo, TraceId}
 import com.avast.metrics.scalaapi.Monitor
-import com.avast.utils2.JavaConversions._
 import com.rabbitmq.client.AMQP.BasicProperties
 import com.rabbitmq.client.AMQP.Queue.BindOk
 import com.rabbitmq.client.{AMQP, DefaultConsumer, Envelope, ShutdownSignalException}
@@ -47,8 +46,8 @@ class DefaultRabbitMQConsumer(
 
   private val processedTimer = tasksMonitor.timerPair("processed")
 
-
-  override def handleShutdownSignal(consumerTag: String, sig: ShutdownSignalException): Unit = consumerListener.onShutdown(this, channel, consumerTag, sig)
+  override def handleShutdownSignal(consumerTag: String, sig: ShutdownSignalException): Unit =
+    consumerListener.onShutdown(this, channel, consumerTag, sig)
 
   override def handleDelivery(consumerTag: String, envelope: Envelope, properties: BasicProperties, body: Array[Byte]): Unit = {
     processingCount.incrementAndGet()
@@ -116,9 +115,9 @@ class DefaultRabbitMQConsumer(
     processingCount.decrementAndGet()
 
     {
-      case Success(Ack) => ack(messageId, deliveryTag)
-      case Success(Reject) => reject(messageId, deliveryTag)
-      case Success(Retry) => retry(messageId, deliveryTag)
+      case Success(Ack)       => ack(messageId, deliveryTag)
+      case Success(Reject)    => reject(messageId, deliveryTag)
+      case Success(Retry)     => retry(messageId, deliveryTag)
       case Success(Republish) => republish(messageId, deliveryTag, properties, body)
       case Failure(NonFatal(e)) =>
         processingFailedMeter.mark()
@@ -132,9 +131,9 @@ class DefaultRabbitMQConsumer(
     import DeliveryResult._
 
     failureAction match {
-      case (Ack) => ack(messageId, deliveryTag)
-      case (Reject) => reject(messageId, deliveryTag)
-      case (Retry) => retry(messageId, deliveryTag)
+      case (Ack)       => ack(messageId, deliveryTag)
+      case (Reject)    => reject(messageId, deliveryTag)
+      case (Retry)     => retry(messageId, deliveryTag)
       case (Republish) => republish(messageId, deliveryTag, properties, body)
     }
   }

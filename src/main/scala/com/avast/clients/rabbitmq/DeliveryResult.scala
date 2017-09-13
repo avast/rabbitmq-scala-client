@@ -20,9 +20,9 @@ object DeliveryResult {
 
   def apply(result: JavaResult): DeliveryResult = {
     result match {
-      case JavaResult.Ack => Ack
+      case JavaResult.Ack    => Ack
       case JavaResult.Reject => Reject
-      case JavaResult.Retry => Retry
+      case JavaResult.Retry  => Retry
 
       case JavaResult.Republish => Republish
     }

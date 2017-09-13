@@ -5,6 +5,7 @@ import java.time.Duration
 import java.util
 import java.util.concurrent.{ScheduledExecutorService, TimeoutException}
 
+import com.avast.clients.rabbitmq.DeliveryResult.{Ack, Reject, Republish, Retry}
 import com.avast.clients.rabbitmq.RabbitMQChannelFactory.ServerChannel
 import com.avast.clients.rabbitmq.api.{ConsumerListener, RabbitMQConsumer, RabbitMQProducer}
 import com.avast.continuity.Continuity
@@ -34,24 +35,16 @@ object RabbitMQClientFactory extends LazyLogging {
   private[rabbitmq] final val ConsumerBindingRootConfigKey = "ffRabbitMQConsumerBindingDefaults"
   private[rabbitmq] final val ConsumerBindingDefaultConfig = ConfigFactory.defaultReference().getConfig(ConsumerBindingRootConfigKey)
 
-  private implicit final val JavaDurationReader: ValueReader[Duration] = new ValueReader[Duration] {
-    override def read(config: Config, path: String): Duration = config.getDuration(path)
-  }
+  private implicit final val JavaDurationReader: ValueReader[Duration] = (config: Config, path: String) => config.getDuration(path)
 
-  private implicit final val JavaPathReader: ValueReader[Path] = new ValueReader[Path] {
-    override def read(config: Config, path: String): Path = Paths.get(config.getString(path))
-  }
+  private implicit final val JavaPathReader: ValueReader[Path] = (config: Config, path: String) => Paths.get(config.getString(path))
 
-  private implicit final val DeliveryResultReader: ValueReader[DeliveryResult] = new ValueReader[DeliveryResult] {
-
-    import DeliveryResult._
-
-    override def read(config: Config, path: String): DeliveryResult = config.getString(path).toLowerCase match {
-      case "ack" => Ack
-      case "reject" => Reject
-      case "retry" => Retry
+  private implicit final val DeliveryResultReader: ValueReader[DeliveryResult] = (config: Config, path: String) =>
+    config.getString(path).toLowerCase match {
+      case "ack"       => Ack
+      case "reject"    => Reject
+      case "retry"     => Retry
       case "republish" => Republish
-    }
   }
 
   object Producer {
@@ -256,7 +249,7 @@ object RabbitMQClientFactory extends LazyLogging {
                               scheduledExecutor: ScheduledExecutorService)(ec: ExecutionContext): RabbitMQConsumer = {
     import consumerConfig._
 
-    implicit val finalExecutor = if (useKluzo) {
+    implicit val finalExecutor: ExecutionContext = if (useKluzo) {
       Continuity.wrapExecutionContext(ec)
     } else {
       ec
