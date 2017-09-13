@@ -20,6 +20,33 @@ For most current version see the [Teamcity](https://teamcity.int.avast.com/viewT
 
 ### Configuration
 
+#### Structured config
+Since v 6.x, it's necessary to have the config structured as following:
+```hocon
+rabbitConfig {
+  // connection config
+  
+  consumer1 {
+    //consumer config
+  }
+  
+  consumer2 {
+    //consumer config
+  }
+  
+  producer1 {
+    //producer config
+  }
+  
+  producer2 {
+    //producer config
+  }
+}
+
+```
+
+#### Config example
+
 ```hocon
 myConfig {
   hosts = ["localhost:5672"]
@@ -107,32 +134,28 @@ myConfig {
 ```
 For full list of options please see [reference.conf](src/main/resources/reference.conf).
 
-As you may have noticed, there are `producer` and `consumer` configurations *inside* the `myConfig` block. Even though they are NOT dependent and they don't
-have to be this structured, it seems like a good strategy to have all producers/consumers in block which configures connection to the RabbitMQ server. In case
-there are more of them, proper naming like `producer-testing` should be used.
-
 ### Scala usage
 
 ```scala
-  val config = ConfigFactory.load().getConfig("myConfig")
+  val config = ConfigFactory.load().getConfig("myRabbitConfig")
 
-  // you need both `ExecutorService` (optionally passed to `RabbitMQChannelFactory`) and `ExecutionContext` (implicitly passed to consumer), both are
+  // you need both `ExecutorService` (optionally passed to `RabbitMQFactory`) and `ExecutionContext` (implicitly passed to consumer), both are
   // used for callbacks execution, so why not to use a `ExecutionContextExecutionService`?
   implicit val ex: ExecutionContextExecutorService = ???
 
   val monitor = new JmxMetricsMonitor("TestDomain")
 
-  // here you create the channel factory; by default, use it for all producers/consumers amongst one RabbitMQ server - they will share a single TCP connection
+  // here you create the factory; it's shared for all producers/consumers amongst one RabbitMQ server - they will share a single TCP connection
   // but have separated channels
   // if you expect very high load, you can use separate connections for each producer/consumer, but it's usually not needed
-  val channelFactory = RabbitMQChannelFactory.fromConfig(config, Some(ex))
+  val rabbitFactory = RabbitMQFactory.fromConfig(config, Some(ex))
 
-  val receiver = RabbitMQClientFactory.Consumer.fromConfig(config.getConfig("consumer"), channelFactory, monitor) { delivery =>
+  val receiver = rabbitFactory.newConsumer("consumer", monitor) { delivery =>
     println(delivery)
     Future.successful(true)
   }
 
-  val sender = RabbitMQClientFactory.Producer.fromConfig(config.getConfig("producer"), channelFactory, monitor)
+  val sender = rabbitFactory.newProducer("producer", monitor)
 ```
 
 ### Java usage
@@ -142,20 +165,16 @@ depending on your usage).
 Don't get confused by the Java API actually implemented in Scala.
 
 ```java
-final RabbitMQChannelFactory rabbitMQChannelFactory = RabbitMQChannelFactory.fromConfig(config).withExecutor(executor).build();
+final RabbitMQJavaFactory factory = RabbitMQFactory.newBuilder(config).withExecutor(executor).build();
 
-final RabbitMQConsumer rabbitMQConsumer = RabbitMQClientFactory.createConsumerfromConfig(
-    config.getConfig("consumer"),
-    rabbitMQChannelFactory,
+final RabbitMQConsumer rabbitMQConsumer = factory.newConsumer(
+    "consumer",
     NoOpMonitor.INSTANCE,
-    null,
     executor,
     ExampleJava::handleDelivery
 );
 
-final RabbitMQProducer rabbitMQProducer = RabbitMQClientFactory.createProducerfromConfig(
-    config.getConfig("producer"),
-    rabbitMQChannelFactory,
+final RabbitMQProducer rabbitMQProducer = factory.newProducer("producer",
     NoOpMonitor.INSTANCE
 );
 
@@ -180,35 +199,7 @@ object YapHealthCheck extends HealthCheck with (HttpRequest[Bytes] => Completabl
   }
 }
 ```
-
-
-## Notes
-
-### Structured config
-It's highly recommended to have the config structured as in the example, that means:
-```hocon
-rabbitConfig {
-  // connection config
-  
-  consumer1 {
-    //consumer config
-  }
-  
-  consumer2 {
-    //consumer config
-  }
-  
-  producer1 {
-    //producer config
-  }
-  
-  producer2 {
-    //producer config
-  }
-}
-
-```
-It usually leads to much more clear config.
+##Notes
 
 ### DeliveryResult
 The consumers `readAction` returns `Future` of [`DeliveryResult`](src/main/scala/com/avast/clients/rabbitmq/DeliveryResult.scala). The `DeliveryResult` has 4 possible values
