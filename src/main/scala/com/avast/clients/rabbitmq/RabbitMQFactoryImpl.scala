@@ -11,7 +11,7 @@ import com.typesafe.config.Config
 import scala.concurrent.{ExecutionContext, Future}
 
 private[rabbitmq] class RabbitMQFactoryImpl(connection: ServerConnection,
-                                            override val info: RabbitMqFactoryInfo,
+                                            info: RabbitMqFactoryInfo,
                                             config: Config,
                                             connectionListener: ConnectionListener,
                                             channelListener: ChannelListener,
