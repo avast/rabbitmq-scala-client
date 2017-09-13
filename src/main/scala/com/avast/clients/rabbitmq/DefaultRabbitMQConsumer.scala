@@ -13,6 +13,7 @@ import com.rabbitmq.client.AMQP.Queue.BindOk
 import com.rabbitmq.client.{AMQP, DefaultConsumer, Envelope, ShutdownSignalException}
 import com.typesafe.scalalogging.StrictLogging
 
+import scala.collection.JavaConverters._
 import scala.concurrent.{ExecutionContext, Future}
 import scala.util.control.NonFatal
 import scala.util.{Failure, Success, Try}
@@ -115,10 +116,10 @@ class DefaultRabbitMQConsumer(
     processingCount.decrementAndGet()
 
     {
-      case Success(Ack)       => ack(messageId, deliveryTag)
-      case Success(Reject)    => reject(messageId, deliveryTag)
-      case Success(Retry)     => retry(messageId, deliveryTag)
-      case Success(Republish) => republish(messageId, deliveryTag, properties, body)
+      case Success(Ack) => ack(messageId, deliveryTag)
+      case Success(Reject) => reject(messageId, deliveryTag)
+      case Success(Retry) => retry(messageId, deliveryTag)
+      case Success(Republish(newHeaders)) => republish(messageId, deliveryTag, mergeHeaders(newHeaders, properties), body)
       case Failure(NonFatal(e)) =>
         processingFailedMeter.mark()
         logger.error(s"[$name] Error while executing callback, it's probably a BUG", e)
@@ -131,10 +132,19 @@ class DefaultRabbitMQConsumer(
     import DeliveryResult._
 
     failureAction match {
-      case (Ack)       => ack(messageId, deliveryTag)
-      case (Reject)    => reject(messageId, deliveryTag)
-      case (Retry)     => retry(messageId, deliveryTag)
-      case (Republish) => republish(messageId, deliveryTag, properties, body)
+      case (Ack) => ack(messageId, deliveryTag)
+      case (Reject) => reject(messageId, deliveryTag)
+      case (Retry) => retry(messageId, deliveryTag)
+      case (Republish(newHeaders)) => republish(messageId, deliveryTag, mergeHeaders(newHeaders, properties), body)
+    }
+  }
+
+  private def mergeHeaders(newHeaders: Map[String, AnyRef], properties: BasicProperties): BasicProperties = {
+    if (newHeaders.isEmpty) properties
+    else {
+      val headers = properties.getHeaders.asScala ++ newHeaders // values in newHeaders will overwrite values in original headers
+
+      properties.builder().headers(headers.asJava).build()
     }
   }
 

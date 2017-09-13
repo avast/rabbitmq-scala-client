@@ -160,7 +160,7 @@ class DefaultRabbitMQConsumerTest extends FunSuite with MockitoSugar with Eventu
     )({ delivery =>
       assertResult(messageId)(delivery.properties.getMessageId)
 
-      Future.successful(DeliveryResult.Republish)
+      Future.successful(DeliveryResult.Republish())
     })
 
     val body = Random.nextString(5).getBytes

@@ -47,6 +47,6 @@ public class ExampleJava {
 
     public static CompletableFuture<DeliveryResult> handleDelivery(Delivery delivery) {
         System.out.println(delivery.getBody().toStringUtf8());
-        return CompletableFuture.completedFuture(DeliveryResult.Ack);
+        return CompletableFuture.completedFuture(DeliveryResult.Ack());
     }
 }
