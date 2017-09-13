@@ -3,8 +3,8 @@ import com.avast.clients.rabbitmq.api.RabbitMQConsumer;
 import com.avast.clients.rabbitmq.api.RabbitMQProducer;
 import com.avast.clients.rabbitmq.javaapi.Delivery;
 import com.avast.clients.rabbitmq.javaapi.DeliveryResult;
-import com.avast.clients.rabbitmq.javaapi.RabbitMQChannelFactory;
-import com.avast.clients.rabbitmq.javaapi.RabbitMQClientFactory;
+import com.avast.clients.rabbitmq.javaapi.RabbitMQFactory;
+import com.avast.clients.rabbitmq.javaapi.RabbitMQJavaFactory;
 import com.avast.metrics.test.NoOpMonitor;
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
@@ -23,20 +23,16 @@ public class ExampleJava {
 
         final ExecutorService executor = Executors.newCachedThreadPool();
 
-        final RabbitMQChannelFactory rabbitMQChannelFactory = RabbitMQChannelFactory.newBuilder(config).withExecutor(executor).build();
+        final RabbitMQJavaFactory factory = RabbitMQFactory.newBuilder(config).withExecutor(executor).build();
 
-        final RabbitMQConsumer rabbitMQConsumer = RabbitMQClientFactory.createConsumerfromConfig(
-                config.getConfig("consumer"),
-                rabbitMQChannelFactory,
+        final RabbitMQConsumer rabbitMQConsumer = factory.newConsumer(
+                "consumer",
                 NoOpMonitor.INSTANCE,
-                null,
                 executor,
                 ExampleJava::handleDelivery
         );
 
-        final RabbitMQProducer rabbitMQProducer = RabbitMQClientFactory.createProducerfromConfig(
-                config.getConfig("producer"),
-                rabbitMQChannelFactory,
+        final RabbitMQProducer rabbitMQProducer = factory.newProducer("producer",
                 NoOpMonitor.INSTANCE
         );
 

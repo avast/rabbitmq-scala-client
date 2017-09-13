@@ -2,7 +2,7 @@ package com.avast.clients.rabbitmq
 
 import java.util.UUID
 
-import com.avast.clients.rabbitmq.RabbitMQChannelFactory.DefaultListeners
+import com.avast.clients.rabbitmq.RabbitMQFactory.DefaultListeners
 import com.avast.metrics.scalaapi.Monitor
 import com.rabbitmq.client.AMQP.BasicProperties
 import com.rabbitmq.client.Envelope

@@ -19,7 +19,7 @@ class TestHelper(host: String, port: Int) {
 
     decode[QueueProperties](resp) match {
       case Right(p) => p.messages
-      case r        => throw new IllegalStateException(s"Wrong response $r")
+      case r => throw new IllegalStateException(s"Wrong response $r")
     }
   }
 
