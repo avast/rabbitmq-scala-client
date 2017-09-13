@@ -4,7 +4,7 @@ import java.util
 import java.util.UUID
 
 import com.avast.bytes.Bytes
-import com.avast.clients.rabbitmq.RabbitMQChannelFactory.ServerChannel
+import com.avast.clients.rabbitmq.RabbitMQFactory.ServerChannel
 import com.avast.clients.rabbitmq.api.RabbitMQProducer
 import com.avast.kluzo.Kluzo
 import com.avast.metrics.scalaapi.Monitor

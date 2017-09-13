@@ -5,7 +5,7 @@ import java.util
 import java.util.concurrent.{ScheduledExecutorService, TimeoutException}
 
 import com.avast.clients.rabbitmq.DeliveryResult.{Ack, Reject, Republish, Retry}
-import com.avast.clients.rabbitmq.RabbitMQChannelFactory.ServerChannel
+import com.avast.clients.rabbitmq.RabbitMQFactory.ServerChannel
 import com.avast.clients.rabbitmq.api.{ConsumerListener, RabbitMQConsumer, RabbitMQProducer}
 import com.avast.continuity.Continuity
 import com.avast.kluzo.Kluzo
@@ -19,11 +19,10 @@ import net.ceedubs.ficus.Ficus._
 import net.ceedubs.ficus.readers.ArbitraryTypeReader._
 import net.ceedubs.ficus.readers.ValueReader
 
-import scala.collection.immutable
 import scala.concurrent.{ExecutionContext, Future}
 import scala.util.control.NonFatal
 
-object RabbitMQClientFactory extends LazyLogging {
+private[rabbitmq] object RabbitMQClientFactory extends LazyLogging {
 
   private[rabbitmq] final val ProducerRootConfigKey = "ffRabbitMQProducerDefaults"
   private[rabbitmq] final val ProducerDefaultConfig = ConfigFactory.defaultReference().getConfig(ProducerRootConfigKey)
@@ -46,47 +45,30 @@ object RabbitMQClientFactory extends LazyLogging {
 
   object Producer {
 
-    /** Creates new instance of producer, using the passed TypeSafe configuration.
-      *
-      * @param providedConfig The configuration.
-      * @param channelFactory See [[RabbitMQChannelFactory]].
-      * @param monitor        Monitor for metrics.
-      */
-    def fromConfig(providedConfig: Config, channelFactory: RabbitMQChannelFactory, monitor: Monitor): RabbitMQProducer = {
+    def fromConfig(providedConfig: Config, channel: ServerChannel, factoryInfo: RabbitMqFactoryInfo, monitor: Monitor): RabbitMQProducer = {
       val producerConfig = providedConfig.wrapped.as[ProducerConfig]("root")
 
-      create(producerConfig, channelFactory, monitor)
+      create(producerConfig, channel, factoryInfo, monitor)
     }
 
-    /** Creates new instance of producer, using the passed configuration.
-      *
-      * @param producerConfig The configuration.
-      * @param channelFactory See [[RabbitMQChannelFactory]].
-      * @param monitor        Monitor for metrics.
-      */
-    def create(producerConfig: ProducerConfig, channelFactory: RabbitMQChannelFactory, monitor: Monitor): DefaultRabbitMQProducer = {
-      val channel = channelFactory.createChannel()
+    def create(producerConfig: ProducerConfig,
+               channel: ServerChannel,
+               factoryInfo: RabbitMqFactoryInfo,
+               monitor: Monitor): DefaultRabbitMQProducer = {
 
-      prepareProducer(producerConfig, channel, channelFactory.info, monitor)
+      prepareProducer(producerConfig, channel, factoryInfo, monitor)
     }
   }
 
   object Consumer {
 
-    /** Creates new instance of consumer, using the passed TypeSafe configuration.
-      *
-      * @param providedConfig           The configuration.
-      * @param channelFactory           See [[RabbitMQChannelFactory]].
-      * @param monitor                  Monitor for metrics.
-      * @param scheduledExecutorService [[ScheduledExecutorService]] used for timeouting tasks (after specified timeout).
-      * @param readAction               Action executed for each delivered message. You should never return a failed future.
-      * @param ec                       [[ExecutionContext]] used for callbacks.
-      */
     def fromConfig(providedConfig: Config,
-                   channelFactory: RabbitMQChannelFactory,
+                   channel: ServerChannel,
+                   channelFactoryInfo: RabbitMqFactoryInfo,
                    monitor: Monitor,
-                   scheduledExecutorService: ScheduledExecutorService = FutureTimeouter.Implicits.DefaultScheduledExecutor)(
-        readAction: Delivery => Future[DeliveryResult])(implicit ec: ExecutionContext): RabbitMQConsumer = {
+                   consumerListener: ConsumerListener,
+                   scheduledExecutorService: ScheduledExecutorService)(readAction: Delivery => Future[DeliveryResult])(
+        implicit ec: ExecutionContext): RabbitMQConsumer = {
 
       val mergedConfig = providedConfig.withFallback(ConsumerDefaultConfig)
 
@@ -103,38 +85,24 @@ object RabbitMQClientFactory extends LazyLogging {
 
       val consumerConfig = updatedConfig.wrapped.as[ConsumerConfig]("root")
 
-      create(consumerConfig, channelFactory, monitor, scheduledExecutorService)(readAction)
+      create(consumerConfig, channel, channelFactoryInfo, monitor, consumerListener, scheduledExecutorService)(readAction)
     }
 
-    /** Creates new instance of consumer, using the passed configuration.
-      *
-      * @param consumerConfig           The configuration.
-      * @param channelFactory           See [[RabbitMQChannelFactory]].
-      * @param monitor                  Monitor for metrics.
-      * @param scheduledExecutorService [[ScheduledExecutorService]] used for timeouting tasks (after specified timeout).
-      * @param readAction               Action executed for each delivered message. You should never return a failed future.
-      * @param ec                       [[ExecutionContext]] used for callbacks.
-      */
     def create(consumerConfig: ConsumerConfig,
-               channelFactory: RabbitMQChannelFactory,
+               channel: ServerChannel,
+               channelFactoryInfo: RabbitMqFactoryInfo,
                monitor: Monitor,
+               consumerListener: ConsumerListener,
                scheduledExecutorService: ScheduledExecutorService)(readAction: (Delivery) => Future[DeliveryResult])(
         implicit ec: ExecutionContext): RabbitMQConsumer = {
-      val channel = channelFactory.createChannel()
 
-      prepareConsumer(consumerConfig,
-                      readAction,
-                      channelFactory.info,
-                      channel,
-                      channelFactory.consumerListener,
-                      monitor,
-                      scheduledExecutorService)
+      prepareConsumer(consumerConfig, readAction, channelFactoryInfo, channel, consumerListener, monitor, scheduledExecutorService)
     }
   }
 
   private def prepareProducer(producerConfig: ProducerConfig,
                               channel: ServerChannel,
-                              channelFactoryInfo: RabbitMqChannelFactoryInfo,
+                              channelFactoryInfo: RabbitMqFactoryInfo,
                               monitor: Monitor): DefaultRabbitMQProducer = {
     import producerConfig._
 
@@ -150,7 +118,7 @@ object RabbitMQClientFactory extends LazyLogging {
   }
 
   private def declareExchange(name: String,
-                              channelFactoryInfo: RabbitMqChannelFactoryInfo,
+                              channelFactoryInfo: RabbitMqFactoryInfo,
                               channel: ServerChannel,
                               autoDeclareExchange: AutoDeclareExchange): Unit = {
     import autoDeclareExchange._
@@ -164,7 +132,7 @@ object RabbitMQClientFactory extends LazyLogging {
 
   private def prepareConsumer(consumerConfig: ConsumerConfig,
                               readAction: (Delivery) => Future[DeliveryResult],
-                              channelFactoryInfo: RabbitMqChannelFactoryInfo,
+                              channelFactoryInfo: RabbitMqFactoryInfo,
                               channel: ServerChannel,
                               consumerListener: ConsumerListener,
                               monitor: Monitor,
@@ -210,7 +178,7 @@ object RabbitMQClientFactory extends LazyLogging {
     channel.queueDeclare(queueName, durable, exclusive, autoDelete, new util.HashMap())
   }
 
-  private def bindQueues(channelFactoryInfo: RabbitMqChannelFactoryInfo, channel: ServerChannel, consumerConfig: ConsumerConfig): Unit = {
+  private def bindQueues(channelFactoryInfo: RabbitMqFactoryInfo, channel: ServerChannel, consumerConfig: ConsumerConfig): Unit = {
     import consumerConfig.queueName
 
     consumerConfig.bindings.foreach { bind =>
@@ -229,7 +197,7 @@ object RabbitMQClientFactory extends LazyLogging {
     }
   }
 
-  private[rabbitmq] def bindQueue(channelFactoryInfo: RabbitMqChannelFactoryInfo)(channel: ServerChannel, queueName: String)(
+  private[rabbitmq] def bindQueue(channelFactoryInfo: RabbitMqFactoryInfo)(channel: ServerChannel, queueName: String)(
       exchangeName: String,
       routingKey: String): AMQP.Queue.BindOk = {
     logger.info(s"Binding $exchangeName($routingKey) -> '$queueName' in virtual host '${channelFactoryInfo.virtualHost}'")
@@ -238,7 +206,7 @@ object RabbitMQClientFactory extends LazyLogging {
   }
 
   private def prepareConsumer(consumerConfig: ConsumerConfig,
-                              channelFactoryInfo: RabbitMqChannelFactoryInfo,
+                              channelFactoryInfo: RabbitMqFactoryInfo,
                               channel: ServerChannel,
                               userReadAction: Delivery => Future[DeliveryResult],
                               consumerListener: ConsumerListener,
@@ -319,24 +287,3 @@ object RabbitMQClientFactory extends LazyLogging {
   }
 
 }
-
-case class ConsumerConfig(queueName: String,
-                          processTimeout: Duration,
-                          failureAction: DeliveryResult,
-                          timeoutAction: DeliveryResult,
-                          prefetchCount: Int,
-                          useKluzo: Boolean,
-                          declare: AutoDeclareQueue,
-                          bindings: immutable.Seq[AutoBindQueue],
-                          consumerTag: String,
-                          name: String)
-
-case class AutoDeclareQueue(enabled: Boolean, durable: Boolean, exclusive: Boolean, autoDelete: Boolean)
-
-case class AutoBindQueue(exchange: BindExchange, routingKeys: immutable.Seq[String])
-
-case class BindExchange(name: String, declare: Config)
-
-case class ProducerConfig(exchange: String, declare: Config, useKluzo: Boolean, reportUnroutable: Boolean, name: String)
-
-case class AutoDeclareExchange(enabled: Boolean, `type`: String, durable: Boolean, autoDelete: Boolean)
