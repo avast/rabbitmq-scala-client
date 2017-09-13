@@ -132,10 +132,10 @@ class DefaultRabbitMQConsumer(
     import DeliveryResult._
 
     failureAction match {
-      case (Ack) => ack(messageId, deliveryTag)
-      case (Reject) => reject(messageId, deliveryTag)
-      case (Retry) => retry(messageId, deliveryTag)
-      case (Republish(newHeaders)) => republish(messageId, deliveryTag, mergeHeaders(newHeaders, properties), body)
+      case Ack => ack(messageId, deliveryTag)
+      case Reject => reject(messageId, deliveryTag)
+      case Retry => retry(messageId, deliveryTag)
+      case Republish(newHeaders) => republish(messageId, deliveryTag, mergeHeaders(newHeaders, properties), body)
     }
   }
 
