@@ -14,12 +14,12 @@ object RabbitMQFactory {
     new Builder(Left(config))
   }
 
-  def newBuilder(connectionConfig: RabbitMQConnectionConfig): Builder[RabbitMQFactoryManual] = {
+  def newBuilder(connectionConfig: RabbitMQConnectionConfig): Builder[RabbitMQJavaFactoryManual] = {
     new Builder(Right(connectionConfig))
   }
 
   //scalastyle:off
-  class Builder[B <: RabbitMQFactoryManual] private[RabbitMQFactory] (config: Either[Config, RabbitMQConnectionConfig]) {
+  class Builder[B <: RabbitMQJavaFactoryManual] private[RabbitMQFactory] (config: Either[Config, RabbitMQConnectionConfig]) {
     private var executor: Option[ExecutorService] = None
     private var connectionListener: ConnectionListener = DefaultListeners.DefaultConnectionListener
     private var channelListener: ChannelListener = DefaultListeners.DefaultChannelListener

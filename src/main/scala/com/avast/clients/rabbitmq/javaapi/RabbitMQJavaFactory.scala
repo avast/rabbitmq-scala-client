@@ -18,7 +18,7 @@ import com.avast.utils2.JavaConverters._
 import scala.concurrent.{ExecutionContext, ExecutionContextExecutor, Future}
 import scala.language.implicitConversions
 
-trait RabbitMQJavaFactory extends RabbitMQFactoryManual {
+trait RabbitMQJavaFactory extends RabbitMQJavaFactoryManual {
 
   /** Creates new instance of consumer, using the TypeSafe configuration passed to the factory and consumer name.
     *
@@ -40,7 +40,7 @@ trait RabbitMQJavaFactory extends RabbitMQFactoryManual {
   def newProducer(configName: String, monitor: Monitor): RabbitMQProducer
 }
 
-trait RabbitMQFactoryManual extends AutoCloseable {
+trait RabbitMQJavaFactoryManual extends AutoCloseable {
 
   /** Creates new instance of consumer, using passed configuration.
     *
