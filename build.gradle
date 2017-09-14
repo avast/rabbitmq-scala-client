@@ -17,83 +17,39 @@ apply plugin: 'avast-release'
 apply plugin: 'idea'
 apply plugin: 'docker-compose'
 
+subprojects {
+    apply plugin: 'java'
+    apply plugin: 'avast-publish'
+    apply plugin: 'avast-scala'
+    apply plugin: 'com.github.maiflai.scalatest'
+    apply plugin: 'com.github.ben-manes.versions'
 
-apply plugin: 'java'
-apply plugin: 'avast-publish'
-apply plugin: 'avast-scala'
-apply plugin: 'com.github.maiflai.scalatest'
-apply plugin: 'com.github.ben-manes.versions'
+    sourceCompatibility = '1.8'
+    targetCompatibility = '1.8'
 
-sourceCompatibility = '1.8'
-targetCompatibility = '1.8'
-
-repositories {
-    maven { url 'https://artifactory.int.avast.com/artifactory/maven' }
-}
-
-avast {
-    publish {
-        groupId = 'com.avast.clients'
-        artifactId = 'rabbitmq-client'
+    repositories {
+        maven { url 'https://artifactory.int.avast.com/artifactory/maven' }
     }
 
-    scala {
-        version = '2.12'
+    avast {
+        publish {
+            groupId = 'com.avast.clients'
+        }
+
+        scala {
+            version = '2.12'
+        }
     }
+
+
+    ext {
+        utilsVersion = "6.0.64"
+        metricsVersion = "2.0.0"
+        bytesVersion = "2.0.3"
+        circeVersion = "0.7.1" // only used in tests!
+    }
+
 }
-
-
-tasks.withType(ScalaCompile) {
-    //noinspection GroovyAccessibility
-    scalaCompileOptions.additionalParameters = ['-Xlint', '-Ywarn-value-discard']
-}
-
-ext {
-    utilsVersion = "6.0.64"
-    metricsVersion = "2.0.0"
-    bytesVersion = "2.0.3"
-    circeVersion = "0.7.1" // only used in tests!
-}
-
-rootProject.dockerCompose.isRequiredBy(test)
-
-test.doFirst {
-    dockerCompose.exposeAsSystemProperties(test)
-}
-
-dependencies {
-    compile "com.avast.metrics:metrics-api:${metricsVersion}"
-    compile 'com.typesafe.scala-logging:scala-logging_?:3.7.2'
-
-    compile "com.avast.utils2:utils-common:${utilsVersion}"
-    compile "com.avast.utils2:utils-scala_?:${utilsVersion}"
-    compile "com.avast.bytes:bytes-core:${bytesVersion}"
-
-    compile 'com.rabbitmq:amqp-client:4.2.1'
-    compile 'net.jodah:lyra:0.5.4'
-    compile 'com.typesafe:config:1.3.1'
-    compile 'com.iheart:ficus_?:1.4.1'
-
-    compile 'com.avast:kluzo-scala_?:2.0.18'
-    compile 'com.avast.continuity:continuity-core-scala_?:2.0.20'
-
-    compile 'org.xbib:jsr-305:1.0.0'
-
-    testCompile "com.avast.metrics:metrics-jmx:${metricsVersion}"
-
-    testCompile "org.scalaj:scalaj-http_?:2.3.0"
-    testCompile "io.circe:circe-core_?:$circeVersion"
-    testCompile "io.circe:circe-generic_?:$circeVersion"
-    testCompile "io.circe:circe-parser_?:$circeVersion"
-
-    testCompile 'junit:junit:4.12'
-    testCompile 'org.scalatest:scalatest_?:3.0.1'
-    testCompile 'org.mockito:mockito-all:1.10.19'
-    testCompile 'ch.qos.logback:logback-classic:1.2.3'
-
-    testRuntime 'org.pegdown:pegdown:1.6.0'
-}
-
 
 allprojects {
     //noinspection UnnecessaryQualifiedReference

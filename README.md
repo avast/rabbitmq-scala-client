@@ -162,7 +162,7 @@ For full list of options please see [reference.conf](src/main/resources/referenc
 
 The Java api is placed in subpackage `javaapi` (but not all classes have their Java counterparts, some have to be imported from Scala API,
 depending on your usage).  
-Don't get confused by the Java API actually implemented in Scala.
+Don't get confused by the Java API partially implemented in Scala.
 
 ```java
 final RabbitMQJavaFactory factory = RabbitMQFactory.newBuilder(config).withExecutor(executor).build();
