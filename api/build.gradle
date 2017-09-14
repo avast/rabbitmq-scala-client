@@ -1,0 +1,10 @@
+avast {
+    publish {
+        artifactId = 'rabbitmq-client-api'
+    }
+}
+
+dependencies {
+    compile "com.avast.bytes:bytes-core:${bytesVersion}"
+    compile "com.avast.utils2:utils-done_?:${utilsVersion}"
+}
