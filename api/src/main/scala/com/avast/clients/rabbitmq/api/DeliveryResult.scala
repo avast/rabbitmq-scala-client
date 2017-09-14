@@ -1,7 +1,5 @@
 package com.avast.clients.rabbitmq.api
 
-import com.avast.clients.rabbitmq.javaapi.{DeliveryResult => JavaResult}
-
 import scala.collection.JavaConverters._
 
 sealed trait DeliveryResult
@@ -20,12 +18,4 @@ object DeliveryResult {
   /** The message cannot be processed but is worth - it will be requeued to the bottom of the queue. */
   case class Republish(newHeaders: Map[String, AnyRef] = Map.empty) extends DeliveryResult
 
-  def apply(result: JavaResult): DeliveryResult = {
-    result match {
-      case _: JavaResult.Ack => Ack
-      case _: JavaResult.Reject => Reject
-      case _: JavaResult.Retry => Retry
-      case r: JavaResult.Republish => Republish(r.getNewHeaders.asScala.toMap)
-    }
-  }
 }

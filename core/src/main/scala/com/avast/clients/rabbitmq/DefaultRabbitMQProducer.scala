@@ -1,15 +1,16 @@
 package com.avast.clients.rabbitmq
 
-import java.util.{Date, UUID}
+import java.util.UUID
 
 import com.avast.bytes.Bytes
 import com.avast.clients.rabbitmq.RabbitMQFactory.ServerChannel
 import com.avast.clients.rabbitmq.api.{MessageProperties, RabbitMQProducer}
+import com.avast.clients.rabbitmq.javaapi.JavaConversions._
 import com.avast.kluzo.Kluzo
 import com.avast.metrics.scalaapi.Monitor
 import com.avast.utils2.Done
 import com.rabbitmq.client.AMQP.BasicProperties
-import com.rabbitmq.client.{AMQP, ReturnListener}
+import com.rabbitmq.client.ReturnListener
 import com.typesafe.scalalogging.StrictLogging
 
 import scala.collection.JavaConverters._
@@ -35,7 +36,7 @@ class DefaultRabbitMQProducer(name: String,
   override def send(routingKey: String, body: Bytes, properties: MessageProperties): Try[Done] = {
     val result = Try {
       // Kluzo enabled and ID available?
-      val finalProperties = messagePropertiesToAmqp {
+      val finalProperties = {
         if (useKluzo && Kluzo.getTraceId.nonEmpty) {
 
           val headers = {
@@ -58,7 +59,7 @@ class DefaultRabbitMQProducer(name: String,
 
       sendLock.synchronized {
         // see https://www.rabbitmq.com/api-guide.html#channel-threads
-        channel.basicPublish(exchangeName, routingKey, finalProperties, body.toByteArray)
+        channel.basicPublish(exchangeName, routingKey, finalProperties.asAMQP, body.toByteArray)
       }
 
       sentMeter.mark()
@@ -81,29 +82,6 @@ class DefaultRabbitMQProducer(name: String,
 
   override def close(): Unit = {
     channel.close()
-  }
-
-  private def messagePropertiesToAmqp(messageProperties: MessageProperties): AMQP.BasicProperties = {
-    val builder = new BasicProperties.Builder()
-
-    if (messageProperties.headers.nonEmpty) {
-      builder.headers(messageProperties.headers.asJava)
-    }
-    messageProperties.contentType.foreach(builder.contentType)
-    messageProperties.contentEncoding.foreach(builder.contentEncoding)
-    messageProperties.deliveryMode.foreach(builder.deliveryMode)
-    messageProperties.priority.foreach(builder.priority)
-    messageProperties.correlationId.foreach(builder.correlationId)
-    messageProperties.replyTo.foreach(builder.replyTo)
-    messageProperties.expiration.foreach(builder.expiration)
-    messageProperties.messageId.foreach(builder.messageId)
-    messageProperties.timestamp.map(i => new Date(i.toEpochMilli)).foreach(builder.timestamp)
-    messageProperties.`type`.foreach(builder.`type`)
-    messageProperties.userId.foreach(builder.userId)
-    messageProperties.appId.foreach(builder.appId)
-    messageProperties.clusterId.foreach(builder.clusterId)
-
-    builder.build()
   }
 
   // scalastyle:off

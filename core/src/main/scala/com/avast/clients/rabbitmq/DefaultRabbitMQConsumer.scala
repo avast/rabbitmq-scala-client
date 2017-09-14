@@ -6,6 +6,7 @@ import java.util.concurrent.atomic.AtomicInteger
 import com.avast.bytes.Bytes
 import com.avast.clients.rabbitmq.RabbitMQFactory.ServerChannel
 import com.avast.clients.rabbitmq.api._
+import com.avast.clients.rabbitmq.javaapi.JavaConversions._
 import com.avast.kluzo.{Kluzo, TraceId}
 import com.avast.metrics.scalaapi.Monitor
 import com.avast.utils2.Done
@@ -67,7 +68,7 @@ class DefaultRabbitMQConsumer(
 
             logger.debug(s"[$name] Read delivery with ID $messageId, deliveryTag $deliveryTag")
 
-            val message = Delivery(Bytes.copyFrom(body), amqpPropsToMessageProps(properties), Option(envelope.getRoutingKey).getOrElse(""))
+            val message = Delivery(Bytes.copyFrom(body), properties.asScala, Option(envelope.getRoutingKey).getOrElse(""))
 
             processedTimer.time {
               readAction(message).andThen(handleResult(messageId, deliveryTag, properties, body))
@@ -93,25 +94,6 @@ class DefaultRabbitMQConsumer(
           executeFailureAction(messageId, deliveryTag, properties, body)
       }
     }
-  }
-
-  private def amqpPropsToMessageProps(properties: BasicProperties): MessageProperties = {
-    MessageProperties(
-      Option(properties.getContentType),
-      Option(properties.getContentEncoding),
-      Option(properties.getHeaders).map(_.asScala.toMap).getOrElse(Map.empty),
-      Option(properties.getDeliveryMode),
-      Option(properties.getPriority),
-      Option(properties.getCorrelationId),
-      Option(properties.getReplyTo),
-      Option(properties.getExpiration),
-      Option(properties.getMessageId),
-      Option(properties.getTimestamp).map(_.toInstant),
-      Option(properties.getType),
-      Option(properties.getUserId),
-      Option(properties.getAppId),
-      Option(properties.getClusterId)
-    )
   }
 
   private def extractTraceId(properties: BasicProperties) = {
