@@ -7,7 +7,7 @@ import com.avast.clients.rabbitmq.api.DeliveryResult.{Ack, Republish}
 import com.avast.clients.rabbitmq.api.{Delivery, DeliveryResult}
 import com.avast.clients.rabbitmq.extras.PoisonedMessageHandler._
 import com.avast.clients.rabbitmq.javaapi
-import com.avast.clients.rabbitmq.javaapi.JavaConversions._
+import com.avast.clients.rabbitmq.javaapi.JavaConverters._
 import com.avast.utils2.JavaConverters._
 import com.typesafe.scalalogging.StrictLogging
 

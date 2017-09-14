@@ -3,7 +3,7 @@ package com.avast.clients.rabbitmq.javaapi
 import java.util.concurrent.{CompletableFuture, Executor}
 import java.util.function
 
-import com.avast.clients.rabbitmq.javaapi.JavaConversions._
+import com.avast.clients.rabbitmq.javaapi.JavaConverters._
 import com.avast.clients.rabbitmq.{ConsumerConfig, ProducerConfig, RabbitMQFactory => ScalaFactory}
 import com.avast.metrics.api.Monitor
 import com.avast.metrics.scalaapi.{Monitor => ScalaMonitor}

@@ -14,7 +14,7 @@ import scala.collection.JavaConverters._
 import scala.concurrent.{ExecutionContext, Future}
 import scala.language.implicitConversions
 
-private[rabbitmq] object JavaConversions {
+private[rabbitmq] object JavaConverters {
 
   implicit class ScalaPropertiesConversions(val messageProperties: ScalaProperties) extends AnyVal {
     def asJava: JavaProperties = {

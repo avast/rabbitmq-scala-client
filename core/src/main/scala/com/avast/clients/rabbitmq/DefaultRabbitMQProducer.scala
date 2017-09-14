@@ -5,7 +5,7 @@ import java.util.UUID
 import com.avast.bytes.Bytes
 import com.avast.clients.rabbitmq.RabbitMQFactory.ServerChannel
 import com.avast.clients.rabbitmq.api.{MessageProperties, RabbitMQProducer}
-import com.avast.clients.rabbitmq.javaapi.JavaConversions._
+import com.avast.clients.rabbitmq.javaapi.JavaConverters._
 import com.avast.kluzo.Kluzo
 import com.avast.metrics.scalaapi.Monitor
 import com.avast.utils2.Done
