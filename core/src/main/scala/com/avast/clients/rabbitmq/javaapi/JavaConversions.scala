@@ -105,13 +105,13 @@ private[rabbitmq] object JavaConversions {
   }
 
   implicit class ScalaDeliveryConversion(val d: ScalaDelivery) extends AnyVal {
-    def asScala: JavaDelivery = {
+    def asJava: JavaDelivery = {
       new JavaDelivery(d.routingKey, d.body, d.properties.asJava)
     }
   }
 
   implicit class JavaDeliveryConversion(val d: JavaDelivery) extends AnyVal {
-    def asJava: ScalaDelivery = {
+    def asScala: ScalaDelivery = {
       ScalaDelivery(d.getBody, d.getProperties.asScala, d.getRoutingKey)
     }
   }
@@ -146,7 +146,7 @@ private[rabbitmq] object JavaConversions {
 
   implicit class JavaActionConversion(val readAction: function.Function[JavaDelivery, CompletableFuture[DeliveryResult]]) extends AnyVal {
     def asScala(implicit ex: Executor, ec: ExecutionContext): ScalaDelivery => Future[api.DeliveryResult] =
-      d => readAction(d.asScala).asScala.map(_.asScala)
+      d => readAction(d.asJava).asScala.map(_.asScala)
   }
 
 }
