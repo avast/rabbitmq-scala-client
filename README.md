@@ -13,7 +13,7 @@ It uses [Lyra library](https://github.com/jhalterman/lyra) for better recovery a
 Author: [Jenda Kolena](mailto:kolena@avast.com)
 
 ## Dependency
-`compile 'com.avast.clients:rabbitmq-client_?:x.x.x'`
+`compile 'com.avast.clients:rabbitmq-client-core_?:x.x.x'`
 For most current version see the [Teamcity](https://teamcity.int.avast.com/viewType.html?buildTypeId=CloudSystems_RabbitMQClient_ReleasePublish).
 
 ## Usage
@@ -182,7 +182,28 @@ final RabbitMQProducer rabbitMQProducer = factory.newProducer("producer",
 
 See [full example](/src/test/java/ExampleJava.java)
 
-### Healtcheck
+## Notes
+
+### DeliveryResult
+The consumers `readAction` returns `Future` of [`DeliveryResult`](src/main/scala/com/avast/clients/rabbitmq/DeliveryResult.scala). The `DeliveryResult` has 4 possible values
+(descriptions of usual use-cases):
+1. Ack - the message was processed; it will be removed from the queue
+1. Reject - the message is corrupted or for some other reason we don't want to see it again; it will be removed from the queue
+1. Retry - the message couldn't be processed at this moment (unreachable 3rd party services?); it will be requeued (inserted on the top of
+the queue)
+1. Republish - the message may be corrupted but we're not sure; it will be re-published to the bottom of the queue (as a new message and the
+original one will be removed). It's usually wise  to prevent an infinite republishing of the message - see [Poisoned message handler](#poisoned-message-handler) below.
+
+#### Difference between _Retry_ and _Republish_
+When using _Retry_ the message can effectively cause starvation of other messages in the queue
+until the message itself can be processed; on the other hand _Republish_ inserts the message to the original queue as a new message and it
+lets the consumer handle other messages (if they can be processed).
+
+### Extras
+There is an extra module available with some optional functionality.
+`compile 'com.avast.clients:rabbitmq-client-core_?:x.x.x'`
+
+#### HealthCheck
 The library is not able to recover from all failures so it provides [HealthCheck class](/src/main/scala/com/avast/clients/rabbitmq/HealthCheck.scala)
  that indicates if the application is OK or not - then it should be restarted.
 To use that class, simply pass the `rabbitExceptionHandler` field as listener when constructing the RabbitMQ classes. Then you can call `getStatus` method.
@@ -199,19 +220,19 @@ object YapHealthCheck extends HealthCheck with (HttpRequest[Bytes] => Completabl
   }
 }
 ```
-##Notes
 
-### DeliveryResult
-The consumers `readAction` returns `Future` of [`DeliveryResult`](src/main/scala/com/avast/clients/rabbitmq/DeliveryResult.scala). The `DeliveryResult` has 4 possible values
-(descriptions of usual use-cases):
-1. Ack - the message was processed; it will be removed from the queue
-1. Reject - the message is corrupted or for some other reason we don't want to see it again; it will be removed from the queue
-1. Retry - the message couldn't be processed at this moment (unreachable 3rd party services?); it will be requeued (inserted on the top of
-the queue)
-1. Republish - the message may be corrupted but we're not sure; it will be re-published to the bottom of the queue (as a new message and the
-original one will be removed). It's usually wise to use some customized header as a counter to prevent an infinite republishing of the message.
-
-####Difference between _Retry_ and _Republish_
-When using _Retry_ the message can effectively cause starvation of other messages in the queue
-until the message itself can be processed; on the other hand _Republish_ inserts the message to the original queue as a new message and it
-lets the consumer handle other messages (if they can be processed).
+#### Poisoned message handler
+It's quite often use-case we want to republish failed message but want to avoid the message to be republishing forever. Wrap your handler (readAction)
+[PoisonedMessageHandler] with to solve this issue. It will count no. of attempts and won't let the message to be republished again and again
+(above the limit you set).  
+```scala
+val newReadAction = new PoisonedMessageHandler(3)(myReadAction)
+```
+Java:
+```java
+newReadAction = PoisonedMessageHandler.forJava(3, myReadAction, executor);
+```
+You can even pretend lower number of attempts when you want to rise the republishing count (for some special message):
+```scala
+Republish(Map(PoisonedMessageHandler.RepublishCountHeaderName -> 1.asInstanceOf[AnyRef]))
+```

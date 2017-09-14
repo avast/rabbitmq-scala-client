@@ -1,6 +1,7 @@
-package com.avast.clients.rabbitmq
+package com.avast.clients.rabbitmq.extras
 
-import com.avast.clients.rabbitmq.HealthCheckStatus.{Failure, Ok}
+import com.avast.clients.rabbitmq.extras.HealthCheckStatus.{Failure, Ok}
+import com.avast.clients.rabbitmq.{ChannelListener, ConnectionListener, ConsumerListener}
 import com.rabbitmq.client.{Channel, Connection, Consumer, ShutdownSignalException}
 import com.typesafe.scalalogging.StrictLogging
 
@@ -34,7 +35,8 @@ class HealthCheck extends StrictLogging {
     status = s
   }
 
-  val rabbitExceptionHandler = new ConnectionListener with ChannelListener with ConsumerListener {
+  val rabbitExceptionHandler: ConnectionListener with ChannelListener with ConsumerListener = new ConnectionListener with ChannelListener
+  with ConsumerListener {
     override def onRecoveryCompleted(connection: Connection): Unit = ()
 
     override def onRecoveryStarted(connection: Connection): Unit = ()

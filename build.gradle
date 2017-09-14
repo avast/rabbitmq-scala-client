@@ -49,6 +49,22 @@ subprojects {
         circeVersion = "0.7.1" // only used in tests!
     }
 
+    dependencies {
+        testCompile "com.avast.metrics:metrics-jmx:${metricsVersion}"
+
+        testCompile "org.scalaj:scalaj-http_?:2.3.0"
+        testCompile "io.circe:circe-core_?:$circeVersion"
+        testCompile "io.circe:circe-generic_?:$circeVersion"
+        testCompile "io.circe:circe-parser_?:$circeVersion"
+
+        testCompile 'junit:junit:4.12'
+        testCompile 'org.scalatest:scalatest_?:3.0.1'
+        testCompile 'org.mockito:mockito-all:1.10.19'
+        testCompile 'ch.qos.logback:logback-classic:1.2.3'
+
+        testRuntime 'org.pegdown:pegdown:1.6.0'
+    }
+
 }
 
 allprojects {
