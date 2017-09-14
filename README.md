@@ -182,7 +182,7 @@ final RabbitMQProducer rabbitMQProducer = factory.newProducer("producer",
 
 See [full example](/src/test/java/ExampleJava.java)
 
-##Notes
+## Notes
 
 ### DeliveryResult
 The consumers `readAction` returns `Future` of [`DeliveryResult`](src/main/scala/com/avast/clients/rabbitmq/DeliveryResult.scala). The `DeliveryResult` has 4 possible values
@@ -192,9 +192,9 @@ The consumers `readAction` returns `Future` of [`DeliveryResult`](src/main/scala
 1. Retry - the message couldn't be processed at this moment (unreachable 3rd party services?); it will be requeued (inserted on the top of
 the queue)
 1. Republish - the message may be corrupted but we're not sure; it will be re-published to the bottom of the queue (as a new message and the
-original one will be removed). It's usually wise  to prevent an infinite republishing of the message - see [Poisoned message handler](#Poison_message_handler) below.
+original one will be removed). It's usually wise  to prevent an infinite republishing of the message - see [Poisoned message handler](#poisoned-message-handler) below.
 
-####Difference between _Retry_ and _Republish_
+#### Difference between _Retry_ and _Republish_
 When using _Retry_ the message can effectively cause starvation of other messages in the queue
 until the message itself can be processed; on the other hand _Republish_ inserts the message to the original queue as a new message and it
 lets the consumer handle other messages (if they can be processed).
