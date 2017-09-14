@@ -10,7 +10,7 @@ class RabbitMQConsumer(scalaConsumer: ScalaConsumer) {
   def bindTo(exchange: String, routingKey: String): Unit = {
     scalaConsumer.bindTo(exchange, routingKey) match {
       case Success(_) => ()
-      case Failure(NonFatal(e)) => throw e // thrown intentionally, it's Jav API!F
+      case Failure(NonFatal(e)) => throw e // thrown intentionally, it's Java API!
     }
   }
 }

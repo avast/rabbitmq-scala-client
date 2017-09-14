@@ -13,7 +13,7 @@ class RabbitMQProducer(scalaProducer: ScalaProducer) {
   def send(routingKey: String, body: Bytes): Unit = {
     scalaProducer.send(routingKey, body) match {
       case Success(_) => ()
-      case Failure(NonFatal(e)) => throw e // thrown intentionally, it's Jav API!
+      case Failure(NonFatal(e)) => throw e // thrown intentionally, it's Java API!
     }
   }
 
@@ -21,7 +21,7 @@ class RabbitMQProducer(scalaProducer: ScalaProducer) {
   def send(routingKey: String, body: Bytes, properties: MessageProperties): Unit = {
     scalaProducer.send(routingKey, body, properties) match {
       case Success(_) => ()
-      case Failure(NonFatal(e)) => throw e // thrown intentionally, it's Jav API!
+      case Failure(NonFatal(e)) => throw e // thrown intentionally, it's Java API!
     }
   }
 
