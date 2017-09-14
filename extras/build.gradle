@@ -1,0 +1,10 @@
+avast {
+    publish {
+        artifactId = 'rabbitmq-client-extras'
+    }
+}
+
+dependencies {
+    compile project(":core")
+
+}
