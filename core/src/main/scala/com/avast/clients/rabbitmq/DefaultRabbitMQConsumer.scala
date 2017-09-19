@@ -144,7 +144,8 @@ class DefaultRabbitMQConsumer(
   private def mergeHeaders(newHeaders: Map[String, AnyRef], properties: BasicProperties): BasicProperties = {
     if (newHeaders.isEmpty) properties
     else {
-      val headers = properties.getHeaders.asScala ++ newHeaders // values in newHeaders will overwrite values in original headers
+      // values in newHeaders will overwrite values in original headers
+      val headers = Option(properties.getHeaders).map(_.asScala ++ newHeaders).getOrElse(newHeaders)
 
       properties.builder().headers(headers.asJava).build()
     }
