@@ -36,7 +36,7 @@ class PoisonedMessageHandlerTest extends FunSuite with ScalaFutures {
     assertResult(MessageProperties(headers = Map(RepublishCountHeaderName -> 4.asInstanceOf[AnyRef])))(properties)
 
     // check it will Ack the message on 5th attempt
-    assertResult(DeliveryResult.Ack)(run(properties))
+    assertResult(DeliveryResult.Reject)(run(properties))
 
   }
 
