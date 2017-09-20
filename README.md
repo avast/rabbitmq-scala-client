@@ -225,6 +225,7 @@ object YapHealthCheck extends HealthCheck with (HttpRequest[Bytes] => Completabl
 It's quite often use-case we want to republish failed message but want to avoid the message to be republishing forever. Wrap your handler (readAction)
 [PoisonedMessageHandler] with to solve this issue. It will count no. of attempts and won't let the message to be republished again and again
 (above the limit you set).  
+_Note: it works ONLY for `Republish` and not for `Retry`!_
 ```scala
 val newReadAction = new PoisonedMessageHandler(3)(myReadAction)
 ```
@@ -236,3 +237,11 @@ You can even pretend lower number of attempts when you want to rise the republis
 ```scala
 Republish(Map(PoisonedMessageHandler.RepublishCountHeaderName -> 1.asInstanceOf[AnyRef]))
 ```
+Note you can provide your custom poisoned-message handle action:
+```scala
+val newReadAction = PoisonedMessageHandler.withCustomPoisonedAction(3)(myReadAction) { delivery =>
+  logger.warn(s"Delivery $delivery is poisoned!")
+  Future.successful(Done)
+}
+```
+After the execution of the poisoned-message action (no matter whether default or custom one), the delivery is REJECTed.
