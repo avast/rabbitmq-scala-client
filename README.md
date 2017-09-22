@@ -121,7 +121,7 @@ myConfig {
 
     exchange = "myclient"
 
-    // should the consumer declare exchange he wants to send to?
+    // should the producer declare exchange he wants to send to?
     declare {
       enabled = true // disabled by default
 
