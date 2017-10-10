@@ -132,7 +132,7 @@ myConfig {
   }
 }
 ```
-For full list of options please see [reference.conf](src/main/resources/reference.conf).
+For full list of options please see [reference.conf](core/src/main/resources/reference.conf).
 
 ### Scala usage
 
