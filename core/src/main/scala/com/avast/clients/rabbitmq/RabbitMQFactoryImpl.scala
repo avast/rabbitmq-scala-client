@@ -61,5 +61,6 @@ private[rabbitmq] class RabbitMQFactoryImpl(connection: ServerConnection,
 
   override def close(): Unit = {
     closeables.foreach(_.close())
+    connection.close()
   }
 }
