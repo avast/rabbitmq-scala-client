@@ -180,12 +180,12 @@ final RabbitMQProducer rabbitMQProducer = factory.newProducer("producer",
 
 ```
 
-See [full example](/src/test/java/ExampleJava.java)
+See [full example](core/src/test/java/ExampleJava.java)
 
 ## Notes
 
 ### DeliveryResult
-The consumers `readAction` returns `Future` of [`DeliveryResult`](src/main/scala/com/avast/clients/rabbitmq/DeliveryResult.scala). The `DeliveryResult` has 4 possible values
+The consumers `readAction` returns `Future` of [`DeliveryResult`](core/src/main/scala/com/avast/clients/rabbitmq/DeliveryResult.scala). The `DeliveryResult` has 4 possible values
 (descriptions of usual use-cases):
 1. Ack - the message was processed; it will be removed from the queue
 1. Reject - the message is corrupted or for some other reason we don't want to see it again; it will be removed from the queue
@@ -204,7 +204,7 @@ There is an extra module available with some optional functionality.
 `compile 'com.avast.clients:rabbitmq-client-core_?:x.x.x'`
 
 #### HealthCheck
-The library is not able to recover from all failures so it provides [HealthCheck class](/src/main/scala/com/avast/clients/rabbitmq/HealthCheck.scala)
+The library is not able to recover from all failures so it provides [HealthCheck class](core/src/main/scala/com/avast/clients/rabbitmq/HealthCheck.scala)
  that indicates if the application is OK or not - then it should be restarted.
 To use that class, simply pass the `rabbitExceptionHandler` field as listener when constructing the RabbitMQ classes. Then you can call `getStatus` method.
 
@@ -223,7 +223,7 @@ object YapHealthCheck extends HealthCheck with (HttpRequest[Bytes] => Completabl
 
 #### Poisoned message handler
 It's quite often use-case we want to republish failed message but want to avoid the message to be republishing forever. Wrap your handler (readAction)
-[PoisonedMessageHandler] with to solve this issue. It will count no. of attempts and won't let the message to be republished again and again
+with [PoisonedMessageHandler](extras/src/main/scala/com/avast/clients/rabbitmq/extras/PoisonedMessageHandler.scala) to solve this issue. It will count no. of attempts and won't let the message to be republished again and again
 (above the limit you set).  
 _Note: it works ONLY for `Republish` and not for `Retry`!_
 ```scala
