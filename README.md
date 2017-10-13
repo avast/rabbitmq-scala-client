@@ -152,7 +152,7 @@ For full list of options please see [reference.conf](src/main/resources/referenc
 
   val receiver = rabbitFactory.newConsumer("consumer", monitor) { delivery =>
     println(delivery)
-    Future.successful(true)
+    Future.successful(DeliveryResult.Ack)
   }
 
   val sender = rabbitFactory.newProducer("producer", monitor)
