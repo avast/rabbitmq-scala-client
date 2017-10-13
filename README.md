@@ -2,7 +2,7 @@
 
 [![](https://teamcity.int.avast.com/app/rest/builds/buildType:(id:CloudSystems_RabbitMQClient_Build)/statusIcon)] (https://teamcity.int.avast.com/viewType.html?buildTypeId=CloudSystems_RabbitMQClient_Build)
 
-![](http://badges.ff.int.avast.com/image/maven-local/com.avast.clients/rabbitmq-client_2.12?title=RabbitMQClient)
+![](http://badges.ff.int.avast.com/image/maven-local/com.avast.clients/rabbitmq-client-core_2.12?title=RabbitMQClient)
 
 This client is lightweight wrapper over standard [RabbitMQ java client](https://www.rabbitmq.com/java-client.html).
 It's API may be difficult to use for inexperienced RabbitMQ users. Goal of this library is to simplify basic use cases and shadow the programmer
