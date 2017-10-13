@@ -21,7 +21,7 @@ For most current version see the [Teamcity](https://teamcity.int.avast.com/viewT
 ### Configuration
 
 #### Structured config
-Since v 6.x, it's necessary to have the config structured as following:
+Since v 5.x, it's necessary to have the config structured as following:
 ```hocon
 rabbitConfig {
   // connection config
