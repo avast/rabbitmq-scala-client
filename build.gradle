@@ -43,8 +43,8 @@ subprojects {
 
 
     ext {
-        utilsVersion = "6.0.64"
-        metricsVersion = "2.0.0"
+        utilsVersion = "6.2.68"
+        metricsVersion = "2.3.0"
         bytesVersion = "2.0.3"
         circeVersion = "0.7.1" // only used in tests!
     }
