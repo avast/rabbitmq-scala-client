@@ -73,3 +73,7 @@ allprojects {
         enabled = false
     }
 }
+
+task wrapper(type: Wrapper) {
+    gradleVersion = '4.3.1'
+}
