@@ -8,6 +8,7 @@ import com.avast.metrics.scalaapi.Monitor
 import com.rabbitmq.client.AMQP.BasicProperties
 import com.rabbitmq.client.Envelope
 import com.rabbitmq.client.impl.recovery.AutorecoveringChannel
+import org.mockito.Matchers.any
 import org.mockito.Mockito._
 import org.scalatest.FunSuite
 import org.scalatest.concurrent.Eventually
@@ -171,7 +172,7 @@ class DefaultRabbitMQConsumerTest extends FunSuite with MockitoSugar with Eventu
       verify(channel, times(1)).basicAck(deliveryTag, false)
       verify(channel, times(0)).basicReject(deliveryTag, true)
       verify(channel, times(0)).basicReject(deliveryTag, false)
-      verify(channel, times(1)).basicPublish("", "queueName", properties, body)
+      verify(channel, times(1)).basicPublish("", "queueName", any(), body)
     }
   }
 
