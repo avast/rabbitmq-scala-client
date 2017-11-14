@@ -7,7 +7,7 @@ buildscript {
         classpath 'com.avast.gradle:gradle-publish:0.16.1'
         classpath 'com.avast.gradle:gradle-release:0.16.1'
         classpath 'com.avast.gradle:gradle-scala:0.16.1'
-        classpath 'com.avast.gradle:docker-compose-gradle-plugin:0.4.2'
+        classpath 'com.avast.gradle:gradle-docker-compose-plugin:0.6.6'
         classpath 'com.github.maiflai:gradle-scalatest:0.16'
         classpath 'com.github.ben-manes:gradle-versions-plugin:0.17.0'
     }
@@ -43,8 +43,8 @@ subprojects {
 
 
     ext {
-        utilsVersion = "6.2.68"
-        metricsVersion = "2.3.0"
+        utilsVersion = "6.3.73"
+        metricsVersion = "2.3.1"
         bytesVersion = "2.0.3"
         circeVersion = "0.7.1" // only used in tests!
     }
