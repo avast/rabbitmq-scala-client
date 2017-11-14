@@ -61,7 +61,7 @@ class DefaultRabbitMQConsumer(
 
     val deliveryTag = envelope.getDeliveryTag
     val messageId = properties.getMessageId
-    val routingKey = Option(properties.getHeaders.get(republishOriginalRoutingKeyHeaderName)) match {
+    val routingKey = Option(properties.getHeaders).flatMap(p => Option(p.get(republishOriginalRoutingKeyHeaderName))) match {
       case Some(originalRoutingKey) => originalRoutingKey.toString
       case None => envelope.getRoutingKey
     }
