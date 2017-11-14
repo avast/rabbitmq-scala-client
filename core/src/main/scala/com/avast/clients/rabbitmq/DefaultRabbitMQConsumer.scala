@@ -33,6 +33,8 @@ class DefaultRabbitMQConsumer(
     with RabbitMQConsumer
     with StrictLogging {
 
+  import DefaultRabbitMQConsumer._
+
   private val readMeter = monitor.meter("read")
   private val resultsMonitor = monitor.named("results")
   private val resultAckMeter = resultsMonitor.meter("ack")
@@ -59,6 +61,10 @@ class DefaultRabbitMQConsumer(
 
     val deliveryTag = envelope.getDeliveryTag
     val messageId = properties.getMessageId
+    val routingKey = Option(properties.getHeaders.get(republishOriginalRoutingKeyHeaderName)) match {
+      case Some(originalRoutingKey) => originalRoutingKey.toString
+      case None => envelope.getRoutingKey
+    }
 
     Kluzo.withTraceId(traceId) {
       try {
@@ -68,10 +74,10 @@ class DefaultRabbitMQConsumer(
 
             logger.debug(s"[$name] Read delivery with ID $messageId, deliveryTag $deliveryTag")
 
-            val message = Delivery(Bytes.copyFrom(body), properties.asScala, Option(envelope.getRoutingKey).getOrElse(""))
+            val message = Delivery(Bytes.copyFrom(body), properties.asScala, Option(routingKey).getOrElse(""))
 
             processedTimer.time {
-              readAction(message).andThen(handleResult(messageId, deliveryTag, properties, body))
+              readAction(message).andThen(handleResult(messageId, deliveryTag, properties, routingKey, body))
             }
 
             ()
@@ -81,7 +87,7 @@ class DefaultRabbitMQConsumer(
               processingFailedMeter.mark()
               logger.error(s"[$name] Error while executing callback, it's probably u BUG", e)
               consumerListener.onError(this, channel, e)
-              executeFailureAction(messageId, deliveryTag, properties, body)
+              executeFailureAction(messageId, deliveryTag, properties, routingKey, body)
           }
         })
       } catch {
@@ -91,7 +97,7 @@ class DefaultRabbitMQConsumer(
           processingFailedMeter.mark()
           logger.error(s"[$name] Executor was unable to plan the handling task", e)
           consumerListener.onError(this, channel, e)
-          executeFailureAction(messageId, deliveryTag, properties, body)
+          executeFailureAction(messageId, deliveryTag, properties, routingKey, body)
       }
     }
   }
@@ -112,6 +118,7 @@ class DefaultRabbitMQConsumer(
   private def handleResult(messageId: String,
                            deliveryTag: Long,
                            properties: BasicProperties,
+                           routingKey: String,
                            body: Array[Byte]): PartialFunction[Try[DeliveryResult], Unit] = {
     import DeliveryResult._
 
@@ -121,34 +128,38 @@ class DefaultRabbitMQConsumer(
       case Success(Ack) => ack(messageId, deliveryTag)
       case Success(Reject) => reject(messageId, deliveryTag)
       case Success(Retry) => retry(messageId, deliveryTag)
-      case Success(Republish(newHeaders)) => republish(messageId, deliveryTag, mergeHeaders(newHeaders, properties), body)
+      case Success(Republish(newHeaders)) =>
+        republish(messageId, deliveryTag, mergeHeadersForRepublish(newHeaders, properties, routingKey), body)
       case Failure(NonFatal(e)) =>
         processingFailedMeter.mark()
         logger.error(s"[$name] Error while executing callback, it's probably a BUG", e)
 
-        executeFailureAction(messageId, deliveryTag, properties, body)
+        executeFailureAction(messageId, deliveryTag, properties, routingKey, body)
     }
   }
 
-  private def executeFailureAction(messageId: String, deliveryTag: Long, properties: BasicProperties, body: Array[Byte]): Unit = {
+  private def executeFailureAction(messageId: String,
+                                   deliveryTag: Long,
+                                   properties: BasicProperties,
+                                   routingKey: String,
+                                   body: Array[Byte]): Unit = {
     import DeliveryResult._
 
     failureAction match {
       case Ack => ack(messageId, deliveryTag)
       case Reject => reject(messageId, deliveryTag)
       case Retry => retry(messageId, deliveryTag)
-      case Republish(newHeaders) => republish(messageId, deliveryTag, mergeHeaders(newHeaders, properties), body)
+      case Republish(newHeaders) => republish(messageId, deliveryTag, mergeHeadersForRepublish(newHeaders, properties, routingKey), body)
     }
   }
 
-  private def mergeHeaders(newHeaders: Map[String, AnyRef], properties: BasicProperties): BasicProperties = {
-    if (newHeaders.isEmpty) properties
-    else {
-      // values in newHeaders will overwrite values in original headers
-      val headers = Option(properties.getHeaders).map(_.asScala ++ newHeaders).getOrElse(newHeaders)
-
-      properties.builder().headers(headers.asJava).build()
-    }
+  private def mergeHeadersForRepublish(newHeaders: Map[String, AnyRef],
+                                       properties: BasicProperties,
+                                       routingKey: String): BasicProperties = {
+    // values in newHeaders will overwrite values in original headers
+    val h = newHeaders + (republishOriginalRoutingKeyHeaderName -> routingKey)
+    val headers = Option(properties.getHeaders).map(_.asScala ++ h).getOrElse(h)
+    properties.builder().headers(headers.asJava).build()
   }
 
   override def bindTo(exchange: String, routingKey: String): Try[Done] = Try {
@@ -200,4 +211,8 @@ class DefaultRabbitMQConsumer(
       case NonFatal(e) => logger.warn(s"[$name] Error while republishing the delivery", e)
     }
   }
+}
+
+object DefaultRabbitMQConsumer {
+  val republishOriginalRoutingKeyHeaderName = "X-Original-Routing-Key"
 }
