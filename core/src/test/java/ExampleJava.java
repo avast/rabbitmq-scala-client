@@ -10,36 +10,30 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 public class ExampleJava {
-    public static void main(String[] args) throws InterruptedException {
-//        File file = new File("/home/jenda/dev/rabbitmqclient/localhost.conf").getAbsoluteFile();
-//        Config config = ConfigFactory.parseFile(file).getConfig("myConfig");
-//        String routingKey = config.getString("consumer.queueName");
-
-        File file = new File("./test.conf").getAbsoluteFile();
-        Config producerConfig = ConfigFactory.parseFile(file).getConfig("testProducer");
-        Config consumerConfig = ConfigFactory.parseFile(file).getConfig("testConsumer");
+    public static void main(String[] args) {
+        File file = new File("/home/jenda/dev/rabbitmqclient/localhost.conf").getAbsoluteFile();
+        Config config = ConfigFactory.parseFile(file).getConfig("myConfig");
+        String routingKey = config.getString("consumer.queueName");
 
 
         final ExecutorService executor = Executors.newCachedThreadPool();
 
+        final RabbitMQJavaFactory factory = RabbitMQFactory.newBuilder(config).withExecutor(executor).build();
 
-        final RabbitMQJavaFactory clientFactory = RabbitMQFactory.newBuilder(consumerConfig).withExecutor(executor).build();
-        final RabbitMQConsumer rabbitMQConsumer = clientFactory.newConsumer(
+        final RabbitMQConsumer rabbitMQConsumer = factory.newConsumer(
                 "consumer",
                 NoOpMonitor.INSTANCE,
                 executor,
                 ExampleJava::handleDelivery
         );
 
-//        final RabbitMQJavaFactory producerFactory = RabbitMQFactory.newBuilder(producerConfig).withExecutor(executor).build();
-//        final RabbitMQProducer rabbitMQProducer = producerFactory.newProducer("producer",
-//                NoOpMonitor.INSTANCE
-//        );
-        Thread.sleep(10000);
+        final RabbitMQProducer rabbitMQProducer = factory.newProducer("producer",
+                NoOpMonitor.INSTANCE
+        );
 
         for (int i = 0; i < 1000; i++) {
             try {
-//                rabbitMQProducer.send(routingKey, Bytes.copyFromUtf8("hello world"));
+                rabbitMQProducer.send(routingKey, Bytes.copyFromUtf8("hello world"));
             } catch (Exception e) {
                 System.err.println("Message could not be sent: " + e.getClass().getName() + ": " + e.getMessage());
             }
