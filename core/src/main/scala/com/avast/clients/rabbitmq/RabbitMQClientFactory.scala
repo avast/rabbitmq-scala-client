@@ -1,7 +1,6 @@
 package com.avast.clients.rabbitmq
 
 import java.time.Duration
-import java.util
 import java.util.concurrent.{ScheduledExecutorService, TimeoutException}
 
 import com.avast.clients.rabbitmq.RabbitMQFactory.ServerChannel
@@ -41,6 +40,17 @@ private[rabbitmq] object RabbitMQClientFactory extends LazyLogging {
       case "reject" => Reject
       case "retry" => Retry
       case "republish" => Republish()
+  }
+
+  private implicit final val rabbitArgumentsReader: ValueReader[RabbitArguments] = (config: Config, path: String) => {
+    import scala.collection.JavaConverters._
+    val argumentsMap = config
+      .getObject(path)
+      .asScala
+      .toMap
+      .mapValues(_.unwrapped())
+
+    RabbitArguments(argumentsMap)
   }
 
   object Producer {
@@ -107,11 +117,8 @@ private[rabbitmq] object RabbitMQClientFactory extends LazyLogging {
     import producerConfig._
 
     // auto declare of exchange
-    // parse it only if it's needed
-    if (declare.getBoolean("enabled")) {
-      val d = declare.wrapped.as[AutoDeclareExchange]("root")
-
-      declareExchange(exchange, channelFactoryInfo, channel, d)
+    if (declare.enabled) {
+      declareExchange(exchange, channelFactoryInfo, channel, declare)
     }
 
     new DefaultRabbitMQProducer(producerConfig.name, exchange, channel, useKluzo, reportUnroutable, monitor)
@@ -125,7 +132,9 @@ private[rabbitmq] object RabbitMQClientFactory extends LazyLogging {
 
     if (enabled) {
       logger.info(s"Declaring exchange '$name' of type ${`type`} in virtual host '${channelFactoryInfo.virtualHost}'")
-      channel.exchangeDeclare(name, `type`, durable, autoDelete, null)
+      import scala.collection.JavaConverters._
+      val javaArguments = arguments.value.mapValues(_.asInstanceOf[Object]).asJava
+      channel.exchangeDeclare(name, `type`, durable, autoDelete, javaArguments)
     }
     ()
   }
@@ -157,7 +166,7 @@ private[rabbitmq] object RabbitMQClientFactory extends LazyLogging {
 
       if (enabled) {
         logger.info(s"Declaring queue '$queueName' in virtual host '${channelFactoryInfo.virtualHost}'")
-        declareQueue(channel, queueName = queueName, durable = durable, exclusive = exclusive, autoDelete = autoDelete)
+        declareQueue(channel, queueName, durable, exclusive, autoDelete, arguments)
       }
     }
 
@@ -174,8 +183,11 @@ private[rabbitmq] object RabbitMQClientFactory extends LazyLogging {
                                      queueName: String,
                                      durable: Boolean,
                                      exclusive: Boolean,
-                                     autoDelete: Boolean): Queue.DeclareOk = {
-    channel.queueDeclare(queueName, durable, exclusive, autoDelete, new util.HashMap())
+                                     autoDelete: Boolean,
+                                     arguments: RabbitArguments): Queue.DeclareOk = {
+    import scala.collection.JavaConverters._
+    val javaArguments = arguments.value.mapValues(_.asInstanceOf[Object]).asJava
+    channel.queueDeclare(queueName, durable, exclusive, autoDelete, javaArguments)
   }
 
   private def bindQueues(channelFactoryInfo: RabbitMqFactoryInfo, channel: ServerChannel, consumerConfig: ConsumerConfig): Unit = {
