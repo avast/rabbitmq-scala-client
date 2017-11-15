@@ -61,7 +61,7 @@ class DefaultRabbitMQConsumer(
 
     val deliveryTag = envelope.getDeliveryTag
     val messageId = properties.getMessageId
-    val routingKey = Option(properties.getHeaders).flatMap(p => Option(p.get(republishOriginalRoutingKeyHeaderName))) match {
+    val routingKey = Option(properties.getHeaders).flatMap(p => Option(p.get(RepublishOriginalRoutingKeyHeaderName))) match {
       case Some(originalRoutingKey) => originalRoutingKey.toString
       case None => envelope.getRoutingKey
     }
@@ -157,7 +157,7 @@ class DefaultRabbitMQConsumer(
                                        properties: BasicProperties,
                                        routingKey: String): BasicProperties = {
     // values in newHeaders will overwrite values in original headers
-    val h = newHeaders + (republishOriginalRoutingKeyHeaderName -> routingKey)
+    val h = newHeaders + (RepublishOriginalRoutingKeyHeaderName -> routingKey)
     val headers = Option(properties.getHeaders).map(_.asScala ++ h).getOrElse(h)
     properties.builder().headers(headers.asJava).build()
   }
@@ -214,5 +214,5 @@ class DefaultRabbitMQConsumer(
 }
 
 object DefaultRabbitMQConsumer {
-  val republishOriginalRoutingKeyHeaderName = "X-Original-Routing-Key"
+  final val RepublishOriginalRoutingKeyHeaderName = "X-Original-Routing-Key"
 }
