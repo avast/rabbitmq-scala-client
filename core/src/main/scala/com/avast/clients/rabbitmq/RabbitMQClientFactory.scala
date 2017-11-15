@@ -42,7 +42,7 @@ private[rabbitmq] object RabbitMQClientFactory extends LazyLogging {
       case "republish" => Republish()
   }
 
-  private implicit final val rabbitArgumentsReader: ValueReader[RabbitArguments] = (config: Config, path: String) => {
+  private implicit final val rabbitArgumentsReader: ValueReader[DeclareArguments] = (config: Config, path: String) => {
     import scala.collection.JavaConverters._
     val argumentsMap = config
       .getObject(path)
@@ -50,7 +50,7 @@ private[rabbitmq] object RabbitMQClientFactory extends LazyLogging {
       .toMap
       .mapValues(_.unwrapped())
 
-    RabbitArguments(argumentsMap)
+    DeclareArguments(argumentsMap)
   }
 
   object Producer {
@@ -186,7 +186,7 @@ private[rabbitmq] object RabbitMQClientFactory extends LazyLogging {
                                      durable: Boolean,
                                      exclusive: Boolean,
                                      autoDelete: Boolean,
-                                     arguments: RabbitArguments): Queue.DeclareOk = {
+                                     arguments: DeclareArguments): Queue.DeclareOk = {
     import scala.collection.JavaConverters._
     val javaArguments = arguments.value.mapValues(_.asInstanceOf[Object]).asJava
     channel.queueDeclare(queueName, durable, exclusive, autoDelete, javaArguments)
