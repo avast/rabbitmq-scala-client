@@ -39,7 +39,9 @@ case class ConsumerConfig(queueName: String,
                           consumerTag: String,
                           name: String)
 
-case class AutoDeclareQueue(enabled: Boolean, durable: Boolean, exclusive: Boolean, autoDelete: Boolean)
+case class AutoDeclareQueue(enabled: Boolean, durable: Boolean, exclusive: Boolean, autoDelete: Boolean, arguments: DeclareArguments)
+
+case class DeclareArguments(value: Map[String, Any])
 
 case class AutoBindQueue(exchange: BindExchange, routingKeys: immutable.Seq[String])
 
@@ -47,4 +49,4 @@ case class BindExchange(name: String, declare: Config)
 
 case class ProducerConfig(exchange: String, declare: Config, useKluzo: Boolean, reportUnroutable: Boolean, name: String)
 
-case class AutoDeclareExchange(enabled: Boolean, `type`: String, durable: Boolean, autoDelete: Boolean)
+case class AutoDeclareExchange(enabled: Boolean, `type`: String, durable: Boolean, autoDelete: Boolean, arguments: DeclareArguments)
