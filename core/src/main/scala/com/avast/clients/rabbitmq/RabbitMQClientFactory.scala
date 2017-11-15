@@ -117,10 +117,12 @@ private[rabbitmq] object RabbitMQClientFactory extends LazyLogging {
     import producerConfig._
 
     // auto declare of exchange
-    if (declare.enabled) {
-      declareExchange(exchange, channelFactoryInfo, channel, declare)
+    // parse it only if it's needed
+    // "Lazy" parsing, because exchange type is not part of reference.conf and we don't want to make it fail on missing type when enabled=false
+    if (declare.getBoolean("enabled")) {
+      val d = declare.wrapped.as[AutoDeclareExchange]("root")
+      declareExchange(exchange, channelFactoryInfo, channel, d)
     }
-
     new DefaultRabbitMQProducer(producerConfig.name, exchange, channel, useKluzo, reportUnroutable, monitor)
   }
 

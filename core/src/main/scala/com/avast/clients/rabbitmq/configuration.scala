@@ -47,6 +47,6 @@ case class AutoBindQueue(exchange: BindExchange, routingKeys: immutable.Seq[Stri
 
 case class BindExchange(name: String, declare: Config)
 
-case class ProducerConfig(exchange: String, declare: AutoDeclareExchange, useKluzo: Boolean, reportUnroutable: Boolean, name: String)
+case class ProducerConfig(exchange: String, declare: Config, useKluzo: Boolean, reportUnroutable: Boolean, name: String)
 
 case class AutoDeclareExchange(enabled: Boolean, `type`: String, durable: Boolean, autoDelete: Boolean, arguments: RabbitArguments)
