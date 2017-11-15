@@ -21,10 +21,10 @@ dependencies {
     compile "com.avast.utils2:utils-scala_?:${utilsVersion}"
     compile "com.avast.bytes:bytes-core:${bytesVersion}"
 
-    compile 'com.rabbitmq:amqp-client:4.2.1'
-    compile 'net.jodah:lyra:0.5.4'
-    compile 'com.typesafe:config:1.3.1'
-    compile 'com.iheart:ficus_?:1.4.1'
+    compile 'com.rabbitmq:amqp-client:4.3.0'
+    compile 'net.jodah:lyra:0.5.5'
+    compile 'com.typesafe:config:1.3.2'
+    compile 'com.iheart:ficus_?:1.4.3'
 
     compile 'com.avast:kluzo-scala_?:2.0.18'
     compile 'com.avast.continuity:continuity-core-scala_?:2.0.20'
