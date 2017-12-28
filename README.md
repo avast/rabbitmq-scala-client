@@ -271,8 +271,12 @@ Check [reference.conf](core/src/main/resources/reference.conf) or following exam
 Sometimes it's necessary to declare an additional queue or exchange which is not directly related to the consumers or producers you have
 in your application (e.g. dead-letter queue).  
 The library makes possible to do such thing, e.g.:
+```scala
+    rabbitMqFactory.bindExchange("backupExchangeBinding")
+```
+where the "backupExchangeBinding" is link to the configuration (use relative path to the factory configuration):
 ```hocon
-    bindExchange {
+    backupExchangeBinding {
       sourceExchangeName = "mainExchange"
       destExchangeName = "backupExchange"
       routingKeys = []
