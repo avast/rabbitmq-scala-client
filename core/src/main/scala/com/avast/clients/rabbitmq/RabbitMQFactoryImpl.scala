@@ -5,10 +5,12 @@ import java.util.concurrent.ScheduledExecutorService
 import com.avast.clients.rabbitmq.RabbitMQFactory.{ServerChannel, ServerConnection}
 import com.avast.clients.rabbitmq.api._
 import com.avast.metrics.scalaapi.Monitor
+import com.avast.utils2.Done
 import com.rabbitmq.client.ShutdownSignalException
 import com.typesafe.config.Config
 
 import scala.concurrent.{ExecutionContext, Future}
+import scala.util.Try
 
 private[rabbitmq] class RabbitMQFactoryImpl(connection: ServerConnection,
                                             info: RabbitMqFactoryInfo,
@@ -50,6 +52,38 @@ private[rabbitmq] class RabbitMQFactoryImpl(connection: ServerConnection,
 
   override def newProducer(configName: String, monitor: Monitor): RabbitMQProducer = addAutoCloseable {
     RabbitMQClientFactory.Producer.fromConfig(config.getConfig(configName), createChannel(), info, monitor)
+  }
+
+  override def declareExchange(configName: String): Try[Done] = {
+    RabbitMQClientFactory.Declarations.declareExchange(config.getConfig(configName), createChannel(), info)
+  }
+
+  override def declareQueue(configName: String): Try[Done] = {
+    RabbitMQClientFactory.Declarations.declareQueue(config.getConfig(configName), createChannel(), info)
+  }
+
+  override def bindQueue(configName: String): Try[Done] = {
+    RabbitMQClientFactory.Declarations.bindQueue(config.getConfig(configName), createChannel(), info)
+  }
+
+  override def declareExchange(config: DeclareExchange): Try[Done] = {
+    RabbitMQClientFactory.Declarations.declareExchange(config, createChannel(), info)
+  }
+
+  override def declareQueue(config: DeclareQueue): Try[Done] = {
+    RabbitMQClientFactory.Declarations.declareQueue(config, createChannel(), info)
+  }
+
+  override def bindQueue(config: BindQueue): Try[Done] = {
+    RabbitMQClientFactory.Declarations.bindQueue(config, createChannel(), info)
+  }
+
+  override def bindExchange(configName: String): Try[Done] = {
+    RabbitMQClientFactory.Declarations.bindExchange(config.getConfig(configName), createChannel(), info)
+  }
+
+  override def bindExchange(config: BindExchange): Try[Done] = {
+    RabbitMQClientFactory.Declarations.bindExchange(config, createChannel(), info)
   }
 
   private def addAutoCloseable[A <: AutoCloseable](a: A): A = {

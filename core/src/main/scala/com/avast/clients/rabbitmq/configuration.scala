@@ -43,10 +43,20 @@ case class AutoDeclareQueue(enabled: Boolean, durable: Boolean, exclusive: Boole
 
 case class DeclareArguments(value: Map[String, Any])
 
-case class AutoBindQueue(exchange: BindExchange, routingKeys: immutable.Seq[String])
+case class BindArguments(value: Map[String, Any])
 
-case class BindExchange(name: String, declare: Config)
+case class AutoBindQueue(exchange: AutoBindExchange, routingKeys: immutable.Seq[String], bindArguments: BindArguments)
+
+case class AutoBindExchange(name: String, declare: Config)
 
 case class ProducerConfig(exchange: String, declare: Config, useKluzo: Boolean, reportUnroutable: Boolean, name: String)
 
 case class AutoDeclareExchange(enabled: Boolean, `type`: String, durable: Boolean, autoDelete: Boolean, arguments: DeclareArguments)
+
+case class DeclareExchange(name: String, `type`: String, durable: Boolean, autoDelete: Boolean, arguments: DeclareArguments)
+
+case class DeclareQueue(name: String, durable: Boolean, exclusive: Boolean, autoDelete: Boolean, arguments: DeclareArguments)
+
+case class BindQueue(queueName: String, exchangeName: String, routingKeys: immutable.Seq[String], bindArguments: BindArguments)
+
+case class BindExchange(sourceExchangeName: String, destExchangeName: String, routingKeys: immutable.Seq[String], arguments: BindArguments)

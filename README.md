@@ -245,3 +245,39 @@ val newReadAction = PoisonedMessageHandler.withCustomPoisonedAction(3)(myReadAct
 }
 ```
 After the execution of the poisoned-message action (no matter whether default or custom one), the delivery is REJECTed.
+
+#### Bind/declare arguments
+There is an option to specify bind/declare arguments for queues/exchanges as you may read about at [RabbitMQ docs](https://www.rabbitmq.com/queues.html).
+Check [reference.conf](core/src/main/resources/reference.conf) or following example for usage:
+```hocon
+  producer {
+    name = "Testing" // this is used for metrics, logging etc.
+
+    exchange = "myclient"
+
+    // should the producer declare exchange he wants to send to?
+    declare {
+      enabled = true // disabled by default
+
+      type = "direct" // fanout, topic
+      
+      arguments = { "x-max-length" : 10000 }
+    }
+  }
+
+```
+
+#### Additional declarations and bindings
+Sometimes it's necessary to declare an additional queue or exchange which is not directly related to the consumers or producers you have
+in your application (e.g. dead-letter queue).  
+The library makes possible to do such thing, e.g.:
+```hocon
+    bindExchange {
+      sourceExchangeName = "mainExchange"
+      destExchangeName = "backupExchange"
+      routingKeys = []
+      arguments {}
+    }
+```
+Check [reference.conf](core/src/main/resources/reference.conf) for all options or see [application.conf in tests](core/src/test/resources/application.conf).
+

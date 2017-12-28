@@ -7,6 +7,7 @@ import java.util.concurrent.{ExecutorService, ScheduledExecutorService}
 
 import com.avast.clients.rabbitmq.api._
 import com.avast.metrics.scalaapi.Monitor
+import com.avast.utils2.Done
 import com.avast.utils2.errorhandling.FutureTimeouter
 import com.avast.utils2.ssl.{KeyStoreTypes, SSLBuilder}
 import com.rabbitmq.client.{Channel, _}
@@ -22,6 +23,7 @@ import net.jodah.lyra.{ConnectionOptions, Connections}
 import scala.collection.JavaConverters._
 import scala.concurrent.{ExecutionContext, Future}
 import scala.language.implicitConversions
+import scala.util.Try
 import scala.util.control.NonFatal
 
 trait RabbitMQFactory extends RabbitMQFactoryManual {
@@ -42,6 +44,28 @@ trait RabbitMQFactory extends RabbitMQFactoryManual {
     * @param monitor    Monitor for metrics.F
     */
   def newProducer(configName: String, monitor: Monitor): RabbitMQProducer
+
+  /**
+    * Declares and additional exchange, using the TypeSafe configuration passed to the factory and config name.
+    */
+  def declareExchange(configName: String): Try[Done]
+
+  /**
+    * Declares and additional queue, using the TypeSafe configuration passed to the factory and config name.
+    */
+  def declareQueue(configName: String): Try[Done]
+
+  /**
+    * Binds a queue to an exchange, using the TypeSafe configuration passed to the factory and config name.<br>
+    * Failure indicates that the binding has failed for AT LEAST one routing key.
+    */
+  def bindQueue(configName: String): Try[Done]
+
+  /**
+    * Binds an exchange to an another exchange, using the TypeSafe configuration passed to the factory and config name.<br>
+    * Failure indicates that the binding has failed for AT LEAST one routing key.
+    */
+  def bindExchange(configName: String): Try[Done]
 }
 
 trait RabbitMQFactoryManual extends AutoCloseable {
@@ -62,6 +86,28 @@ trait RabbitMQFactoryManual extends AutoCloseable {
     * @param monitor Monitor for metrics.
     */
   def newProducer(config: ProducerConfig, monitor: Monitor): RabbitMQProducer
+
+  /**
+    * Declares and additional exchange, using passed configuration.
+    */
+  def declareExchange(config: DeclareExchange): Try[Done]
+
+  /**
+    * Declares and additional queue, using passed configuration.
+    */
+  def declareQueue(config: DeclareQueue): Try[Done]
+
+  /**
+    * Binds a queue to an exchange, using passed configuration.<br>
+    * Failure indicates that the binding has failed for AT LEAST one routing key.
+    */
+  def bindQueue(config: BindQueue): Try[Done]
+
+  /**
+    * Binds an exchange to an another exchange, using passed configuration.<br>
+    * Failure indicates that the binding has failed for AT LEAST one routing key.
+    */
+  def bindExchange(config: BindExchange): Try[Done]
 
   /** Closes this factory and all created consumers and producers.
     */
