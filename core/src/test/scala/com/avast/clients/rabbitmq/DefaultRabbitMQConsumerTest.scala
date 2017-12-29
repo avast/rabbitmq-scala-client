@@ -1,6 +1,6 @@
 package com.avast.clients.rabbitmq
 
-import java.util.UUID
+import java.util.{Collections, UUID}
 
 import com.avast.clients.rabbitmq.RabbitMQFactory.DefaultListeners
 import com.avast.clients.rabbitmq.api.DeliveryResult
@@ -249,6 +249,8 @@ class DefaultRabbitMQConsumerTest extends FunSuite with MockitoSugar with Eventu
     }
   }
 
+  val args: java.util.Map[String, AnyRef] = Collections.emptyMap()
+
   test("should bind to another exchange") {
     val messageId = UUID.randomUUID().toString
 
@@ -285,7 +287,7 @@ class DefaultRabbitMQConsumerTest extends FunSuite with MockitoSugar with Eventu
 
     consumer.bindTo(exchange, routingKey)
 
-    verify(channel, times(1)).queueBind(queueName, exchange, routingKey)
+    verify(channel, times(1)).queueBind(Matchers.eq(queueName), Matchers.eq(exchange), Matchers.eq(routingKey), Matchers.eq(args))
     ()
   }
 }
