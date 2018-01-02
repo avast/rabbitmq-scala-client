@@ -8,7 +8,7 @@ import scala.language.implicitConversions
 import scala.util.control.NonFatal
 import scala.util.{Failure, Success}
 
-class RabbitMQProducer(scalaProducer: ScalaProducer) {
+class RabbitMQProducer(scalaProducer: ScalaProducer) extends AutoCloseable {
   @throws[Exception]
   def send(routingKey: String, body: Bytes): Unit = {
     scalaProducer.send(routingKey, body) match {
@@ -24,6 +24,8 @@ class RabbitMQProducer(scalaProducer: ScalaProducer) {
       case Failure(NonFatal(e)) => throw e // thrown intentionally, it's Java API!
     }
   }
+
+  override def close(): Unit = scalaProducer.close()
 
   private implicit def javaPropertiesToScala(properties: MessageProperties): ScalaProperties = {
     ScalaProperties(

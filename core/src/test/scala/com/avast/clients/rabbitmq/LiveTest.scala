@@ -8,15 +8,16 @@ import com.avast.clients.rabbitmq.api.{DeliveryResult, MessageProperties}
 import com.avast.continuity.Continuity
 import com.avast.kluzo.{Kluzo, TraceId}
 import com.avast.metrics.scalaapi.Monitor
+import com.avast.utils2.Done
 import com.typesafe.config.{Config, ConfigFactory, ConfigValueFactory}
 import net.ceedubs.ficus.Ficus._
 import org.scalatest.FunSuite
 import org.scalatest.concurrent.Eventually
-import org.scalatest.time.{Seconds, Span}
+import org.scalatest.time.{Milliseconds, Seconds, Span}
 
 import scala.collection.JavaConverters._
 import scala.concurrent.{ExecutionContext, Future}
-import scala.util.Random
+import scala.util.{Random, Success}
 
 class LiveTest extends FunSuite with Eventually {
 
@@ -27,6 +28,9 @@ class LiveTest extends FunSuite with Eventually {
     val queueName = randomString(10)
     val exchange1 = randomString(10)
     val exchange2 = randomString(10)
+
+    val queueName2 = randomString(10)
+    val exchange3 = randomString(10)
 
     private val original = ConfigFactory.load().getConfig("myConfig")
 
@@ -40,6 +44,12 @@ class LiveTest extends FunSuite with Eventually {
       .withValue("consumer.processTimeout", ConfigValueFactory.fromAnyRef("500ms"))
       .withValue("producer.exchange", ConfigValueFactory.fromAnyRef(exchange1))
       .withValue("producer2.exchange", ConfigValueFactory.fromAnyRef(exchange2))
+      .withValue("additionalDeclarations.declareExchange.name", ConfigValueFactory.fromAnyRef(exchange3))
+      .withValue("additionalDeclarations.bindExchange.sourceExchangeName", ConfigValueFactory.fromAnyRef(exchange1))
+      .withValue("additionalDeclarations.bindExchange.destExchangeName", ConfigValueFactory.fromAnyRef(exchange3))
+      .withValue("additionalDeclarations.declareQueue.name", ConfigValueFactory.fromAnyRef(queueName2))
+      .withValue("additionalDeclarations.bindQueue.exchangeName", ConfigValueFactory.fromAnyRef(exchange3))
+      .withValue("additionalDeclarations.bindQueue.queueName", ConfigValueFactory.fromAnyRef(queueName2))
 
     def randomString(length: Int): String = {
       Random.alphanumeric.take(length).mkString("")
@@ -251,6 +261,42 @@ class LiveTest extends FunSuite with Eventually {
     eventually(timeout(Span(3, Seconds)), interval(Span(0.25, Seconds))) {
       assert(cnt.get() >= 10)
       assert(testHelper.getMessagesCount(queueName) <= 0)
+    }
+  }
+
+  test("additional declarations works") {
+    val c = createConfig()
+    import c._
+
+    val latch = new CountDownLatch(10)
+
+    val rabbitFactory = RabbitMQFactory.fromConfig(config, Some(ex))
+
+    val sender = rabbitFactory.newProducer("producer", Monitor.noOp())
+
+    // additional declarations
+
+    val Success(_) = for {
+      _ <- rabbitFactory.declareExchange("additionalDeclarations.declareExchange")
+      _ <- rabbitFactory.bindExchange("additionalDeclarations.bindExchange")
+      _ <- rabbitFactory.declareQueue("additionalDeclarations.declareQueue")
+      _ <- rabbitFactory.bindQueue("additionalDeclarations.bindQueue")
+    } yield Done
+
+    rabbitFactory.newConsumer("consumer", Monitor.noOp()) { _ =>
+      latch.countDown()
+      Future.successful(DeliveryResult.Ack)
+    }
+
+    for (_ <- 1 to 10) {
+      sender.send("test", Bytes.copyFromUtf8(Random.nextString(10)))
+    }
+
+    eventually(timeout(Span(2, Seconds)), interval(Span(200, Milliseconds))) {
+      assertResult(true)(latch.await(500, TimeUnit.MILLISECONDS))
+
+      assertResult(0)(testHelper.getMessagesCount(queueName))
+      assertResult(10)(testHelper.getMessagesCount(queueName2))
     }
   }
 }

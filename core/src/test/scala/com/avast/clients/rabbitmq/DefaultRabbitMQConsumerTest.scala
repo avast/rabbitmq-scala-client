@@ -1,6 +1,6 @@
 package com.avast.clients.rabbitmq
 
-import java.util.UUID
+import java.util.{Collections, UUID}
 
 import com.avast.clients.rabbitmq.RabbitMQFactory.DefaultListeners
 import com.avast.clients.rabbitmq.api.DeliveryResult
@@ -16,6 +16,7 @@ import org.scalatest.concurrent.Eventually
 import org.scalatest.mockito.MockitoSugar
 import org.scalatest.time.{Seconds, Span}
 
+import scala.collection.JavaConverters._
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.Future
 import scala.util.Random
@@ -42,7 +43,7 @@ class DefaultRabbitMQConsumerTest extends FunSuite with MockitoSugar with Eventu
       Monitor.noOp,
       DeliveryResult.Reject,
       DefaultListeners.DefaultConsumerListener,
-      (_, _) => ???
+      (_, _, _) => ???
     )({ delivery =>
       assertResult(Some(messageId))(delivery.properties.messageId)
 
@@ -81,7 +82,7 @@ class DefaultRabbitMQConsumerTest extends FunSuite with MockitoSugar with Eventu
       Monitor.noOp,
       DeliveryResult.Reject,
       DefaultListeners.DefaultConsumerListener,
-      (_, _) => ???
+      (_, _, _) => ???
     )({ delivery =>
       assertResult(Some(messageId))(delivery.properties.messageId)
 
@@ -120,7 +121,7 @@ class DefaultRabbitMQConsumerTest extends FunSuite with MockitoSugar with Eventu
       Monitor.noOp,
       DeliveryResult.Reject,
       DefaultListeners.DefaultConsumerListener,
-      (_, _) => ???
+      (_, _, _) => ???
     )({ delivery =>
       assertResult(Some(messageId))(delivery.properties.messageId)
 
@@ -158,7 +159,7 @@ class DefaultRabbitMQConsumerTest extends FunSuite with MockitoSugar with Eventu
       Monitor.noOp,
       DeliveryResult.Reject,
       DefaultListeners.DefaultConsumerListener,
-      (_, _) => ???
+      (_, _, _) => ???
     )({ delivery =>
       assertResult(Some(messageId))(delivery.properties.messageId)
 
@@ -197,7 +198,7 @@ class DefaultRabbitMQConsumerTest extends FunSuite with MockitoSugar with Eventu
       Monitor.noOp,
       DeliveryResult.Retry,
       DefaultListeners.DefaultConsumerListener,
-      (_, _) => ???
+      (_, _, _) => ???
     )({ delivery =>
       assertResult(Some(messageId))(delivery.properties.messageId)
 
@@ -233,7 +234,7 @@ class DefaultRabbitMQConsumerTest extends FunSuite with MockitoSugar with Eventu
       Monitor.noOp,
       DeliveryResult.Retry,
       DefaultListeners.DefaultConsumerListener,
-      (_, _) => ???
+      (_, _, _) => ???
     )({ delivery =>
       assertResult(Some(messageId))(delivery.properties.messageId)
 
@@ -247,6 +248,8 @@ class DefaultRabbitMQConsumerTest extends FunSuite with MockitoSugar with Eventu
       verify(channel, times(1)).basicReject(deliveryTag, true)
     }
   }
+
+  val args: java.util.Map[String, AnyRef] = Collections.emptyMap()
 
   test("should bind to another exchange") {
     val messageId = UUID.randomUUID().toString
@@ -273,8 +276,8 @@ class DefaultRabbitMQConsumerTest extends FunSuite with MockitoSugar with Eventu
       Monitor.noOp,
       DeliveryResult.Retry,
       DefaultListeners.DefaultConsumerListener,
-      (exchange, routingKey) => {
-        channel.queueBind(queueName, exchange, routingKey)
+      (exchange, routingKey, args) => {
+        channel.queueBind(queueName, exchange, routingKey, args.mapValues(_.asInstanceOf[Object]).asJava)
       }
     )({ delivery =>
       assertResult(Some(messageId))(delivery.properties.messageId)
@@ -284,7 +287,7 @@ class DefaultRabbitMQConsumerTest extends FunSuite with MockitoSugar with Eventu
 
     consumer.bindTo(exchange, routingKey)
 
-    verify(channel, times(1)).queueBind(queueName, exchange, routingKey)
+    verify(channel, times(1)).queueBind(Matchers.eq(queueName), Matchers.eq(exchange), Matchers.eq(routingKey), Matchers.eq(args))
     ()
   }
 }

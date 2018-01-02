@@ -9,6 +9,7 @@ import com.avast.clients.rabbitmq.api.{Delivery, DeliveryResult, RabbitMQConsume
 import com.avast.continuity.Continuity
 import com.avast.kluzo.Kluzo
 import com.avast.metrics.scalaapi.Monitor
+import com.avast.utils2.Done
 import com.avast.utils2.errorhandling.FutureTimeouter
 import com.rabbitmq.client.AMQP
 import com.rabbitmq.client.AMQP.Queue
@@ -18,16 +19,36 @@ import net.ceedubs.ficus.Ficus._
 import net.ceedubs.ficus.readers.ArbitraryTypeReader._
 import net.ceedubs.ficus.readers.ValueReader
 
+import scala.collection.JavaConverters._
 import scala.concurrent.{ExecutionContext, Future}
+import scala.language.implicitConversions
+import scala.util.Try
 import scala.util.control.NonFatal
 
 private[rabbitmq] object RabbitMQClientFactory extends LazyLogging {
 
+  private type ArgumentsMap = Map[String, Any]
+
+  private[rabbitmq] final val DeclareQueueRootConfigKey = "ffRabbitMQDeclareQueueDefaults"
+  private[rabbitmq] final val DeclareQueueDefaultConfig = ConfigFactory.defaultReference().getConfig(DeclareQueueRootConfigKey)
+
+  private[rabbitmq] final val BindExchangeRootConfigKey = "ffRabbitMQBindExchangeDefaults"
+  private[rabbitmq] final val BindExchangeDefaultConfig = ConfigFactory.defaultReference().getConfig(BindExchangeRootConfigKey)
+
+  private[rabbitmq] final val DeclareExchangeRootConfigKey = "ffRabbitMQDeclareExchangeDefaults"
+  private[rabbitmq] final val DeclareExchangeDefaultConfig = ConfigFactory.defaultReference().getConfig(DeclareExchangeRootConfigKey)
+
   private[rabbitmq] final val ProducerRootConfigKey = "ffRabbitMQProducerDefaults"
-  private[rabbitmq] final val ProducerDefaultConfig = ConfigFactory.defaultReference().getConfig(ProducerRootConfigKey)
+  private[rabbitmq] final val ProducerDefaultConfig = {
+    val c = ConfigFactory.defaultReference().getConfig(ProducerRootConfigKey)
+    c.withValue("declare", c.getConfig("declare").withFallback(DeclareExchangeDefaultConfig).root())
+  }
 
   private[rabbitmq] final val ConsumerRootConfigKey = "ffRabbitMQConsumerDefaults"
-  private[rabbitmq] final val ConsumerDefaultConfig = ConfigFactory.defaultReference().getConfig(ConsumerRootConfigKey)
+  private[rabbitmq] final val ConsumerDefaultConfig = {
+    val c = ConfigFactory.defaultReference().getConfig(ConsumerRootConfigKey)
+    c.withValue("declare", c.getConfig("declare").withFallback(DeclareQueueDefaultConfig).root())
+  }
 
   private[rabbitmq] final val ConsumerBindingRootConfigKey = "ffRabbitMQConsumerBindingDefaults"
   private[rabbitmq] final val ConsumerBindingDefaultConfig = ConfigFactory.defaultReference().getConfig(ConsumerBindingRootConfigKey)
@@ -42,7 +63,7 @@ private[rabbitmq] object RabbitMQClientFactory extends LazyLogging {
       case "republish" => Republish()
   }
 
-  private implicit final val rabbitArgumentsReader: ValueReader[DeclareArguments] = (config: Config, path: String) => {
+  private implicit final val rabbitDeclareArgumentsReader: ValueReader[DeclareArguments] = (config: Config, path: String) => {
     import scala.collection.JavaConverters._
     val argumentsMap = config
       .getObject(path)
@@ -51,6 +72,17 @@ private[rabbitmq] object RabbitMQClientFactory extends LazyLogging {
       .mapValues(_.unwrapped())
 
     DeclareArguments(argumentsMap)
+  }
+
+  private implicit final val rabbitBindArgumentsReader: ValueReader[BindArguments] = (config: Config, path: String) => {
+    import scala.collection.JavaConverters._
+    val argumentsMap = config
+      .getObject(path)
+      .asScala
+      .toMap
+      .mapValues(_.unwrapped())
+
+    BindArguments(argumentsMap)
   }
 
   object Producer {
@@ -110,6 +142,62 @@ private[rabbitmq] object RabbitMQClientFactory extends LazyLogging {
     }
   }
 
+  object Declarations {
+    def declareExchange(config: Config, channel: ServerChannel, channelFactoryInfo: RabbitMqFactoryInfo): Try[Done] = {
+      declareExchange(config.withFallback(DeclareExchangeDefaultConfig).as[DeclareExchange], channel, channelFactoryInfo)
+    }
+
+    def declareQueue(config: Config, channel: ServerChannel, channelFactoryInfo: RabbitMqFactoryInfo): Try[Done] = {
+      declareQueue(config.withFallback(DeclareQueueDefaultConfig).as[DeclareQueue], channel, channelFactoryInfo)
+    }
+
+    def bindQueue(config: Config, channel: ServerChannel, channelFactoryInfo: RabbitMqFactoryInfo): Try[Done] = {
+      bindQueue(config.withFallback(ConsumerBindingDefaultConfig).as[BindQueue], channel, channelFactoryInfo)
+    }
+
+    def bindExchange(config: Config, channel: ServerChannel, channelFactoryInfo: RabbitMqFactoryInfo): Try[Done] = {
+      bindExchange(config.withFallback(BindExchangeDefaultConfig).as[BindExchange], channel, channelFactoryInfo)
+    }
+
+    def declareExchange(config: DeclareExchange, channel: ServerChannel, channelFactoryInfo: RabbitMqFactoryInfo): Try[Done] = {
+      import config._
+
+      Try {
+        RabbitMQClientFactory.this.declareExchange(name, `type`, durable, autoDelete, arguments, channel, channelFactoryInfo)
+        Done
+      }
+    }
+
+    def declareQueue(config: DeclareQueue, channel: ServerChannel, channelFactoryInfo: RabbitMqFactoryInfo): Try[Done] = {
+      import config._
+
+      Try {
+        RabbitMQClientFactory.this.declareQueue(channel, name, durable, exclusive, autoDelete, arguments)
+        Done
+      }
+    }
+
+    def bindQueue(config: BindQueue, channel: ServerChannel, channelFactoryInfo: RabbitMqFactoryInfo): Try[Done] = {
+      import config._
+
+      Try {
+        routingKeys.foreach(
+          RabbitMQClientFactory.this.bindQueue(channelFactoryInfo)(channel, queueName)(exchangeName, _, bindArguments.value))
+        Done
+      }
+    }
+
+    def bindExchange(config: BindExchange, channel: ServerChannel, channelFactoryInfo: RabbitMqFactoryInfo): Try[Done] = {
+      import config._
+
+      Try {
+        routingKeys.foreach(
+          RabbitMQClientFactory.this.bindExchange(channelFactoryInfo)(channel, sourceExchangeName, destExchangeName, arguments.value))
+        Done
+      }
+    }
+  }
+
   private def prepareProducer(producerConfig: ProducerConfig,
                               channel: ServerChannel,
                               channelFactoryInfo: RabbitMqFactoryInfo,
@@ -126,19 +214,30 @@ private[rabbitmq] object RabbitMQClientFactory extends LazyLogging {
     new DefaultRabbitMQProducer(producerConfig.name, exchange, channel, useKluzo, reportUnroutable, monitor)
   }
 
-  private def declareExchange(name: String,
-                              channelFactoryInfo: RabbitMqFactoryInfo,
-                              channel: ServerChannel,
-                              autoDeclareExchange: AutoDeclareExchange): Unit = {
+  private[rabbitmq] def declareExchange(name: String,
+                                        channelFactoryInfo: RabbitMqFactoryInfo,
+                                        channel: ServerChannel,
+                                        autoDeclareExchange: AutoDeclareExchange): Unit = {
     import autoDeclareExchange._
 
     if (enabled) {
-      logger.info(s"Declaring exchange '$name' of type ${`type`} in virtual host '${channelFactoryInfo.virtualHost}'")
-      import scala.collection.JavaConverters._
-      val javaArguments = arguments.value.mapValues(_.asInstanceOf[Object]).asJava
-      channel.exchangeDeclare(name, `type`, durable, autoDelete, javaArguments)
+      declareExchange(name, `type`, durable, autoDelete, arguments, channel, channelFactoryInfo)
     }
     ()
+  }
+
+  private def declareExchange(name: String,
+                              `type`: String,
+                              durable: Boolean,
+                              autoDelete: Boolean,
+                              arguments: DeclareArguments,
+                              channel: ServerChannel,
+                              channelFactoryInfo: RabbitMqFactoryInfo): Unit = {
+    logger.info(s"Declaring exchange '$name' of type ${`type`} in virtual host '${channelFactoryInfo.virtualHost}'")
+    import scala.collection.JavaConverters._
+    val javaArguments = argsAsJava(arguments.value)
+
+    channel.exchangeDeclare(name, `type`, durable, autoDelete, javaArguments)
   }
 
   private def prepareConsumer(consumerConfig: ConsumerConfig,
@@ -187,9 +286,7 @@ private[rabbitmq] object RabbitMQClientFactory extends LazyLogging {
                                      exclusive: Boolean,
                                      autoDelete: Boolean,
                                      arguments: DeclareArguments): Queue.DeclareOk = {
-    import scala.collection.JavaConverters._
-    val javaArguments = arguments.value.mapValues(_.asInstanceOf[Object]).asJava
-    channel.queueDeclare(queueName, durable, exclusive, autoDelete, javaArguments)
+    channel.queueDeclare(queueName, durable, exclusive, autoDelete, arguments.value)
   }
 
   private def bindQueues(channelFactoryInfo: RabbitMqFactoryInfo, channel: ServerChannel, consumerConfig: ConsumerConfig): Unit = {
@@ -201,22 +298,33 @@ private[rabbitmq] object RabbitMQClientFactory extends LazyLogging {
 
       if (routingKeys.nonEmpty) {
         routingKeys.foreach { routingKey =>
-          bindQueue(channelFactoryInfo)(channel, queueName)(exchangeName, routingKey)
+          bindQueue(channelFactoryInfo)(channel, queueName)(exchangeName, routingKey, bindArguments.value)
         }
       } else {
         // binding without routing key, possibly to fanout exchange
 
-        bindQueue(channelFactoryInfo)(channel, queueName)(exchangeName, "")
+        bindQueue(channelFactoryInfo)(channel, queueName)(exchangeName, "", bindArguments.value)
       }
     }
   }
 
-  private[rabbitmq] def bindQueue(channelFactoryInfo: RabbitMqFactoryInfo)(channel: ServerChannel, queueName: String)(
-      exchangeName: String,
-      routingKey: String): AMQP.Queue.BindOk = {
-    logger.info(s"Binding $exchangeName($routingKey) -> '$queueName' in virtual host '${channelFactoryInfo.virtualHost}'")
+  private[rabbitmq] def bindQueue(channelFactoryInfo: RabbitMqFactoryInfo)(
+      channel: ServerChannel,
+      queueName: String)(exchangeName: String, routingKey: String, arguments: ArgumentsMap): AMQP.Queue.BindOk = {
+    logger.info(s"Binding exchange $exchangeName($routingKey) -> queue '$queueName' in virtual host '${channelFactoryInfo.virtualHost}'")
 
-    channel.queueBind(queueName, exchangeName, routingKey)
+    channel.queueBind(queueName, exchangeName, routingKey, arguments)
+  }
+
+  private[rabbitmq] def bindExchange(channelFactoryInfo: RabbitMqFactoryInfo)(
+      channel: ServerChannel,
+      sourceExchangeName: String,
+      destExchangeName: String,
+      arguments: ArgumentsMap)(routingKey: String): AMQP.Exchange.BindOk = {
+    logger.info(
+      s"Binding exchange $sourceExchangeName($routingKey) -> exchange '$destExchangeName' in virtual host '${channelFactoryInfo.virtualHost}'")
+
+    channel.exchangeBind(destExchangeName, sourceExchangeName, routingKey, arguments)
   }
 
   private def prepareConsumer(consumerConfig: ConsumerConfig,
@@ -298,6 +406,10 @@ private[rabbitmq] object RabbitMQClientFactory extends LazyLogging {
         .empty()
         .withValue("root", c.withFallback(ProducerDefaultConfig).root())
     }
+  }
+
+  private implicit def argsAsJava(value: ArgumentsMap): java.util.Map[String, Object] = {
+    value.mapValues(_.asInstanceOf[Object]).asJava
   }
 
 }

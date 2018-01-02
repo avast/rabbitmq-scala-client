@@ -20,15 +20,15 @@ import scala.concurrent.{ExecutionContext, Future}
 import scala.util.control.NonFatal
 import scala.util.{Failure, Success, Try}
 
-class DefaultRabbitMQConsumer(
-    name: String,
-    channel: ServerChannel,
-    queueName: String,
-    useKluzo: Boolean,
-    monitor: Monitor,
-    failureAction: DeliveryResult,
-    consumerListener: ConsumerListener,
-    bindToAction: (String, String) => BindOk)(readAction: Delivery => Future[DeliveryResult])(implicit ec: ExecutionContext)
+class DefaultRabbitMQConsumer(name: String,
+                              channel: ServerChannel,
+                              queueName: String,
+                              useKluzo: Boolean,
+                              monitor: Monitor,
+                              failureAction: DeliveryResult,
+                              consumerListener: ConsumerListener,
+                              bindToAction: (String, String, Map[String, Any]) => BindOk)(readAction: Delivery => Future[DeliveryResult])(
+    implicit ec: ExecutionContext)
     extends DefaultConsumer(channel)
     with RabbitMQConsumer
     with StrictLogging {
@@ -162,8 +162,8 @@ class DefaultRabbitMQConsumer(
     properties.builder().headers(headers.asJava).build()
   }
 
-  override def bindTo(exchange: String, routingKey: String): Try[Done] = Try {
-    bindToAction(exchange, routingKey)
+  override def bindTo(exchange: String, routingKey: String, arguments: Map[String, Any]): Try[Done] = Try {
+    bindToAction(exchange, routingKey, arguments)
     Done
   }
 
