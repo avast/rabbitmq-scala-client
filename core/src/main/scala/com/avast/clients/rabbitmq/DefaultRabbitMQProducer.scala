@@ -13,7 +13,6 @@ import com.rabbitmq.client.AMQP.BasicProperties
 import com.rabbitmq.client.ReturnListener
 import com.typesafe.scalalogging.StrictLogging
 
-import scala.collection.JavaConverters._
 import scala.util.Try
 
 class DefaultRabbitMQProducer(name: String,

@@ -234,10 +234,9 @@ private[rabbitmq] object RabbitMQClientFactory extends LazyLogging {
                               channel: ServerChannel,
                               channelFactoryInfo: RabbitMqFactoryInfo): Unit = {
     logger.info(s"Declaring exchange '$name' of type ${`type`} in virtual host '${channelFactoryInfo.virtualHost}'")
-    import scala.collection.JavaConverters._
     val javaArguments = argsAsJava(arguments.value)
-
     channel.exchangeDeclare(name, `type`, durable, autoDelete, javaArguments)
+    ()
   }
 
   private def prepareConsumer(consumerConfig: ConsumerConfig,

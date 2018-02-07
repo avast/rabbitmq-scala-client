@@ -1,7 +1,5 @@
 package com.avast.clients.rabbitmq.api
 
-import scala.collection.JavaConverters._
-
 sealed trait DeliveryResult
 
 object DeliveryResult {
