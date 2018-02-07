@@ -17,7 +17,6 @@ import com.avast.clients.rabbitmq.{
 import com.avast.metrics.api.Monitor
 import com.avast.metrics.scalaapi.{Monitor => ScalaMonitor}
 
-import scala.collection.JavaConverters._
 import scala.concurrent.{ExecutionContext, ExecutionContextExecutor}
 import scala.util.Try
 

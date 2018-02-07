@@ -12,7 +12,6 @@ import com.rabbitmq.client.AMQP.BasicProperties
 
 import scala.collection.JavaConverters._
 import scala.concurrent.{ExecutionContext, Future}
-import scala.language.implicitConversions
 
 private[rabbitmq] object JavaConverters {
 

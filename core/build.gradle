@@ -27,7 +27,7 @@ dependencies {
     compile 'com.iheart:ficus_?:1.4.3'
 
     compile 'com.avast:kluzo-scala_?:2.0.18'
-    compile 'com.avast.continuity:continuity-core-scala_?:2.0.20'
+    compile 'com.avast.continuity:continuity-core-scala_?:3.0.1'
 
     compile 'org.xbib:jsr-305:1.0.0'
 }

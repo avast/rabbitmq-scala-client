@@ -3,7 +3,6 @@ package com.avast.clients.rabbitmq.javaapi
 import java.util.concurrent.{ExecutorService, ScheduledExecutorService}
 
 import com.avast.clients.rabbitmq.RabbitMQFactory.DefaultListeners
-import com.avast.clients.rabbitmq.api._
 import com.avast.clients.rabbitmq.{
   ChannelListener,
   ConnectionListener,
