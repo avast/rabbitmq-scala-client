@@ -184,69 +184,25 @@ See [full example](core/src/test/java/ExampleJava.java)
 
 ## Notes
 
+### Extras
+There is a module with some optional functionality called [extras](extras/README.md).
+
 ### DeliveryResult
-The consumers `readAction` returns `Future` of [`DeliveryResult`](core/src/main/scala/com/avast/clients/rabbitmq/DeliveryResult.scala). The `DeliveryResult` has 4 possible values
+The consumers `readAction` returns `Future` of [`DeliveryResult`](api/src/main/scala/com/avast/clients/rabbitmq/api/DeliveryResult.scala). The `DeliveryResult` has 4 possible values
 (descriptions of usual use-cases):
 1. Ack - the message was processed; it will be removed from the queue
 1. Reject - the message is corrupted or for some other reason we don't want to see it again; it will be removed from the queue
 1. Retry - the message couldn't be processed at this moment (unreachable 3rd party services?); it will be requeued (inserted on the top of
 the queue)
 1. Republish - the message may be corrupted but we're not sure; it will be re-published to the bottom of the queue (as a new message and the
-original one will be removed). It's usually wise  to prevent an infinite republishing of the message - see [Poisoned message handler](#poisoned-message-handler) below.
+original one will be removed). It's usually wise  to prevent an infinite republishing of the message - see [Poisoned message handler](extras/README.md#poisoned-message-handler).
 
 #### Difference between _Retry_ and _Republish_
 When using _Retry_ the message can effectively cause starvation of other messages in the queue
 until the message itself can be processed; on the other hand _Republish_ inserts the message to the original queue as a new message and it
 lets the consumer handle other messages (if they can be processed).
 
-### Extras
-There is an extra module available with some optional functionality.
-`compile 'com.avast.clients:rabbitmq-client-core_?:x.x.x'`
-
-#### HealthCheck
-The library is not able to recover from all failures so it provides [HealthCheck class](core/src/main/scala/com/avast/clients/rabbitmq/HealthCheck.scala)
- that indicates if the application is OK or not - then it should be restarted.
-To use that class, simply pass the `rabbitExceptionHandler` field as listener when constructing the RabbitMQ classes. Then you can call `getStatus` method.
-
-If you are using [Yap](https://git.int.avast.com/ff/yap) then you can use it in this way:
-```scala
-object YapHealthCheck extends HealthCheck with (HttpRequest[Bytes] => CompletableFuture[HttpResponse[Bytes]]) {
-  override def apply(req: HttpRequest[Bytes]): CompletableFuture[HttpResponse[Bytes]] = {
-    val resp = getStatus match {
-      case Ok => HttpResponses.Ok()
-      case Failure(msg, _) => HttpResponses.InternalServerError(Bytes.copyFromUtf8(msg))
-    }
-    CompletableFuture.completedFuture(resp)
-  }
-}
-```
-
-#### Poisoned message handler
-It's quite often use-case we want to republish failed message but want to avoid the message to be republishing forever. Wrap your handler (readAction)
-with [PoisonedMessageHandler](extras/src/main/scala/com/avast/clients/rabbitmq/extras/PoisonedMessageHandler.scala) to solve this issue. It will count no. of attempts and won't let the message to be republished again and again
-(above the limit you set).  
-_Note: it works ONLY for `Republish` and not for `Retry`!_
-```scala
-val newReadAction = new PoisonedMessageHandler(3)(myReadAction)
-```
-Java:
-```java
-newReadAction = PoisonedMessageHandler.forJava(3, myReadAction, executor);
-```
-You can even pretend lower number of attempts when you want to rise the republishing count (for some special message):
-```scala
-Republish(Map(PoisonedMessageHandler.RepublishCountHeaderName -> 1.asInstanceOf[AnyRef]))
-```
-Note you can provide your custom poisoned-message handle action:
-```scala
-val newReadAction = PoisonedMessageHandler.withCustomPoisonedAction(3)(myReadAction) { delivery =>
-  logger.warn(s"Delivery $delivery is poisoned!")
-  Future.successful(Done)
-}
-```
-After the execution of the poisoned-message action (no matter whether default or custom one), the delivery is REJECTed.
-
-#### Bind/declare arguments
+### Bind/declare arguments
 There is an option to specify bind/declare arguments for queues/exchanges as you may read about at [RabbitMQ docs](https://www.rabbitmq.com/queues.html).
 Check [reference.conf](core/src/main/resources/reference.conf) or following example for usage:
 ```hocon
@@ -267,7 +223,7 @@ Check [reference.conf](core/src/main/resources/reference.conf) or following exam
 
 ```
 
-#### Additional declarations and bindings
+### Additional declarations and bindings
 Sometimes it's necessary to declare an additional queue or exchange which is not directly related to the consumers or producers you have
 in your application (e.g. dead-letter queue).  
 The library makes possible to do such thing, e.g.:
