@@ -47,7 +47,7 @@ subprojects {
         utilsVersion = "6.4.78"
         metricsVersion = "2.3.3"
         bytesVersion = "2.0.3"
-        circeVersion = "0.9.1" // only used in tests!
+        circeVersion = "0.9.1"
     }
 
     dependencies {

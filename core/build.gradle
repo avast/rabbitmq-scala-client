@@ -30,4 +30,10 @@ dependencies {
     compile 'com.avast.continuity:continuity-core-scala_?:3.0.1'
 
     compile 'org.xbib:jsr-305:1.0.0'
+
+    testCompile project(":extras")
+    testCompile project(":extras-circe")
+
+    testCompile "io.circe:circe-generic_?:$circeVersion"
+    testCompile "io.circe:circe-generic-extras_?:$circeVersion"
 }

@@ -3,3 +3,4 @@ rootProject.name="rabbitmqclient"
 include 'api'
 include 'core'
 include 'extras'
+include 'extras-circe'
