@@ -20,13 +20,16 @@ class MultiFormatConsumer[A] private (
           case c if c.fits(delivery) => c.convert(delivery)
         }
         .getOrElse {
-          Left(ConversionException(s"Could not find suitable converter for $delivery with Content-Type ${delivery.properties.contentType}"))
+          Left(ConversionException(s"Could not find suitable converter for $delivery"))
         }
 
       converted match {
         case Right(cc) => action(cc, delivery.properties, delivery.routingKey)
-        case Left(ex) =>
+        case Left(ex: ConversionException) =>
           logger.debug("Could not find suitable converter", ex)
+          failureAction(delivery, ex)
+        case Left(ex) =>
+          logger.debug(s"Error while converting of $delivery", ex)
           failureAction(delivery, ex)
       }
     } catch {
@@ -43,17 +46,6 @@ object MultiFormatConsumer {
       failureAction: (Delivery, ConversionException) => Future[DeliveryResult])(implicit ec: ExecutionContext): MultiFormatConsumer[A] = {
     new MultiFormatConsumer[A](supportedConverters.toList, action, failureAction)
   }
-}
-
-trait FormatConverter[A] {
-  def fits(d: Delivery): Boolean
-
-  def convert(d: Delivery): Either[ConversionException, A]
-}
-
-object FormatConverter {
-
-  def apply[A: FormatConverter]: FormatConverter[A] = implicitly[FormatConverter[A]]
 }
 
 case class ConversionException(desc: String, cause: Throwable = null) extends RuntimeException(desc, cause)
