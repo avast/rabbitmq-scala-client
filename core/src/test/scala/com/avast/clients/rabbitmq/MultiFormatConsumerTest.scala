@@ -129,7 +129,7 @@ class MultiFormatConsumerTest extends FunSuite with ScalaFutures {
           .build()
           .toByteString
       },
-      properties = MessageProperties(contentType = GpbFormatConverter.ContentTypes.headOption),
+      properties = MessageProperties(contentType = GpbFormatConverter.ContentTypes.headOption.map(_.toUpperCase)),
       routingKey = ""
     )
 

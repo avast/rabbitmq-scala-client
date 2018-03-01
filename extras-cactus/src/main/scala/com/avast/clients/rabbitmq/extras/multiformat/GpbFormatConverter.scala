@@ -44,7 +44,7 @@ object GpbFormatConverter {
       }
     }
 
-    override def fits(d: Delivery): Boolean = d.properties.contentType.exists(ContentTypes.contains)
+    override def fits(d: Delivery): Boolean = d.properties.contentType.map(_.toLowerCase).exists(ContentTypes.contains)
   }
 
 }

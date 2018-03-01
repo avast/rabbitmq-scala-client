@@ -20,7 +20,7 @@ object JsonFormatConverter {
       }
     }
 
-    override def fits(d: Delivery): Boolean = d.properties.contentType.contains("application/json")
+    override def fits(d: Delivery): Boolean = d.properties.contentType.map(_.toLowerCase).contains("application/json")
   }
 
 }
