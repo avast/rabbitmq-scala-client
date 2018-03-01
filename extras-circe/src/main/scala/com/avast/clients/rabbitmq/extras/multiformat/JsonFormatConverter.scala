@@ -11,7 +11,7 @@ import scala.reflect.ClassTag
 trait JsonFormatConverter[A] extends FormatConverter[A]
 
 object JsonFormatConverter {
-  def apply[A: JsonFormatConverter]: JsonFormatConverter[A] = implicitly[JsonFormatConverter[A]]
+  def derive[A: JsonFormatConverter](): JsonFormatConverter[A] = implicitly[JsonFormatConverter[A]]
 
   implicit def createJsonFormatConverter[A: Decoder: ClassTag]: JsonFormatConverter[A] = new JsonFormatConverter[A] {
     override def convert(d: Delivery): Either[ConversionException, A] = {

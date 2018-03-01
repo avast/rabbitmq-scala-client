@@ -1,0 +1,10 @@
+package com.avast.client.rabbitmq.test;
+
+message FileSource {
+    optional bytes file_id = 1;
+    optional string source = 2;
+}
+
+message NewFileSourceAdded {
+    repeated FileSource file_sources = 1;
+}

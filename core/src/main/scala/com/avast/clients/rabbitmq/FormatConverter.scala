@@ -7,8 +7,3 @@ trait FormatConverter[A] {
 
   def convert(d: Delivery): Either[ConversionException, A]
 }
-
-object FormatConverter {
-
-  def apply[A: FormatConverter]: FormatConverter[A] = implicitly[FormatConverter[A]]
-}

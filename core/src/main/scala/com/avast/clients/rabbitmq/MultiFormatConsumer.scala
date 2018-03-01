@@ -4,13 +4,12 @@ import com.avast.clients.rabbitmq.api.{Delivery, DeliveryResult, MessageProperti
 import com.typesafe.scalalogging.StrictLogging
 
 import scala.collection.immutable
-import scala.concurrent.{ExecutionContext, Future}
+import scala.concurrent.Future
 import scala.util.control.NonFatal
 
-class MultiFormatConsumer[A] private (
-    supportedConverters: immutable.Seq[FormatConverter[A]],
-    action: (A, MessageProperties, String) => Future[DeliveryResult],
-    failureAction: (Delivery, ConversionException) => Future[DeliveryResult])(implicit ec: ExecutionContext)
+class MultiFormatConsumer[A] private (supportedConverters: immutable.Seq[FormatConverter[A]],
+                                      action: (A, MessageProperties, String) => Future[DeliveryResult],
+                                      failureAction: (Delivery, ConversionException) => Future[DeliveryResult])
     extends (Delivery => Future[DeliveryResult])
     with StrictLogging {
   override def apply(delivery: Delivery): Future[DeliveryResult] = {
@@ -43,7 +42,7 @@ class MultiFormatConsumer[A] private (
 object MultiFormatConsumer {
   def forType[A](supportedConverters: FormatConverter[A]*)(
       action: (A, MessageProperties, String) => Future[DeliveryResult],
-      failureAction: (Delivery, ConversionException) => Future[DeliveryResult])(implicit ec: ExecutionContext): MultiFormatConsumer[A] = {
+      failureAction: (Delivery, ConversionException) => Future[DeliveryResult]): MultiFormatConsumer[A] = {
     new MultiFormatConsumer[A](supportedConverters.toList, action, failureAction)
   }
 }
