@@ -13,28 +13,28 @@ class MultiFormatConsumer[A] private (supportedConverters: immutable.Seq[FormatC
     extends (Delivery => Future[DeliveryResult])
     with StrictLogging {
   override def apply(delivery: Delivery): Future[DeliveryResult] = {
-    try {
-      val converted = supportedConverters
+    val converted: Either[ConversionException, A] = try {
+      supportedConverters
         .collectFirst {
           case c if c.fits(delivery) => c.convert(delivery)
         }
         .getOrElse {
           Left(ConversionException(s"Could not find suitable converter for $delivery"))
         }
-
-      converted match {
-        case Right(cc) => action(cc, delivery.properties, delivery.routingKey)
-        case Left(ex: ConversionException) =>
-          logger.debug("Could not find suitable converter", ex)
-          failureAction(delivery, ex)
-        case Left(ex) =>
-          logger.debug(s"Error while converting of $delivery", ex)
-          failureAction(delivery, ex)
-      }
     } catch {
       case NonFatal(e) =>
         logger.debug("Error while converting", e)
-        failureAction(delivery, ConversionException("Error while converting", e))
+        Left(ConversionException("Error while converting", e))
+    }
+
+    converted match {
+      case Right(cc) => action(cc, delivery.properties, delivery.routingKey)
+      case Left(ex: ConversionException) =>
+        logger.debug("Could not find suitable converter", ex)
+        failureAction(delivery, ex)
+      case Left(ex) =>
+        logger.debug(s"Error while converting of $delivery", ex)
+        failureAction(delivery, ex)
     }
   }
 }
