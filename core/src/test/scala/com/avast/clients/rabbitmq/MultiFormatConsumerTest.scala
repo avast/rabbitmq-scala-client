@@ -32,42 +32,42 @@ class MultiFormatConsumerTest extends FunSuite with ScalaFutures {
 
   case class NewFileSourceAdded(fileSources: Seq[FileSource])
 
-//  test("basic") {
-//    val consumer = MultiFormatConsumer.forType[String](StringFormatConverter)(
-//      (message, _, _) => {
-//        assertResult("abc321")(message)
-//        Future.successful(DeliveryResult.Ack)
-//      },
-//      (_, _) => Future.successful(DeliveryResult.Reject)
-//    )
-//
-//    val delivery = Delivery(
-//      body = Bytes.copyFromUtf8("abc321"),
-//      properties = MessageProperties(contentType = Some("text/plain")),
-//      routingKey = ""
-//    )
-//
-//    val result = consumer.apply(delivery).futureValue
-//
-//    assertResult(DeliveryResult.Ack)(result)
-//  }
-//
-//  test("non-supported content-type") {
-//    val consumer = MultiFormatConsumer.forType[String](StringFormatConverter)(
-//      (_, _, _) => Future.successful(DeliveryResult.Ack),
-//      (_, _) => Future.successful(DeliveryResult.Reject)
-//    )
-//
-//    val delivery = Delivery(
-//      body = Bytes.copyFromUtf8("abc321"),
-//      properties = MessageProperties(contentType = Some("text/javascript")),
-//      routingKey = ""
-//    )
-//
-//    val result = consumer.apply(delivery).futureValue
-//
-//    assertResult(DeliveryResult.Reject)(result)
-//  }
+  test("basic") {
+    val consumer = MultiFormatConsumer.forType[String](StringFormatConverter)(
+      (message, _, _) => {
+        assertResult("abc321")(message)
+        Future.successful(DeliveryResult.Ack)
+      },
+      (_, _) => Future.successful(DeliveryResult.Reject)
+    )
+
+    val delivery = Delivery(
+      body = Bytes.copyFromUtf8("abc321"),
+      properties = MessageProperties(contentType = Some("text/plain")),
+      routingKey = ""
+    )
+
+    val result = consumer.apply(delivery).futureValue
+
+    assertResult(DeliveryResult.Ack)(result)
+  }
+
+  test("non-supported content-type") {
+    val consumer = MultiFormatConsumer.forType[String](StringFormatConverter)(
+      (_, _, _) => Future.successful(DeliveryResult.Ack),
+      (_, _) => Future.successful(DeliveryResult.Reject)
+    )
+
+    val delivery = Delivery(
+      body = Bytes.copyFromUtf8("abc321"),
+      properties = MessageProperties(contentType = Some("text/javascript")),
+      routingKey = ""
+    )
+
+    val result = consumer.apply(delivery).futureValue
+
+    assertResult(DeliveryResult.Reject)(result)
+  }
 
   test("json") {
     val consumer = MultiFormatConsumer.forType[NewFileSourceAdded](JsonFormatConverter.derive())(

@@ -8,7 +8,7 @@ compile 'com.avast.clients:rabbitmq-client-extras-circe_?:x.x.x'
 
 ## JsonFormatConverter
 
-This is an implementation for [FormatConverter](../core/src/main/scala/com/avast/clients/rabbitmq/FormatConverter.scala) which adds support
+This is an implementation of [FormatConverter](../core/src/main/scala/com/avast/clients/rabbitmq/FormatConverter.scala) which adds support
 for JSON decoding done by [Circe](https://github.com/circe/circe).
 
 The suitability of the converter for concrete message is decided based on Content-Type property - `application/json` is supported.

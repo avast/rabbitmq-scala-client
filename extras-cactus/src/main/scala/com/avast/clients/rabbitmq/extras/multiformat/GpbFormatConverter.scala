@@ -7,10 +7,12 @@ import com.avast.clients.rabbitmq.api.Delivery
 import com.avast.clients.rabbitmq.{ConversionException, FormatConverter}
 import com.google.protobuf.MessageLite
 
+import scala.annotation.implicitNotFound
 import scala.reflect.ClassTag
 import scala.util.control.NonFatal
 import scala.util.{Failure, Success}
 
+@implicitNotFound("Could not generate GpbFormatConverter from $GpbMessage to $A, try to import or define some")
 trait GpbFormatConverter[GpbMessage, A] extends FormatConverter[A]
 
 object GpbFormatConverter {

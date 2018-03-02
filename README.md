@@ -267,12 +267,10 @@ import com.avast.cactus.bytes._ // Cactus support for Bytes, see https://github.
 import com.avast.client.rabbitmq.test.ExampleEvents.{NewFileSourceAdded => NewFileSourceAddedGpb}
 import com.avast.clients.rabbitmq.extras.multiformat._
 import io.circe.Decoder
-import io.circe.generic.extras.Configuration
-import io.circe.generic.extras.auto._ // to auto derive `io.circe.Decoder[A]` considering snake-case in JSON - https://circe.github.io/circe/codec.html#custom-key-mappings-via-annotations
+import io.circe.generic.auto._ // to auto derive `io.circe.Decoder[A]` with https://circe.github.io/circe/codec.html#fully-automatic-derivation
 
 import scala.collection.JavaConverters._
 
-private implicit val c: Configuration = Configuration.default.withSnakeCaseMemberNames
 private implicit val d: Decoder[Bytes] = Decoder.decodeString.map(Utils.hexToBytesImmutable)
 
 case class FileSource(fileId: Bytes, source: String)

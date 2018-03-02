@@ -6,8 +6,10 @@ import com.avast.clients.rabbitmq.{ConversionException, FormatConverter}
 import io.circe.Decoder
 import io.circe.parser.decode
 
+import scala.annotation.implicitNotFound
 import scala.reflect.ClassTag
 
+@implicitNotFound("Could not generate JsonFormatConverter for $A, try to import or define some")
 trait JsonFormatConverter[A] extends FormatConverter[A]
 
 object JsonFormatConverter {
