@@ -16,6 +16,14 @@ Author: [Jenda Kolena](mailto:kolena@avast.com)
 `compile 'com.avast.clients:rabbitmq-client-core_?:x.x.x'`
 For most current version see the [Teamcity](https://teamcity.int.avast.com/viewType.html?buildTypeId=CloudSystems_RabbitMQClient_ReleasePublish).
 
+## Modules
+
+There are [api](api) and [core](core) modules available for the most common usage but there are also few _extras_ modules which contains
+some optional functionality:
+1. [extras](extras/README.md)
+1. [extras-circe](extras-circe/README.md) (adds some circe-dependent functionality)
+1. [extras-cactus](extras-cactus/README.md) (adds some cactus-dependent functionality)
+
 ## Usage
 
 ### Configuration
@@ -241,3 +249,55 @@ where the "backupExchangeBinding" is link to the configuration (use relative pat
 ```
 Check [reference.conf](core/src/main/resources/reference.conf) for all options or see [application.conf in tests](core/src/test/resources/application.conf).
 
+### MultiTypeConsumer
+
+There is quite often you receive a single type of message but you want to receive it already decoded or even to support multiple formats of
+the message. This is where `MultiTypeConsumer` could be used.  
+
+Modules [extras-circe](extras-circe/README.md) and [extras-cactus](extras-cactus/README.md) provide support for JSON and GPB conversion. They
+are both used in the example below.
+
+Usage example:
+
+[Proto file](core/src/test/proto/ExampleEvents.proto)
+
+```scala
+import com.avast.bytes.Bytes
+import com.avast.cactus.bytes._ // Cactus support for Bytes, see https://github.com/avast/cactus#bytes
+import com.avast.client.rabbitmq.test.ExampleEvents.{NewFileSourceAdded => NewFileSourceAddedGpb}
+import com.avast.clients.rabbitmq.extras.multiformat._
+import io.circe.Decoder
+import io.circe.generic.extras.Configuration
+import io.circe.generic.extras.auto._ // to auto derive `io.circe.Decoder[A]` considering snake-case in JSON - https://circe.github.io/circe/codec.html#custom-key-mappings-via-annotations
+
+import scala.collection.JavaConverters._
+
+private implicit val c: Configuration = Configuration.default.withSnakeCaseMemberNames
+private implicit val d: Decoder[Bytes] = Decoder.decodeString.map(Utils.hexToBytesImmutable)
+
+case class FileSource(fileId: Bytes, source: String)
+
+case class NewFileSourceAdded(fileSources: Seq[FileSource])
+
+val consumer = MultiFormatConsumer.forType[NewFileSourceAdded](
+  JsonFormatConverter.derive(), // requires implicit `io.circe.Decoder[NewFileSourceAdded]`
+  GpbFormatConverter[NewFileSourceAddedGpb].derive() // requires implicit `com.avast.cactus.Converter[NewFileSourceAddedGpb, NewFileSourceAdded]`
+)(
+  businessLogic.processMessage,
+  failureHandler
+)
+```
+(see [unit test](core/src/test/scala/com/avast/clients/rabbitmq/MultiFormatConsumerTest.scala) for full example)
+
+#### Implementing own `FormatConverter`
+
+The [FormatConverter](core/src/main/scala/com/avast/clients/rabbitmq/FormatConverter.scala) is usually reacting to Content-Type (like in
+the example below) but it's not required - it could e.g. analyze the payload (or first bytes) too. 
+
+```scala
+val StringFormatConverter: FormatConverter[String] = new FormatConverter[String] {
+  override def fits(d: Delivery): Boolean = d.properties.contentType.contains("text/plain")
+
+  override def convert(d: Delivery): Either[ConversionException, String] = Right(d.body.toStringUtf8)
+}
+```
