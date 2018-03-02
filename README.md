@@ -249,9 +249,9 @@ where the "backupExchangeBinding" is link to the configuration (use relative pat
 ```
 Check [reference.conf](core/src/main/resources/reference.conf) for all options or see [application.conf in tests](core/src/test/resources/application.conf).
 
-### MultiTypeConsumer
+### MultiFormatConsumer
 
-There is quite often you receive a single type of message but you want to receive it already decoded or even to support multiple formats of
+Quite often you receive a single type of message but you want to receive it already decoded or even to support multiple formats of
 the message. This is where `MultiTypeConsumer` could be used.  
 
 Modules [extras-circe](extras-circe/README.md) and [extras-cactus](extras-cactus/README.md) provide support for JSON and GPB conversion. They
