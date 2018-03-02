@@ -7,6 +7,7 @@ buildscript {
         classpath 'com.avast.gradle:gradle-publish:0.21.0'
         classpath 'com.avast.gradle:gradle-release:0.21.0'
         classpath 'com.avast.gradle:gradle-scala:0.21.0'
+        classpath 'com.google.protobuf:protobuf-gradle-plugin:0.8.4'
         classpath 'com.avast.gradle:gradle-docker-compose-plugin:0.6.13'
         classpath 'com.github.maiflai:gradle-scalatest:0.19'
         classpath 'com.github.ben-manes:gradle-versions-plugin:0.17.0'
@@ -39,6 +40,7 @@ subprojects {
         scala {
             version = '2.12'
             additionalStrictCompilerProperties.addAll(['-Xlint:-unused', '-Ywarn-unused:imports'])
+            codeStyle.strictCompile = false
         }
     }
 
@@ -47,7 +49,8 @@ subprojects {
         utilsVersion = "6.4.78"
         metricsVersion = "2.3.3"
         bytesVersion = "2.0.3"
-        circeVersion = "0.9.1" // only used in tests!
+        circeVersion = "0.9.1"
+        cactusVersion = "0.9.4"
     }
 
     dependencies {

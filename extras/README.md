@@ -1,6 +1,6 @@
 # RabbitMQ client extras
 
-There is an extra module available with some optional functionality.  
+This is an extra module with some optional functionality.  
 ```groovy
 compile 'com.avast.clients:rabbitmq-client-extras_?:x.x.x'
 ```
@@ -25,8 +25,8 @@ object YapHealthCheck extends HealthCheck with (HttpRequest[Bytes] => Completabl
 
 ## Poisoned message handler
 It's quite often use-case we want to republish failed message but want to avoid the message to be republishing forever. Wrap your handler (readAction)
-with [PoisonedMessageHandler](src/main/scala/com/avast/clients/rabbitmq/extras/PoisonedMessageHandler.scala) to solve this issue. It will count no. of attempts and won't let the message to be republished again and again
-(above the limit you set).  
+with [PoisonedMessageHandler](src/main/scala/com/avast/clients/rabbitmq/extras/PoisonedMessageHandler.scala) to solve this issue. It will count no.
+of attempts and won't let the message to be republished again and again (above the limit you set).  
 _Note: it works ONLY for `Republish` and not for `Retry`!_
 ```scala
 val newReadAction = new PoisonedMessageHandler(3)(myReadAction)

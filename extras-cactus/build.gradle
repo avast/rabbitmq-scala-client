@@ -1,0 +1,15 @@
+avast {
+    publish {
+        artifactId = 'rabbitmq-client-extras-cactus'
+    }
+}
+
+dependencies {
+    compile project(":core")
+    compile project(":extras")
+
+    compile "com.avast.cactus:cactus-common_?:$cactusVersion"
+    compileOptional "com.google.protobuf:protobuf-java:2.6.1" // could be replaced with 2.x.x or 3.x.x in final app
+
+    scalac "org.spire-math:kind-projector_?:0.9.4"
+}

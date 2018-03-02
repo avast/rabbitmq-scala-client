@@ -1,9 +1,21 @@
+apply plugin: 'com.google.protobuf'
+apply plugin: 'idea'
+
 avast {
     publish {
         artifactId = 'rabbitmq-client-core'
     }
 }
 
+protobuf {
+    protoc {
+        artifact = "com.google.protobuf:protoc:2.6.1-build2"
+    }
+}
+
+idea.module {
+    testSourceDirs += file("$buildDir/generated/source/proto/test/java")
+}
 
 dockerCompose.isRequiredBy(test)
 
@@ -30,4 +42,16 @@ dependencies {
     compile 'com.avast.continuity:continuity-core-scala_?:3.0.1'
 
     compile 'org.xbib:jsr-305:1.0.0'
+
+    scalac "org.spire-math:kind-projector_?:0.9.4"
+
+    testCompile project(":extras")
+    testCompile project(":extras-circe")
+    testCompile project(":extras-cactus")
+
+    testCompile "io.circe:circe-generic_?:$circeVersion"
+    testCompile "io.circe:circe-generic-extras_?:$circeVersion"
+    testCompile "com.avast.cactus:cactus-gpbv2_?:$cactusVersion"
+    testCompile "com.avast.cactus:cactus-bytes-gpbv2_?:$cactusVersion"
+    testCompile "com.google.protobuf:protobuf-java:2.6.1"
 }
