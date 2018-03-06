@@ -9,10 +9,10 @@ trait ConsumerListener {
   def onRecoveryStarted(consumer: Consumer, channel: Channel): Unit = ()
 
   @deprecated(since = "6.0.0", message = "This method is never called")
-  def onRecoveryCompleted(consumer: Consumer, channel: Channel): Unit= ()
+  def onRecoveryCompleted(consumer: Consumer, channel: Channel): Unit = ()
 
   @deprecated(since = "6.0.0", message = "This method is never called")
-  def onRecoveryFailure(consumer: Consumer, channel: Channel, failure: Throwable): Unit= ()
+  def onRecoveryFailure(consumer: Consumer, channel: Channel, failure: Throwable): Unit = ()
 
   def onShutdown(consumer: Consumer, channel: Channel, consumerTag: String, sig: ShutdownSignalException): Unit = ()
 }

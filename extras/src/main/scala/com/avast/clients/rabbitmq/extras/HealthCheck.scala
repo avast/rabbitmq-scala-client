@@ -61,7 +61,7 @@ class HealthCheck extends StrictLogging {
 
     override def onShutdown(connection: Connection, cause: ShutdownSignalException): Unit = fail(cause)
 
-    override def onShutdown(channel: Channel, cause: ShutdownSignalException): Unit = fail(cause)
+    override def onShutdown(cause: ShutdownSignalException, channel: Channel): Unit = fail(cause)
   }
 
 }
