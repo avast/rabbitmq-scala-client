@@ -43,8 +43,6 @@ class HealthCheck extends StrictLogging {
 
     override def onRecoveryFailure(connection: Connection, failure: Throwable): Unit = fail(failure)
 
-    override def onRecovery(connection: Connection): Unit = ()
-
     override def onCreate(connection: Connection): Unit = ()
 
     override def onCreateFailure(failure: Throwable): Unit = fail(failure)
@@ -55,21 +53,15 @@ class HealthCheck extends StrictLogging {
 
     override def onRecoveryFailure(channel: Channel, failure: Throwable): Unit = fail(failure)
 
-    override def onRecovery(channel: Channel): Unit = ()
-
     override def onCreate(channel: Channel): Unit = ()
 
-    override def onRecoveryCompleted(consumer: Consumer, channel: Channel): Unit = ()
-
-    override def onRecoveryStarted(consumer: Consumer, channel: Channel): Unit = ()
-
-    override def onRecoveryFailure(consumer: Consumer, channel: Channel, failure: Throwable): Unit = fail(failure)
-
-    override def onShutdown(consumer: Consumer, channel: Channel, consumerTag: String, sig: ShutdownSignalException): Unit = fail(sig)
-
-    override def onShutdown(cause: ShutdownSignalException, channel: Channel): Unit = fail(cause)
-
     override def onError(consumer: Consumer, channel: Channel, failure: Throwable): Unit = fail(failure)
+
+    override def onShutdown(consumer: Consumer, channel: Channel, consumerTag: String, cause: ShutdownSignalException): Unit = fail(cause)
+
+    override def onShutdown(connection: Connection, cause: ShutdownSignalException): Unit = fail(cause)
+
+    override def onShutdown(channel: Channel, cause: ShutdownSignalException): Unit = fail(cause)
   }
 
 }
