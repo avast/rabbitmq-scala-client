@@ -1,6 +1,7 @@
 package com.avast.clients.rabbitmq
 
 import com.rabbitmq.client.{Channel, ShutdownSignalException}
+import com.typesafe.scalalogging.StrictLogging
 
 trait ChannelListener {
   def onShutdown(cause: ShutdownSignalException, channel: Channel): Unit
@@ -11,7 +12,7 @@ trait ChannelListener {
 
   def onRecoveryStarted(channel: Channel): Unit
 
-  @deprecated(since = "6.0.0", message = "This method is never called")
+  @deprecated("6.0.0", "This method is never called")
   def onRecovery(channel: Channel): Unit = ()
 
   def onRecoveryCompleted(channel: Channel): Unit
@@ -20,17 +21,29 @@ trait ChannelListener {
 }
 
 object ChannelListener {
-  final val Default: ChannelListener = new ChannelListener {
-    override def onCreate(channel: Channel): Unit = ()
+  final val Default: ChannelListener = new ChannelListener with StrictLogging {
+    override def onCreate(channel: Channel): Unit = {
+      logger.info(s"Channel created: $channel")
+    }
 
-    override def onRecoveryCompleted(channel: Channel): Unit = ()
+    override def onCreateFailure(failure: Throwable): Unit = {
+      logger.warn(s"Channel was NOT created", failure)
+    }
 
-    override def onRecoveryStarted(channel: Channel): Unit = ()
+    override def onRecoveryCompleted(channel: Channel): Unit = {
+      logger.debug(s"Channel recovered: $channel")
+    }
 
-    override def onShutdown(cause: ShutdownSignalException, channel: Channel): Unit = ()
+    override def onRecoveryStarted(channel: Channel): Unit = {
+      logger.debug(s"Channel recovery started: $channel")
+    }
 
-    override def onRecoveryFailure(channel: Channel, failure: Throwable): Unit = ()
+    override def onRecoveryFailure(channel: Channel, failure: Throwable): Unit = {
+      logger.warn(s"Channel recovery failed: $channel", failure)
+    }
 
-    override def onCreateFailure(failure: Throwable): Unit = ()
+    override def onShutdown(cause: ShutdownSignalException, channel: Channel): Unit = {
+      logger.info(s"Channel shutdown: $channel", cause)
+    }
   }
 }

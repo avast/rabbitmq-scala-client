@@ -1,6 +1,7 @@
 package com.avast.clients.rabbitmq
 
 import com.rabbitmq.client.{Connection, ShutdownSignalException}
+import com.typesafe.scalalogging.StrictLogging
 
 trait ConnectionListener {
   def onCreate(connection: Connection): Unit
@@ -9,7 +10,7 @@ trait ConnectionListener {
 
   def onRecoveryStarted(connection: Connection): Unit
 
-  @deprecated(since = "6.0.0", message = "This method is never called")
+  @deprecated("6.0.0", "This method is never called")
   def onRecovery(connection: Connection): Unit = ()
 
   def onRecoveryCompleted(connection: Connection): Unit
@@ -20,17 +21,29 @@ trait ConnectionListener {
 }
 
 object ConnectionListener {
-  final val Default: ConnectionListener = new ConnectionListener {
-    override def onCreate(connection: Connection): Unit = ()
+  final val Default: ConnectionListener = new ConnectionListener with StrictLogging {
+    override def onCreate(connection: Connection): Unit = {
+      logger.info(s"Connection created: $connection (name ${connection.getClientProvidedName})")
+    }
 
-    override def onCreateFailure(failure: Throwable): Unit = ()
+    override def onCreateFailure(failure: Throwable): Unit = {
+      logger.warn(s"Connection NOT created", failure)
+    }
 
-    override def onRecoveryStarted(connection: Connection): Unit = ()
+    override def onRecoveryStarted(connection: Connection): Unit = {
+      logger.debug(s"Connection recovery started: $connection (name ${connection.getClientProvidedName})")
+    }
 
-    override def onRecoveryCompleted(connection: Connection): Unit = ()
+    override def onRecoveryCompleted(connection: Connection): Unit = {
+      logger.debug(s"Connection recovery completed: $connection (name ${connection.getClientProvidedName})")
+    }
 
-    override def onRecoveryFailure(connection: Connection, failure: Throwable): Unit = ()
+    override def onRecoveryFailure(connection: Connection, failure: Throwable): Unit = {
+      logger.warn(s"Connection recovery failed: $connection (name ${connection.getClientProvidedName})", failure)
+    }
 
-    override def onShutdown(connection: Connection, cause: ShutdownSignalException): Unit = ()
+    override def onShutdown(connection: Connection, cause: ShutdownSignalException): Unit = {
+      logger.warn(s"Connection shutdown: $connection (name ${connection.getClientProvidedName})", cause)
+    }
   }
 }

@@ -16,7 +16,6 @@ import net.ceedubs.ficus.Ficus._
 import net.ceedubs.ficus.readers.ArbitraryTypeReader._
 import net.ceedubs.ficus.readers.ValueReader
 
-import scala.collection.JavaConverters._
 import scala.concurrent.{ExecutionContext, Future}
 import scala.util.Try
 import scala.util.control.NonFatal
@@ -280,7 +279,7 @@ object RabbitMQFactory extends StrictLogging {
                                      consumerListener: ConsumerListener): ExceptionHandler with RecoveryListener =
     new ExceptionHandler with RecoveryListener {
       override def handleReturnListenerException(channel: Channel, exception: Throwable): Unit = {
-        logger.debug(s"Return listener error on channel $channel", exception)
+        logger.info(s"Return listener error on channel $channel", exception)
       }
 
       override def handleConnectionRecoveryException(conn: Connection, exception: Throwable): Unit = {
@@ -289,7 +288,7 @@ object RabbitMQFactory extends StrictLogging {
       }
 
       override def handleBlockedListenerException(connection: Connection, exception: Throwable): Unit = {
-        logger.debug(s"Recovery error on connection $connection", exception)
+        logger.info(s"Recovery error on connection $connection", exception)
       }
 
       override def handleChannelRecoveryException(ch: Channel, exception: Throwable): Unit = {
@@ -298,7 +297,7 @@ object RabbitMQFactory extends StrictLogging {
       }
 
       override def handleUnexpectedConnectionDriverException(conn: Connection, exception: Throwable): Unit = {
-        logger.info("RabbitMQ driver exception")
+        logger.info("RabbitMQ driver exception", exception)
       }
 
       override def handleConsumerException(channel: Channel,
@@ -307,7 +306,13 @@ object RabbitMQFactory extends StrictLogging {
                                            consumerTag: String,
                                            methodName: String): Unit = {
         logger.debug(s"Consumer exception on channel $channel, consumer with tag '$consumerTag', method '$methodName'")
-        consumerListener.onError(consumer, channel, exception)
+
+        val consumerName = consumer match {
+          case c: DefaultRabbitMQConsumer => c.name
+          case _ => "unknown"
+        }
+
+        consumerListener.onError(consumer, consumerName, channel, exception)
       }
 
       override def handleTopologyRecoveryException(conn: Connection, ch: Channel, exception: TopologyRecoveryException): Unit = {

@@ -353,9 +353,9 @@ private[rabbitmq] object RabbitMQClientFactory extends LazyLogging {
                                   consumerListener,
                                   bindQueue(channelFactoryInfo)(channel, queueName))(readAction)
 
-    val tag = if (consumerTag == "Default") "" else consumerTag
+    val finalConsumerTag = if (consumerTag == "Default") "" else consumerTag
 
-    channel.basicConsume(queueName, false, tag, consumer)
+    channel.basicConsume(queueName, false, finalConsumerTag, consumer)
 
     consumer
   }
