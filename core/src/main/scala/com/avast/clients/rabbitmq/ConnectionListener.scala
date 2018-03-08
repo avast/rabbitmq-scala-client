@@ -31,11 +31,11 @@ object ConnectionListener {
     }
 
     override def onRecoveryStarted(connection: Connection): Unit = {
-      logger.debug(s"Connection recovery started: $connection (name ${connection.getClientProvidedName})")
+      logger.info(s"Connection recovery started: $connection (name ${connection.getClientProvidedName})")
     }
 
     override def onRecoveryCompleted(connection: Connection): Unit = {
-      logger.debug(s"Connection recovery completed: $connection (name ${connection.getClientProvidedName})")
+      logger.info(s"Connection recovery completed: $connection (name ${connection.getClientProvidedName})")
     }
 
     override def onRecoveryFailure(connection: Connection, failure: Throwable): Unit = {

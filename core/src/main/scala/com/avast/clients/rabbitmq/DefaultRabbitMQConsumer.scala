@@ -85,7 +85,7 @@ class DefaultRabbitMQConsumer(val name: String,
             case NonFatal(e) =>
               processingCount.decrementAndGet()
               processingFailedMeter.mark()
-              logger.debug(s"[$name] Error while executing callback, it's probably u BUG", e)
+              logger.warn(s"[$name] Error while executing callback, it's probably u BUG", e)
               consumerListener.onError(this, name, channel, e)
               executeFailureAction(messageId, deliveryTag, properties, routingKey, body)
           }

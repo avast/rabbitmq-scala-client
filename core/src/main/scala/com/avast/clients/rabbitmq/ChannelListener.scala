@@ -31,7 +31,7 @@ object ChannelListener {
     }
 
     override def onRecoveryCompleted(channel: Channel): Unit = {
-      logger.debug(s"Channel recovered: $channel")
+      logger.info(s"Channel recovered: $channel")
     }
 
     override def onRecoveryStarted(channel: Channel): Unit = {
