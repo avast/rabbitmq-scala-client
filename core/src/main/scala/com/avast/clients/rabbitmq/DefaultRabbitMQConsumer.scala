@@ -20,7 +20,7 @@ import scala.concurrent.{ExecutionContext, Future}
 import scala.util.control.NonFatal
 import scala.util.{Failure, Success, Try}
 
-class DefaultRabbitMQConsumer(name: String,
+class DefaultRabbitMQConsumer(val name: String,
                               channel: ServerChannel,
                               queueName: String,
                               useKluzo: Boolean,
@@ -52,7 +52,7 @@ class DefaultRabbitMQConsumer(name: String,
   private val processedTimer = tasksMonitor.timerPair("processed")
 
   override def handleShutdownSignal(consumerTag: String, sig: ShutdownSignalException): Unit =
-    consumerListener.onShutdown(this, channel, consumerTag, sig)
+    consumerListener.onShutdown(this, channel, name, consumerTag, sig)
 
   override def handleDelivery(consumerTag: String, envelope: Envelope, properties: BasicProperties, body: Array[Byte]): Unit = {
     processingCount.incrementAndGet()
@@ -85,8 +85,8 @@ class DefaultRabbitMQConsumer(name: String,
             case NonFatal(e) =>
               processingCount.decrementAndGet()
               processingFailedMeter.mark()
-              logger.error(s"[$name] Error while executing callback, it's probably u BUG", e)
-              consumerListener.onError(this, channel, e)
+              logger.warn(s"[$name] Error while executing callback, it's probably u BUG", e)
+              consumerListener.onError(this, name, channel, e)
               executeFailureAction(messageId, deliveryTag, properties, routingKey, body)
           }
         })
@@ -95,8 +95,8 @@ class DefaultRabbitMQConsumer(name: String,
         case e: RejectedExecutionException =>
           processingCount.decrementAndGet()
           processingFailedMeter.mark()
-          logger.error(s"[$name] Executor was unable to plan the handling task", e)
-          consumerListener.onError(this, channel, e)
+          logger.debug(s"[$name] Executor was unable to plan the handling task", e)
+          consumerListener.onError(this, name, channel, e)
           executeFailureAction(messageId, deliveryTag, properties, routingKey, body)
       }
     }

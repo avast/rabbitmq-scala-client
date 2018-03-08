@@ -11,6 +11,7 @@ import com.typesafe.config.Config
 
 import scala.concurrent.{ExecutionContext, Future}
 import scala.util.Try
+import scala.util.control.NonFatal
 
 private[rabbitmq] class RabbitMQFactoryImpl(connection: ServerConnection,
                                             info: RabbitMqFactoryInfo,
@@ -26,9 +27,21 @@ private[rabbitmq] class RabbitMQFactoryImpl(connection: ServerConnection,
   // scalastyle:on
 
   private def createChannel(): ServerChannel = {
-    val channel = connection.createChannel()
-    channel.addShutdownListener((cause: ShutdownSignalException) => channelListener.onShutdown(cause, channel))
-    channel
+    try {
+      connection.createChannel() match {
+        case channel: ServerChannel =>
+          channel.addShutdownListener((cause: ShutdownSignalException) => channelListener.onShutdown(cause, channel))
+          channelListener.onCreate(channel)
+          channel
+
+        // since the connection is `Recoverable`, the channel should always be `Recoverable` too (based on docs), so the exception will never be thrown
+        case _ => throw new IllegalStateException(s"Required Recoverable Channel")
+      }
+    } catch {
+      case NonFatal(e) =>
+        channelListener.onCreateFailure(e)
+        throw e
+    }
   }
 
   override def newConsumer(configName: String, monitor: Monitor)(readAction: (Delivery) => Future[DeliveryResult])(

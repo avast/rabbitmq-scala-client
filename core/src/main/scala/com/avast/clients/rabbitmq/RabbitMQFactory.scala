@@ -1,28 +1,22 @@
 package com.avast.clients.rabbitmq
 
-import java.net.{SocketException, UnknownHostException}
 import java.nio.file.{Path, Paths}
 import java.time.Duration
 import java.util.concurrent.{ExecutorService, ScheduledExecutorService}
 
-import com.avast.clients.rabbitmq.api._
+import com.avast.clients.rabbitmq.api.{Delivery, _}
 import com.avast.metrics.scalaapi.Monitor
 import com.avast.utils2.Done
 import com.avast.utils2.errorhandling.FutureTimeouter
 import com.avast.utils2.ssl.{KeyStoreTypes, SSLBuilder}
-import com.rabbitmq.client.{Channel, _}
+import com.rabbitmq.client._
 import com.typesafe.config.{Config, ConfigFactory}
 import com.typesafe.scalalogging.StrictLogging
 import net.ceedubs.ficus.Ficus._
 import net.ceedubs.ficus.readers.ArbitraryTypeReader._
 import net.ceedubs.ficus.readers.ValueReader
-import net.jodah.lyra.config.{ConfigurableConnection, RecoveryPolicies, RetryPolicies, Config => LyraConfig}
-import net.jodah.lyra.util.{Duration => LyraDuration}
-import net.jodah.lyra.{ConnectionOptions, Connections}
 
-import scala.collection.JavaConverters._
 import scala.concurrent.{ExecutionContext, Future}
-import scala.language.implicitConversions
 import scala.util.Try
 import scala.util.control.NonFatal
 
@@ -115,24 +109,13 @@ trait RabbitMQFactoryManual extends AutoCloseable {
 }
 
 object RabbitMQFactory extends StrictLogging {
-  type ServerConnection = ConfigurableConnection
-  type ServerChannel = Channel
+  type ServerConnection = RecoverableConnection
+  type ServerChannel = RecoverableChannel
 
   object DefaultListeners {
-    final val DefaultConnectionListener: ConnectionListener = new net.jodah.lyra.event.DefaultConnectionListener with ConnectionListener {}
-    final val DefaultChannelListener: ChannelListener = new net.jodah.lyra.event.DefaultChannelListener with ChannelListener {
-      override def onShutdown(cause: ShutdownSignalException, channel: Channel): Unit = ()
-    }
-    final val DefaultConsumerListener: ConsumerListener = new net.jodah.lyra.event.DefaultConsumerListener with ConsumerListener {
-      override def onError(consumer: Consumer, channel: ServerChannel, failure: Throwable): Unit = ()
-
-      override def onShutdown(consumer: Consumer, channel: Channel, consumerTag: String, sig: ShutdownSignalException): Unit = ()
-    }
-  }
-
-  private object Exceptions {
-    private[RabbitMQFactory] final val RecoverableExceptions = Set(classOf[UnknownHostException], classOf[SocketException]).asJava
-    private[RabbitMQFactory] final val RetryableExceptions = Set(classOf[UnknownHostException], classOf[SocketException]).asJava
+    final val DefaultConnectionListener: ConnectionListener = ConnectionListener.Default
+    final val DefaultChannelListener: ChannelListener = ChannelListener.Default
+    final val DefaultConsumerListener: ConsumerListener = ConsumerListener.Default
   }
 
   private[rabbitmq] final val RootConfigKey = "ffRabbitMQConnectionDefaults"
@@ -213,10 +196,6 @@ object RabbitMQFactory extends StrictLogging {
     )
   }
 
-  private implicit def javaDurationToLyraDuration(d: Duration): LyraDuration = {
-    LyraDuration.millis(d.toMillis)
-  }
-
   protected def createConnection(connectionConfig: RabbitMQConnectionConfig,
                                  executor: Option[ExecutorService],
                                  connectionListener: ConnectionListener,
@@ -225,7 +204,8 @@ object RabbitMQFactory extends StrictLogging {
     import connectionConfig._
 
     val factory = new ConnectionFactory
-    setUpConnection(connectionConfig, factory, executor)
+    val exceptionHandler = createExceptionHandler(connectionListener, channelListener, consumerListener)
+    setUpConnection(connectionConfig, factory, exceptionHandler, executor)
 
     val addresses = try {
       hosts.map(Address.parseAddress)
@@ -235,38 +215,35 @@ object RabbitMQFactory extends StrictLogging {
 
     logger.info(s"Connecting to ${hosts.mkString("[", ", ", "]")}, virtual host '$virtualHost'")
 
-    val connectionOptions = new ConnectionOptions(factory)
-      .withAddresses(addresses: _*)
-      .withName(name)
-      .withClientProperties(Map("connection_name" -> name.asInstanceOf[AnyRef]).asJava)
-    // this is workaround of Lyras bug in ConnectionHandler:243
-
-    val lyraConfig = new LyraConfig()
-      .withConnectionListeners(connectionListener)
-      .withChannelListeners(channelListener)
-      .withConsumerListeners(consumerListener)
-
-    if (networkRecovery.enabled) {
-      lyraConfig
-        .withRecoveryPolicy(RecoveryPolicies.recoverAlways().withInterval(networkRecovery.period))
-        .withRetryPolicy(RetryPolicies.retryAlways().withInterval(networkRecovery.period))
+    try {
+      factory.newConnection(addresses, name) match {
+        case conn: ServerConnection =>
+          conn.addRecoveryListener(exceptionHandler)
+          conn.addShutdownListener((cause: ShutdownSignalException) => connectionListener.onShutdown(conn, cause))
+          connectionListener.onCreate(conn)
+          conn
+        // since we set `factory.setAutomaticRecoveryEnabled(true)` it should always be `Recoverable` (based on docs), so the exception will never be thrown
+        case _ => throw new IllegalStateException("Required Recoverable Connection")
+      }
+    } catch {
+      case NonFatal(e) =>
+        connectionListener.onCreateFailure(e)
+        throw e
     }
-
-    lyraConfig.getRecoverableExceptions.addAll(Exceptions.RecoverableExceptions)
-    lyraConfig.getRetryableExceptions.addAll(Exceptions.RetryableExceptions)
-
-    Connections.create(connectionOptions, lyraConfig)
   }
 
   private def setUpConnection(connectionConfig: RabbitMQConnectionConfig,
                               factory: ConnectionFactory,
+                              exceptionHandler: ExceptionHandler,
                               executor: Option[ExecutorService]): Unit = {
     import connectionConfig._
 
     factory.setVirtualHost(virtualHost)
 
     factory.setTopologyRecoveryEnabled(topologyRecovery)
-    factory.setAutomaticRecoveryEnabled(false) // Lyra will handle the recovery
+    factory.setAutomaticRecoveryEnabled(true)
+    factory.setNetworkRecoveryInterval(networkRecovery.period.toMillis)
+    factory.setExceptionHandler(exceptionHandler)
     factory.setRequestedHeartbeat(heartBeatInterval.getSeconds.toInt)
 
     executor.foreach(factory.setSharedExecutor)
@@ -295,5 +272,77 @@ object RabbitMQFactory extends StrictLogging {
 
     factory.setConnectionTimeout(connectionTimeout.toMillis.toInt)
   }
+
+  // scalastyle:off
+  private def createExceptionHandler(connectionListener: ConnectionListener,
+                                     channelListener: ChannelListener,
+                                     consumerListener: ConsumerListener): ExceptionHandler with RecoveryListener =
+    new ExceptionHandler with RecoveryListener {
+      override def handleReturnListenerException(channel: Channel, exception: Throwable): Unit = {
+        logger.info(s"Return listener error on channel $channel", exception)
+      }
+
+      override def handleConnectionRecoveryException(conn: Connection, exception: Throwable): Unit = {
+        logger.debug(s"Recovery error on connection $conn", exception)
+        connectionListener.onRecoveryFailure(conn, exception)
+      }
+
+      override def handleBlockedListenerException(connection: Connection, exception: Throwable): Unit = {
+        logger.info(s"Recovery error on connection $connection", exception)
+      }
+
+      override def handleChannelRecoveryException(ch: Channel, exception: Throwable): Unit = {
+        logger.debug(s"Recovery error on channel $ch", exception)
+        channelListener.onRecoveryFailure(ch, exception)
+      }
+
+      override def handleUnexpectedConnectionDriverException(conn: Connection, exception: Throwable): Unit = {
+        logger.info("RabbitMQ driver exception", exception)
+      }
+
+      override def handleConsumerException(channel: Channel,
+                                           exception: Throwable,
+                                           consumer: Consumer,
+                                           consumerTag: String,
+                                           methodName: String): Unit = {
+        logger.debug(s"Consumer exception on channel $channel, consumer with tag '$consumerTag', method '$methodName'")
+
+        val consumerName = consumer match {
+          case c: DefaultRabbitMQConsumer => c.name
+          case _ => "unknown"
+        }
+
+        consumerListener.onError(consumer, consumerName, channel, exception)
+      }
+
+      override def handleTopologyRecoveryException(conn: Connection, ch: Channel, exception: TopologyRecoveryException): Unit = {
+        logger.debug(s"Topology recovery error on channel $ch (connection $conn)", exception)
+        channelListener.onRecoveryFailure(ch, exception)
+      }
+
+      override def handleConfirmListenerException(channel: Channel, exception: Throwable): Unit = {
+        logger.debug(s"Confirm listener error on channel $channel", exception)
+      }
+
+      // recovery listener
+
+      override def handleRecovery(recoverable: Recoverable): Unit = {
+        logger.debug(s"Recovery completed on $recoverable")
+
+        recoverable match {
+          case ch: ServerChannel => channelListener.onRecoveryCompleted(ch)
+          case conn: ServerConnection => connectionListener.onRecoveryCompleted(conn)
+        }
+      }
+
+      override def handleRecoveryStarted(recoverable: Recoverable): Unit = {
+        logger.debug(s"Recovery started on $recoverable")
+
+        recoverable match {
+          case ch: ServerChannel => channelListener.onRecoveryStarted(ch)
+          case conn: ServerConnection => connectionListener.onRecoveryStarted(conn)
+        }
+      }
+    }
 
 }
