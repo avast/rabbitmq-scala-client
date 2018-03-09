@@ -46,4 +46,6 @@ class DefaultRabbitMQProducerTest extends FunSuite with MockitoSugar with Eventu
 
     assertResult(properties.toString)(captor.getValue.toString) // AMQP.BasicProperties doesn't have `equals` method :-/
   }
+
+  // todo add more tests
 }

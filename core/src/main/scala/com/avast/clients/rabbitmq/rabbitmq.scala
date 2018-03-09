@@ -14,7 +14,7 @@ import scala.language.higherKinds
 import scala.util.Try
 
 package object rabbitmq {
-  type FromTaskTo[A[_]] = ~>[Task, A]
+  type FromTask[A[_]] = ~>[Task, A]
 
   implicit val fkTask: FunctionK[Task, Task] = new FunctionK[Task, Task] {
     override def apply[A](fa: Task[A]): Task[A] = fa

@@ -90,19 +90,19 @@ private[rabbitmq] object RabbitMQClientFactory extends LazyLogging {
 
   object Producer {
 
-    def fromConfig[F[_]: FromTaskTo](providedConfig: Config,
-                                     channel: ServerChannel,
-                                     factoryInfo: RabbitMqFactoryInfo,
-                                     monitor: Monitor): RabbitMQProducer[F] = {
+    def fromConfig[F[_]: FromTask](providedConfig: Config,
+                                   channel: ServerChannel,
+                                   factoryInfo: RabbitMqFactoryInfo,
+                                   monitor: Monitor): RabbitMQProducer[F] = {
       val producerConfig = providedConfig.wrapped.as[ProducerConfig]("root")
 
       create[F](producerConfig, channel, factoryInfo, monitor)
     }
 
-    def create[F[_]: FromTaskTo](producerConfig: ProducerConfig,
-                                 channel: ServerChannel,
-                                 factoryInfo: RabbitMqFactoryInfo,
-                                 monitor: Monitor): RabbitMQProducer[F] = {
+    def create[F[_]: FromTask](producerConfig: ProducerConfig,
+                               channel: ServerChannel,
+                               factoryInfo: RabbitMqFactoryInfo,
+                               monitor: Monitor): RabbitMQProducer[F] = {
 
       val producer = prepareProducer(producerConfig, channel, factoryInfo, monitor)
 
