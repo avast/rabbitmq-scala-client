@@ -17,7 +17,7 @@ import org.scalatest.time.{Milliseconds, Seconds, Span}
 
 import scala.collection.JavaConverters._
 import scala.concurrent.{ExecutionContext, Future}
-import scala.util.{Random, Success}
+import scala.util.{Random, Success, Try}
 
 class LiveTest extends FunSuite with Eventually {
 
@@ -74,7 +74,7 @@ class LiveTest extends FunSuite with Eventually {
       Future.successful(DeliveryResult.Ack)
     }
 
-    val sender = rabbitFactory.newProducer("producer", Monitor.noOp())
+    val sender = rabbitFactory.newProducer[Try]("producer", Monitor.noOp())
 
     sender.send("test", Bytes.copyFromUtf8(Random.nextString(10)))
 
@@ -108,7 +108,7 @@ class LiveTest extends FunSuite with Eventually {
       }
     }
 
-    val sender = rabbitFactory.newProducer("producer", Monitor.noOp())
+    val sender = rabbitFactory.newProducer[Try]("producer", Monitor.noOp())
 
     for (_ <- 1 to count) {
       sender.send("test", Bytes.copyFromUtf8(Random.nextString(10)))
@@ -133,8 +133,8 @@ class LiveTest extends FunSuite with Eventually {
       Future.successful(Ack)
     }
 
-    val sender1 = rabbitFactory.newProducer("producer", Monitor.noOp())
-    val sender2 = rabbitFactory.newProducer("producer2", Monitor.noOp())
+    val sender1 = rabbitFactory.newProducer[Try]("producer", Monitor.noOp())
+    val sender2 = rabbitFactory.newProducer[Try]("producer2", Monitor.noOp())
 
     for (_ <- 1 to 10) {
       sender1.send("test", Bytes.copyFromUtf8(Random.nextString(10)))
@@ -165,7 +165,7 @@ class LiveTest extends FunSuite with Eventually {
       }
     }
 
-    val sender = rabbitFactory.newProducer("producer", Monitor.noOp())
+    val sender = rabbitFactory.newProducer[Try]("producer", Monitor.noOp())
 
     for (_ <- 1 to 10) {
       sender.send("test", Bytes.copyFromUtf8(Random.nextString(10)))
@@ -192,7 +192,7 @@ class LiveTest extends FunSuite with Eventually {
       Future.successful(Ack)
     }
 
-    val sender = rabbitFactory.newProducer("producer", Monitor.noOp())
+    val sender = rabbitFactory.newProducer[Try]("producer", Monitor.noOp())
 
     for (_ <- 1 to 10) {
       sender.send("test", Bytes.copyFromUtf8(Random.nextString(10)))
@@ -220,7 +220,7 @@ class LiveTest extends FunSuite with Eventually {
       Future.successful(Ack)
     }
 
-    val sender = rabbitFactory.newProducer("producer", Monitor.noOp())
+    val sender = rabbitFactory.newProducer[Try]("producer", Monitor.noOp())
 
     for (_ <- 1 to 10) {
       Kluzo.withTraceId(Some(traceId)) {
@@ -250,7 +250,7 @@ class LiveTest extends FunSuite with Eventually {
       Future.successful(Ack)
     }
 
-    val sender = rabbitFactory.newProducer("producer", Monitor.noOp())
+    val sender = rabbitFactory.newProducer[Try]("producer", Monitor.noOp())
 
     for (_ <- 1 to 10) {
       val properties = MessageProperties(headers = Map(Kluzo.HttpHeaderName -> traceId.asInstanceOf[AnyRef]))
@@ -272,7 +272,7 @@ class LiveTest extends FunSuite with Eventually {
 
     val rabbitFactory = RabbitMQFactory.fromConfig(config, Some(ex))
 
-    val sender = rabbitFactory.newProducer("producer", Monitor.noOp())
+    val sender = rabbitFactory.newProducer[Try]("producer", Monitor.noOp())
 
     // additional declarations
 

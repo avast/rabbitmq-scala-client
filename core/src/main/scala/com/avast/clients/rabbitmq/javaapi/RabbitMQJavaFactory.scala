@@ -12,7 +12,8 @@ import com.avast.clients.rabbitmq.{
   DeclareExchange,
   DeclareQueue,
   ProducerConfig,
-  RabbitMQFactory => ScalaFactory
+  RabbitMQFactory => ScalaFactory,
+  _
 }
 import com.avast.metrics.api.Monitor
 import com.avast.metrics.scalaapi.{Monitor => ScalaMonitor}
@@ -132,7 +133,7 @@ private class RabbitMQJavaFactoryImpl(scalaFactory: ScalaFactory) extends Rabbit
   }
 
   override def newProducer(configName: String, monitor: Monitor): RabbitMQProducer = {
-    new RabbitMQProducer(scalaFactory.newProducer(configName, ScalaMonitor(monitor)))
+    new RabbitMQProducer(scalaFactory.newProducer[Try](configName, ScalaMonitor(monitor)))
   }
 
   override def newConsumer(config: ConsumerConfig, monitor: Monitor, executor: Executor)(
@@ -143,7 +144,7 @@ private class RabbitMQJavaFactoryImpl(scalaFactory: ScalaFactory) extends Rabbit
   }
 
   override def newProducer(config: ProducerConfig, monitor: Monitor): RabbitMQProducer = {
-    new RabbitMQProducer(scalaFactory.newProducer(config, ScalaMonitor(monitor)))
+    new RabbitMQProducer(scalaFactory.newProducer[Try](config, ScalaMonitor(monitor)))
   }
 
   override def declareExchange(configName: String): Unit = {

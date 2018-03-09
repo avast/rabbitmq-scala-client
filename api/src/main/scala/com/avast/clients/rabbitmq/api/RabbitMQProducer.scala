@@ -1,12 +1,11 @@
 package com.avast.clients.rabbitmq.api
 
 import com.avast.bytes.Bytes
-import com.avast.utils2.Done
 
-import scala.util.Try
+import scala.language.higherKinds
 
-trait RabbitMQProducer extends AutoCloseable {
-  def send(routingKey: String, body: Bytes): Try[Done]
+trait RabbitMQProducer[F[_]] extends AutoCloseable {
+  def send(routingKey: String, body: Bytes): F[Unit]
 
-  def send(routingKey: String, body: Bytes, properties: MessageProperties): Try[Done]
+  def send(routingKey: String, body: Bytes, properties: MessageProperties): F[Unit]
 }

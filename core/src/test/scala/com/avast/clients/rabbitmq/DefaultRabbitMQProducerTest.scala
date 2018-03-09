@@ -5,15 +5,16 @@ import com.avast.clients.rabbitmq.api.MessageProperties
 import com.avast.metrics.scalaapi.Monitor
 import com.rabbitmq.client.AMQP
 import com.rabbitmq.client.impl.recovery.AutorecoveringChannel
+import monix.execution.Scheduler.Implicits.global
 import org.mockito.Mockito._
 import org.mockito.{ArgumentCaptor, Matchers}
 import org.scalatest.FunSuite
-import org.scalatest.concurrent.Eventually
+import org.scalatest.concurrent.{Eventually, ScalaFutures}
 import org.scalatest.mockito.MockitoSugar
 
 import scala.util.Random
 
-class DefaultRabbitMQProducerTest extends FunSuite with MockitoSugar with Eventually {
+class DefaultRabbitMQProducerTest extends FunSuite with MockitoSugar with Eventually with ScalaFutures {
   test("basic") {
     val exchangeName = Random.nextString(10)
     val routingKey = Random.nextString(10)
@@ -34,7 +35,7 @@ class DefaultRabbitMQProducerTest extends FunSuite with MockitoSugar with Eventu
 
     val body = Bytes.copyFromUtf8(Random.nextString(10))
 
-    producer.send(routingKey, body, MessageProperties.empty)
+    producer.send(routingKey, body, MessageProperties.empty).runAsync.futureValue
 
     val captor = ArgumentCaptor.forClass(classOf[AMQP.BasicProperties])
 

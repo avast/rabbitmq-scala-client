@@ -3,6 +3,7 @@ package com.avast.clients.rabbitmq
 import java.time.Duration
 import java.util.concurrent.{ScheduledExecutorService, TimeoutException}
 
+import cats.~>
 import com.avast.clients.rabbitmq.RabbitMQFactory.ServerChannel
 import com.avast.clients.rabbitmq.api.DeliveryResult.{Ack, Reject, Republish, Retry}
 import com.avast.clients.rabbitmq.api.{Delivery, DeliveryResult, RabbitMQConsumer, RabbitMQProducer}
@@ -15,13 +16,15 @@ import com.rabbitmq.client.AMQP
 import com.rabbitmq.client.AMQP.Queue
 import com.typesafe.config.{Config, ConfigFactory, ConfigValueFactory}
 import com.typesafe.scalalogging.LazyLogging
+import mainecoon.FunctorK
+import monix.eval.Task
 import net.ceedubs.ficus.Ficus._
 import net.ceedubs.ficus.readers.ArbitraryTypeReader._
 import net.ceedubs.ficus.readers.ValueReader
 
 import scala.collection.JavaConverters._
 import scala.concurrent.{ExecutionContext, Future}
-import scala.language.implicitConversions
+import scala.language.{higherKinds, implicitConversions}
 import scala.util.Try
 import scala.util.control.NonFatal
 
@@ -87,18 +90,23 @@ private[rabbitmq] object RabbitMQClientFactory extends LazyLogging {
 
   object Producer {
 
-    def fromConfig(providedConfig: Config, channel: ServerChannel, factoryInfo: RabbitMqFactoryInfo, monitor: Monitor): RabbitMQProducer = {
+    def fromConfig[F[_]: FromTaskTo](providedConfig: Config,
+                                     channel: ServerChannel,
+                                     factoryInfo: RabbitMqFactoryInfo,
+                                     monitor: Monitor): RabbitMQProducer[F] = {
       val producerConfig = providedConfig.wrapped.as[ProducerConfig]("root")
 
-      create(producerConfig, channel, factoryInfo, monitor)
+      create[F](producerConfig, channel, factoryInfo, monitor)
     }
 
-    def create(producerConfig: ProducerConfig,
-               channel: ServerChannel,
-               factoryInfo: RabbitMqFactoryInfo,
-               monitor: Monitor): DefaultRabbitMQProducer = {
+    def create[F[_]: FromTaskTo](producerConfig: ProducerConfig,
+                                 channel: ServerChannel,
+                                 factoryInfo: RabbitMqFactoryInfo,
+                                 monitor: Monitor): RabbitMQProducer[F] = {
 
-      prepareProducer(producerConfig, channel, factoryInfo, monitor)
+      val producer = prepareProducer(producerConfig, channel, factoryInfo, monitor)
+
+      FunctorK[RabbitMQProducer].mapK(producer)(implicitly[~>[Task, F]])
     }
   }
 

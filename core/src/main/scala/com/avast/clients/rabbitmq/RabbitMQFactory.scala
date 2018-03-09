@@ -17,6 +17,7 @@ import net.ceedubs.ficus.readers.ArbitraryTypeReader._
 import net.ceedubs.ficus.readers.ValueReader
 
 import scala.concurrent.{ExecutionContext, Future}
+import scala.language.higherKinds
 import scala.util.Try
 import scala.util.control.NonFatal
 
@@ -37,7 +38,7 @@ trait RabbitMQFactory extends RabbitMQFactoryManual {
     * @param configName Name of configuration of the producer.
     * @param monitor    Monitor for metrics.F
     */
-  def newProducer(configName: String, monitor: Monitor): RabbitMQProducer
+  def newProducer[F[_]: FromTaskTo](configName: String, monitor: Monitor): RabbitMQProducer[F]
 
   /**
     * Declares and additional exchange, using the TypeSafe configuration passed to the factory and config name.
@@ -79,7 +80,7 @@ trait RabbitMQFactoryManual extends AutoCloseable {
     * @param config  Configuration of the producer.
     * @param monitor Monitor for metrics.
     */
-  def newProducer(config: ProducerConfig, monitor: Monitor): RabbitMQProducer
+  def newProducer[F[_]: FromTaskTo](config: ProducerConfig, monitor: Monitor): RabbitMQProducer[F]
 
   /**
     * Declares and additional exchange, using passed configuration.

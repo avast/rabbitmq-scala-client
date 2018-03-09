@@ -10,6 +10,7 @@ import com.rabbitmq.client.ShutdownSignalException
 import com.typesafe.config.Config
 
 import scala.concurrent.{ExecutionContext, Future}
+import scala.language.higherKinds
 import scala.util.Try
 import scala.util.control.NonFatal
 
@@ -59,11 +60,11 @@ private[rabbitmq] class RabbitMQFactoryImpl(connection: ServerConnection,
     RabbitMQClientFactory.Consumer.create(config, createChannel(), info, monitor, consumerListener, scheduledExecutorService)(readAction)
   }
 
-  override def newProducer(config: ProducerConfig, monitor: Monitor): RabbitMQProducer = addAutoCloseable {
+  override def newProducer[F[_]: FromTaskTo](config: ProducerConfig, monitor: Monitor): RabbitMQProducer[F] = addAutoCloseable {
     RabbitMQClientFactory.Producer.create(config, createChannel(), info, monitor)
   }
 
-  override def newProducer(configName: String, monitor: Monitor): RabbitMQProducer = addAutoCloseable {
+  override def newProducer[F[_]: FromTaskTo](configName: String, monitor: Monitor): RabbitMQProducer[F] = addAutoCloseable {
     RabbitMQClientFactory.Producer.fromConfig(config.getConfig(configName), createChannel(), info, monitor)
   }
 
