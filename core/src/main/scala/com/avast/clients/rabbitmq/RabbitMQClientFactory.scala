@@ -4,9 +4,10 @@ import java.time.Duration
 import java.util.concurrent.{ScheduledExecutorService, TimeoutException}
 
 import cats.~>
+import com.avast.bytes.Bytes
 import com.avast.clients.rabbitmq.RabbitMQFactory.ServerChannel
 import com.avast.clients.rabbitmq.api.DeliveryResult.{Ack, Reject, Republish, Retry}
-import com.avast.clients.rabbitmq.api.{Delivery, DeliveryResult, RabbitMQConsumer, RabbitMQProducer}
+import com.avast.clients.rabbitmq.api._
 import com.avast.continuity.Continuity
 import com.avast.kluzo.Kluzo
 import com.avast.metrics.scalaapi.Monitor
@@ -93,7 +94,7 @@ private[rabbitmq] object RabbitMQClientFactory extends LazyLogging {
     def fromConfig[F[_]: FromTask](providedConfig: Config,
                                    channel: ServerChannel,
                                    factoryInfo: RabbitMqFactoryInfo,
-                                   monitor: Monitor): RabbitMQProducer[F] = {
+                                   monitor: Monitor): RabbitMQProducer[F] with AutoCloseable = {
       val producerConfig = providedConfig.wrapped.as[ProducerConfig]("root")
 
       create[F](producerConfig, channel, factoryInfo, monitor)
@@ -102,11 +103,22 @@ private[rabbitmq] object RabbitMQClientFactory extends LazyLogging {
     def create[F[_]: FromTask](producerConfig: ProducerConfig,
                                channel: ServerChannel,
                                factoryInfo: RabbitMqFactoryInfo,
-                               monitor: Monitor): RabbitMQProducer[F] = {
+                               monitor: Monitor): RabbitMQProducer[F] with AutoCloseable = {
 
       val producer = prepareProducer(producerConfig, channel, factoryInfo, monitor)
+      val mappedProducer = FunctorK[RabbitMQProducer].mapK(producer)(implicitly[~>[Task, F]])
 
-      FunctorK[RabbitMQProducer].mapK(producer)(implicitly[~>[Task, F]])
+      new RabbitMQProducer[F] with AutoCloseable {
+        override def send(routingKey: String, body: Bytes): F[Unit] = {
+          mappedProducer.send(routingKey, body)
+        }
+
+        override def send(routingKey: String, body: Bytes, properties: MessageProperties): F[Unit] = {
+          mappedProducer.send(routingKey, body, properties)
+        }
+
+        override def close(): Unit = producer.close()
+      }
     }
   }
 

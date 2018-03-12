@@ -8,7 +8,7 @@ import scala.language.implicitConversions
 import scala.util.control.NonFatal
 import scala.util.{Failure, Success, Try}
 
-class RabbitMQProducer(scalaProducer: ScalaProducer[Try]) extends AutoCloseable {
+class RabbitMQProducer(scalaProducer: ScalaProducer[Try] with AutoCloseable) extends AutoCloseable {
   @throws[Exception]
   def send(routingKey: String, body: Bytes): Unit = {
     scalaProducer.send(routingKey, body) match {

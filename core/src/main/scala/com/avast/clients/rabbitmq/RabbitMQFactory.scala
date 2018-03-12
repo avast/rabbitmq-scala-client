@@ -38,7 +38,7 @@ trait RabbitMQFactory extends RabbitMQFactoryManual {
     * @param configName Name of configuration of the producer.
     * @param monitor    Monitor for metrics.F
     */
-  def newProducer[F[_]: FromTask](configName: String, monitor: Monitor): RabbitMQProducer[F]
+  def newProducer[F[_]: FromTask](configName: String, monitor: Monitor): RabbitMQProducer[F] with AutoCloseable
 
   /**
     * Declares and additional exchange, using the TypeSafe configuration passed to the factory and config name.
@@ -80,7 +80,7 @@ trait RabbitMQFactoryManual extends AutoCloseable {
     * @param config  Configuration of the producer.
     * @param monitor Monitor for metrics.
     */
-  def newProducer[F[_]: FromTask](config: ProducerConfig, monitor: Monitor): RabbitMQProducer[F]
+  def newProducer[F[_]: FromTask](config: ProducerConfig, monitor: Monitor): RabbitMQProducer[F] with AutoCloseable
 
   /**
     * Declares and additional exchange, using passed configuration.

@@ -22,6 +22,7 @@ class DefaultRabbitMQProducer(name: String,
                               reportUnroutable: Boolean,
                               monitor: Monitor)
     extends RabbitMQProducer[Task]
+    with AutoCloseable
     with StrictLogging {
 
   private val sentMeter = monitor.meter("sent")
