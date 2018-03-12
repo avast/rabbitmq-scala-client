@@ -60,13 +60,15 @@ private[rabbitmq] class RabbitMQFactoryImpl(connection: ServerConnection,
     RabbitMQClientFactory.Consumer.create(config, createChannel(), info, monitor, consumerListener, scheduledExecutorService)(readAction)
   }
 
-  override def newProducer[F[_]: FromTask](config: ProducerConfig, monitor: Monitor): RabbitMQProducer[F] with AutoCloseable = {
+  override def newProducer[F[_]: FromTask](config: ProducerConfig, monitor: Monitor)(
+      implicit ec: ExecutionContext): RabbitMQProducer[F] with AutoCloseable = {
     addAutoCloseable {
       RabbitMQClientFactory.Producer.create(config, createChannel(), info, monitor)
     }
   }
 
-  override def newProducer[F[_]: FromTask](configName: String, monitor: Monitor): RabbitMQProducer[F] with AutoCloseable = {
+  override def newProducer[F[_]: FromTask](configName: String, monitor: Monitor)(
+      implicit ec: ExecutionContext): RabbitMQProducer[F] with AutoCloseable = {
     addAutoCloseable {
       RabbitMQClientFactory.Producer.fromConfig(config.getConfig(configName), createChannel(), info, monitor)
     }

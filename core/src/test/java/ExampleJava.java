@@ -28,7 +28,8 @@ public class ExampleJava {
         );
 
         final RabbitMQProducer rabbitMQProducer = factory.newProducer("producer",
-                NoOpMonitor.INSTANCE
+                NoOpMonitor.INSTANCE,
+                executor
         );
 
         for (int i = 0; i < 1000; i++) {

@@ -12,6 +12,7 @@ import com.rabbitmq.client.AMQP.BasicProperties
 import com.rabbitmq.client.ReturnListener
 import com.typesafe.scalalogging.StrictLogging
 import monix.eval.Task
+import monix.execution.Scheduler
 
 import scala.util.control.NonFatal
 
@@ -20,7 +21,7 @@ class DefaultRabbitMQProducer(name: String,
                               channel: ServerChannel,
                               useKluzo: Boolean,
                               reportUnroutable: Boolean,
-                              monitor: Monitor)
+                              monitor: Monitor)(implicit s: Scheduler)
     extends RabbitMQProducer[Task]
     with AutoCloseable
     with StrictLogging {
@@ -70,7 +71,7 @@ class DefaultRabbitMQProducer(name: String,
           sentFailedMeter.mark()
           throw e
       }
-    }
+    }.executeOn(s)
   }
 
   override def send(routingKey: String, body: Bytes): Task[Unit] = {

@@ -40,7 +40,7 @@ trait RabbitMQJavaFactory extends RabbitMQJavaFactoryManual {
     * @param configName Name of configuration of the producer.
     * @param monitor    Monitor for metrics.F
     */
-  def newProducer(configName: String, monitor: Monitor): RabbitMQProducer
+  def newProducer(configName: String, monitor: Monitor, ec: Executor): RabbitMQProducer
 
   /**
     * Declares and additional exchange, using the TypeSafe configuration passed to the factory and config name.
@@ -86,7 +86,7 @@ trait RabbitMQJavaFactoryManual extends AutoCloseable {
     * @param config  Configuration of the producer.
     * @param monitor Monitor for metrics.
     */
-  def newProducer(config: ProducerConfig, monitor: Monitor): RabbitMQProducer
+  def newProducer(config: ProducerConfig, monitor: Monitor, ec: Executor): RabbitMQProducer
 
   /**
     * Declares and additional exchange, using passed configuration.
@@ -132,7 +132,9 @@ private class RabbitMQJavaFactoryImpl(scalaFactory: ScalaFactory) extends Rabbit
     new RabbitMQConsumer(scalaFactory.newConsumer(configName, ScalaMonitor(monitor))(readAction.asScala))
   }
 
-  override def newProducer(configName: String, monitor: Monitor): RabbitMQProducer = {
+  override def newProducer(configName: String, monitor: Monitor, executor: Executor): RabbitMQProducer = {
+    implicit val ec: ExecutionContextExecutor = ExecutionContext.fromExecutor(executor)
+
     new RabbitMQProducer(scalaFactory.newProducer[Try](configName, ScalaMonitor(monitor)))
   }
 
@@ -143,7 +145,9 @@ private class RabbitMQJavaFactoryImpl(scalaFactory: ScalaFactory) extends Rabbit
     new RabbitMQConsumer(scalaFactory.newConsumer(config, ScalaMonitor(monitor))(readAction.asScala))
   }
 
-  override def newProducer(config: ProducerConfig, monitor: Monitor): RabbitMQProducer = {
+  override def newProducer(config: ProducerConfig, monitor: Monitor, executor: Executor): RabbitMQProducer = {
+    implicit val ec: ExecutionContextExecutor = ExecutionContext.fromExecutor(executor)
+
     new RabbitMQProducer(scalaFactory.newProducer[Try](config, ScalaMonitor(monitor)))
   }
 
