@@ -13,6 +13,7 @@ import org.scalatest.FunSuite
 import org.scalatest.concurrent.{Eventually, ScalaFutures}
 import org.scalatest.mockito.MockitoSugar
 
+import scala.concurrent.Future
 import scala.util.Random
 
 class DefaultRabbitMQProducerTest extends FunSuite with MockitoSugar with Eventually with ScalaFutures {
@@ -22,7 +23,7 @@ class DefaultRabbitMQProducerTest extends FunSuite with MockitoSugar with Eventu
 
     val channel = mock[AutorecoveringChannel]
 
-    val producer = new DefaultRabbitMQProducer(
+    val producer = new DefaultRabbitMQProducer[Future](
       name = "test",
       exchangeName = exchangeName,
       channel = channel,
@@ -37,7 +38,7 @@ class DefaultRabbitMQProducerTest extends FunSuite with MockitoSugar with Eventu
 
     val body = Bytes.copyFromUtf8(Random.nextString(10))
 
-    producer.send(routingKey, body, MessageProperties.empty).runAsync.futureValue
+    producer.send(routingKey, body, MessageProperties.empty).futureValue
 
     val captor = ArgumentCaptor.forClass(classOf[AMQP.BasicProperties])
 

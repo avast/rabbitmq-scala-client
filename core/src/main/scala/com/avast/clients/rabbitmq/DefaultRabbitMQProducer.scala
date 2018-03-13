@@ -13,16 +13,17 @@ import com.typesafe.scalalogging.StrictLogging
 import monix.eval.Task
 import monix.execution.Scheduler
 
+import scala.language.higherKinds
 import scala.util.control.NonFatal
 
-class DefaultRabbitMQProducer(name: String,
-                              exchangeName: String,
-                              channel: ServerChannel,
-                              useKluzo: Boolean,
-                              reportUnroutable: Boolean,
-                              scheduler: Scheduler,
-                              monitor: Monitor)
-    extends RabbitMQProducer[Task]
+class DefaultRabbitMQProducer[F[_]: FromTask](name: String,
+                                              exchangeName: String,
+                                              channel: ServerChannel,
+                                              useKluzo: Boolean,
+                                              reportUnroutable: Boolean,
+                                              scheduler: Scheduler,
+                                              monitor: Monitor)
+    extends RabbitMQProducer[F]
     with AutoCloseable
     with StrictLogging {
 
@@ -34,7 +35,7 @@ class DefaultRabbitMQProducer(name: String,
 
   channel.addReturnListener(if (reportUnroutable) LoggingReturnListener else NoOpReturnListener)
 
-  override def send(routingKey: String, body: Bytes, properties: MessageProperties): Task[Unit] = {
+  override def send(routingKey: String, body: Bytes, properties: MessageProperties): F[Unit] = {
     val finalProperties = {
       if (useKluzo && Kluzo.getTraceId.nonEmpty) {
 
@@ -56,7 +57,7 @@ class DefaultRabbitMQProducer(name: String,
       }
     }
 
-    Task {
+    val task = Task {
       try {
         sendLock.synchronized {
           // see https://www.rabbitmq.com/api-guide.html#channel-threads
@@ -72,9 +73,11 @@ class DefaultRabbitMQProducer(name: String,
           throw e
       }
     }.executeOn(scheduler)
+
+    implicitly[FromTask[F]].apply(task)
   }
 
-  override def send(routingKey: String, body: Bytes): Task[Unit] = {
+  override def send(routingKey: String, body: Bytes): F[Unit] = {
     val properties = MessageProperties(messageId = Some(UUID.randomUUID().toString))
 
     send(routingKey, body, properties)

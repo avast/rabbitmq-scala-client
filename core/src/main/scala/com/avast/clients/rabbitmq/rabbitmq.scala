@@ -12,8 +12,8 @@ import scala.language.higherKinds
 import scala.util.Try
 
 package object rabbitmq {
-  type ServerConnection = RecoverableConnection
-  type ServerChannel = RecoverableChannel
+  private[rabbitmq] type ServerConnection = RecoverableConnection
+  private[rabbitmq] type ServerChannel = RecoverableChannel
 
   type FromTask[A[_]] = ~>[Task, A]
 

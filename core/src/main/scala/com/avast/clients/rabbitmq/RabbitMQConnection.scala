@@ -9,9 +9,10 @@ import com.avast.metrics.scalaapi.Monitor
 import com.avast.utils2.Done
 import com.avast.utils2.errorhandling.FutureTimeouter
 import com.avast.utils2.ssl.{KeyStoreTypes, SSLBuilder}
-import com.rabbitmq.client.{ShutdownSignalException, _}
+import com.rabbitmq.client._
 import com.typesafe.config.{Config, ConfigFactory}
 import com.typesafe.scalalogging.StrictLogging
+import monix.execution.Scheduler
 import net.ceedubs.ficus.Ficus._
 import net.ceedubs.ficus.readers.ArbitraryTypeReader._
 import net.ceedubs.ficus.readers.ValueReader
@@ -21,20 +22,11 @@ import scala.language.higherKinds
 import scala.util.Try
 import scala.util.control.NonFatal
 
-class DefaultRabbitMQFactory(connection: ServerConnection,
-                             info: RabbitMqFactoryInfo,
-                             config: Config,
-                             connectionListener: ConnectionListener,
-                             channelListener: ChannelListener,
-                             consumerListener: ConsumerListener,
-                             scheduledExecutorService: ScheduledExecutorService)
-    extends DefaultRabbitMQManualFactory(connection,
-                                         info,
-                                         config,
-                                         connectionListener,
-                                         channelListener,
-                                         consumerListener,
-                                         scheduledExecutorService) {
+trait RabbitMQConnection extends AutoCloseable {
+
+  /** Creates new channel inside this connection. Usable for some applications-specific actions which are not supported by the library.
+    */
+  def newChannel(): ServerChannel
 
   /** Creates new instance of consumer, using the TypeSafe configuration passed to the factory and consumer name.
     *
@@ -43,161 +35,40 @@ class DefaultRabbitMQFactory(connection: ServerConnection,
     * @param readAction Action executed for each delivered message. You should never return a failed future.
     * @param ec         [[ExecutionContext]] used for callbacks.
     */
-  def newConsumer(configName: String, monitor: Monitor)(readAction: (Delivery) => Future[DeliveryResult])(
-      implicit ec: ExecutionContext): RabbitMQConsumer = addAutoCloseable {
-    DefaultRabbitMQClientFactory.Consumer.fromConfig(config.getConfig(configName),
-                                                     createChannel(),
-                                                     info,
-                                                     monitor,
-                                                     consumerListener,
-                                                     scheduledExecutorService)(readAction)
-  }
+  def newConsumer(configName: String, monitor: Monitor)(readAction: Delivery => Future[DeliveryResult])(
+      implicit ec: ExecutionContext): RabbitMQConsumer
 
   /** Creates new instance of producer, using the TypeSafe configuration passed to the factory and producer name.
     *
     * @param configName Name of configuration of the producer.
     * @param monitor    Monitor for metrics.F
     */
-  def newProducer[F[_]: FromTask](configName: String, monitor: Monitor)(
-      implicit ec: ExecutionContext): RabbitMQProducer[F] with AutoCloseable = {
-    addAutoCloseable {
-      DefaultRabbitMQClientFactory.Producer.fromConfig(config.getConfig(configName), createChannel(), info, monitor)
-    }
-  }
+  def newProducer[F[_]: FromTask](configName: String, scheduler: Scheduler, monitor: Monitor): RabbitMQProducer[F] with AutoCloseable
 
   /**
     * Declares and additional exchange, using the TypeSafe configuration passed to the factory and config name.
     */
-  def declareExchange(configName: String): Try[Done] = {
-    DefaultRabbitMQClientFactory.Declarations.declareExchange(config.getConfig(configName), createChannel(), info)
-  }
+  def declareExchange(configName: String): Try[Done]
 
   /**
     * Declares and additional queue, using the TypeSafe configuration passed to the factory and config name.
     */
-  def declareQueue(configName: String): Try[Done] = {
-    DefaultRabbitMQClientFactory.Declarations.declareQueue(config.getConfig(configName), createChannel(), info)
-  }
+  def declareQueue(configName: String): Try[Done]
 
   /**
     * Binds a queue to an exchange, using the TypeSafe configuration passed to the factory and config name.<br>
     * Failure indicates that the binding has failed for AT LEAST one routing key.
     */
-  def bindQueue(configName: String): Try[Done] = {
-    DefaultRabbitMQClientFactory.Declarations.bindQueue(config.getConfig(configName), createChannel(), info)
-  }
+  def bindQueue(configName: String): Try[Done]
 
   /**
     * Binds an exchange to an another exchange, using the TypeSafe configuration passed to the factory and config name.<br>
     * Failure indicates that the binding has failed for AT LEAST one routing key.
     */
-  def bindExchange(configName: String): Try[Done] = {
-    DefaultRabbitMQClientFactory.Declarations.bindExchange(config.getConfig(configName), createChannel(), info)
-  }
+  def bindExchange(configName: String): Try[Done]
 }
 
-class DefaultRabbitMQManualFactory(connection: ServerConnection,
-                                   info: RabbitMqFactoryInfo,
-                                   config: Config,
-                                   connectionListener: ConnectionListener,
-                                   channelListener: ChannelListener,
-                                   consumerListener: ConsumerListener,
-                                   scheduledExecutorService: ScheduledExecutorService)
-    extends AutoCloseable {
-  // scalastyle:off
-  private val closeablesLock = new Object
-  private var closeables = Seq[AutoCloseable]()
-  // scalastyle:on
-
-  protected def createChannel(): ServerChannel = addAutoCloseable {
-    try {
-      connection.createChannel() match {
-        case channel: ServerChannel =>
-          channel.addShutdownListener((cause: ShutdownSignalException) => channelListener.onShutdown(cause, channel))
-          channelListener.onCreate(channel)
-          channel
-
-        // since the connection is `Recoverable`, the channel should always be `Recoverable` too (based on docs), so the exception will never be thrown
-        case _ => throw new IllegalStateException(s"Required Recoverable Channel")
-      }
-    } catch {
-      case NonFatal(e) =>
-        channelListener.onCreateFailure(e)
-        throw e
-    }
-  }
-
-  /** Creates new instance of consumer, using passed configuration.
-    *
-    * @param config     Configuration of the consumer.
-    * @param monitor    Monitor for metrics.
-    * @param readAction Action executed for each delivered message. You should never return a failed future.
-    * @param ec         [[ExecutionContext]] used for callbacks.
-    */
-  def newConsumer(config: ConsumerConfig, monitor: Monitor)(readAction: (Delivery) => Future[DeliveryResult])(
-      implicit ec: ExecutionContext): RabbitMQConsumer = addAutoCloseable {
-    DefaultRabbitMQClientFactory.Consumer.create(config, createChannel(), info, monitor, consumerListener, scheduledExecutorService)(
-      readAction)
-  }
-
-  /** Creates new instance of producer, using passed configuration.
-    *
-    * @param config  Configuration of the producer.
-    * @param monitor Monitor for metrics.
-    */
-  def newProducer[F[_]: FromTask](config: ProducerConfig, monitor: Monitor)(
-      implicit ec: ExecutionContext): RabbitMQProducer[F] with AutoCloseable = {
-    addAutoCloseable {
-      DefaultRabbitMQClientFactory.Producer.create(config, createChannel(), info, monitor)
-    }
-  }
-
-  /**
-    * Declares and additional exchange, using passed configuration.
-    */
-  def declareExchange(config: DeclareExchange): Try[Done] = {
-    DefaultRabbitMQClientFactory.Declarations.declareExchange(config, createChannel(), info)
-  }
-
-  /**
-    * Declares and additional queue, using passed configuration.
-    */
-  def declareQueue(config: DeclareQueue): Try[Done] = {
-    DefaultRabbitMQClientFactory.Declarations.declareQueue(config, createChannel(), info)
-  }
-
-  /**
-    * Binds a queue to an exchange, using passed configuration.<br>
-    * Failure indicates that the binding has failed for AT LEAST one routing key.
-    */
-  def bindQueue(config: BindQueue): Try[Done] = {
-    DefaultRabbitMQClientFactory.Declarations.bindQueue(config, createChannel(), info)
-  }
-
-  /**
-    * Binds an exchange to an another exchange, using passed configuration.<br>
-    * Failure indicates that the binding has failed for AT LEAST one routing key.
-    */
-  def bindExchange(config: BindExchange): Try[Done] = {
-    DefaultRabbitMQClientFactory.Declarations.bindExchange(config, createChannel(), info)
-  }
-
-  protected def addAutoCloseable[A <: AutoCloseable](a: A): A = {
-    closeablesLock.synchronized {
-      closeables = closeables.+:(a)
-    }
-    a
-  }
-
-  /** Closes this factory and all created consumers and producers.
-    */
-  override def close(): Unit = {
-    closeables.foreach(_.close())
-    connection.close()
-  }
-}
-
-object DefaultRabbitMQFactory extends StrictLogging {
+object RabbitMQConnection extends StrictLogging {
 
   object DefaultListeners {
     final val DefaultConnectionListener: ConnectionListener = ConnectionListener.Default
@@ -219,58 +90,29 @@ object DefaultRabbitMQFactory extends StrictLogging {
     * @param executor                 [[ExecutorService]] which should be used as shared for all channels from this factory. Optional parameter.
     * @param scheduledExecutorService [[ScheduledExecutorService]] used for timeouting tasks for all created consumers.
     */
-  def fromConfig(
-      providedConfig: Config,
-      executor: Option[ExecutorService] = None,
-      connectionListener: ConnectionListener = DefaultListeners.DefaultConnectionListener,
-      channelListener: ChannelListener = DefaultListeners.DefaultChannelListener,
-      consumerListener: ConsumerListener = DefaultListeners.DefaultConsumerListener,
-      scheduledExecutorService: ScheduledExecutorService = FutureTimeouter.Implicits.DefaultScheduledExecutor): DefaultRabbitMQFactory = {
+  def fromConfig(providedConfig: Config,
+                 executor: Option[ExecutorService] = None,
+                 connectionListener: ConnectionListener = DefaultListeners.DefaultConnectionListener,
+                 channelListener: ChannelListener = DefaultListeners.DefaultChannelListener,
+                 consumerListener: ConsumerListener = DefaultListeners.DefaultConsumerListener,
+                 scheduledExecutorService: ScheduledExecutorService = FutureTimeouter.Implicits.DefaultScheduledExecutor)
+    : DefaultRabbitMQConnection = {
     // we need to wrap it with one level, to be able to parse it with Ficus
     val config = ConfigFactory
       .empty()
       .withValue("root", providedConfig.withFallback(DefaultConfig).root())
 
     val connectionConfig = config.as[RabbitMQConnectionConfig]("root")
+
     val connection = createConnection(connectionConfig, executor, connectionListener, channelListener, consumerListener)
 
-    new DefaultRabbitMQFactory(
+    new DefaultRabbitMQConnection(
       connection = connection,
       info = RabbitMqFactoryInfo(
         hosts = connectionConfig.hosts.toVector,
         virtualHost = connectionConfig.virtualHost
       ),
       config = providedConfig,
-      connectionListener = connectionListener,
-      channelListener = channelListener,
-      consumerListener = consumerListener,
-      scheduledExecutorService
-    )
-  }
-
-  /** Creates new instance of channel factory, using the passed configuration.
-    *
-    * @param connectionConfig         The configuration.
-    * @param executor                 [[ExecutorService]] which should be used as shared for all channels from this factory. Optional parameter.
-    * @param scheduledExecutorService [[ScheduledExecutorService]] used for timeouting tasks for all created consumers.
-    */
-  def create(connectionConfig: RabbitMQConnectionConfig,
-             executor: Option[ExecutorService] = None,
-             connectionListener: ConnectionListener = DefaultListeners.DefaultConnectionListener,
-             channelListener: ChannelListener = DefaultListeners.DefaultChannelListener,
-             consumerListener: ConsumerListener = DefaultListeners.DefaultConsumerListener,
-             scheduledExecutorService: ScheduledExecutorService = FutureTimeouter.Implicits.DefaultScheduledExecutor)
-    : DefaultRabbitMQManualFactory = {
-
-    val connection = createConnection(connectionConfig, executor, connectionListener, channelListener, consumerListener)
-
-    new DefaultRabbitMQManualFactory(
-      connection = connection,
-      info = RabbitMqFactoryInfo(
-        hosts = connectionConfig.hosts.toVector,
-        virtualHost = connectionConfig.virtualHost
-      ),
-      config = ConfigFactory.empty(),
       connectionListener = connectionListener,
       channelListener = channelListener,
       consumerListener = consumerListener,

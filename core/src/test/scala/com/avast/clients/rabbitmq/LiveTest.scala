@@ -10,6 +10,7 @@ import com.avast.kluzo.{Kluzo, TraceId}
 import com.avast.metrics.scalaapi.Monitor
 import com.avast.utils2.Done
 import com.typesafe.config.{Config, ConfigFactory, ConfigValueFactory}
+import monix.execution.Scheduler
 import net.ceedubs.ficus.Ficus._
 import org.scalatest.FunSuite
 import org.scalatest.concurrent.Eventually
@@ -56,6 +57,8 @@ class LiveTest extends FunSuite with Eventually {
     }
 
     implicit val ex = Continuity.wrapExecutionContextExecutorService(ExecutionContext.fromExecutorService(Executors.newCachedThreadPool()))
+
+    val sched = Scheduler(ex: ExecutionContext)
   }
 
   val testHelper = new TestHelper(System.getProperty("rabbit.host"), System.getProperty("rabbit.tcp.15672").toInt)
@@ -66,15 +69,15 @@ class LiveTest extends FunSuite with Eventually {
 
     val latch = new CountDownLatch(1)
 
-    val rabbitFactory = DefaultRabbitMQFactory.fromConfig(config, Some(ex))
+    val rabbitConnection = RabbitMQConnection.fromConfig(config, Some(ex))
 
-    rabbitFactory.newConsumer("consumer", Monitor.noOp()) { delivery =>
+    rabbitConnection.newConsumer("consumer", Monitor.noOp()) { delivery =>
       latch.countDown()
       assertResult(true)(Kluzo.getTraceId.nonEmpty)
       Future.successful(DeliveryResult.Ack)
     }
 
-    val sender = rabbitFactory.newProducer[Try]("producer", Monitor.noOp())
+    val sender = rabbitConnection.newProducer[Try]("producer", sched, Monitor.noOp())
 
     sender.send("test", Bytes.copyFromUtf8(Random.nextString(10)))
 
@@ -92,11 +95,11 @@ class LiveTest extends FunSuite with Eventually {
 
     val latch = new CountDownLatch(count + 5)
 
-    val rabbitFactory = DefaultRabbitMQFactory.fromConfig(config, Some(ex))
+    val rabbitConnection = RabbitMQConnection.fromConfig(config, Some(ex))
 
     val d = new AtomicInteger(0)
 
-    rabbitFactory.newConsumer("consumer", Monitor.noOp()) { delivery =>
+    rabbitConnection.newConsumer("consumer", Monitor.noOp()) { delivery =>
       Future {
         Thread.sleep(if (d.get() % 2 == 0) 300 else 0)
         latch.countDown()
@@ -108,7 +111,7 @@ class LiveTest extends FunSuite with Eventually {
       }
     }
 
-    val sender = rabbitFactory.newProducer[Try]("producer", Monitor.noOp())
+    val sender = rabbitConnection.newProducer[Try]("producer", sched, Monitor.noOp())
 
     for (_ <- 1 to count) {
       sender.send("test", Bytes.copyFromUtf8(Random.nextString(10)))
@@ -126,15 +129,15 @@ class LiveTest extends FunSuite with Eventually {
 
     val latch = new CountDownLatch(20)
 
-    val rabbitFactory = DefaultRabbitMQFactory.fromConfig(config, Some(ex))
+    val rabbitConnection = RabbitMQConnection.fromConfig(config, Some(ex))
 
-    rabbitFactory.newConsumer("consumer", Monitor.noOp()) { delivery =>
+    rabbitConnection.newConsumer("consumer", Monitor.noOp()) { delivery =>
       latch.countDown()
       Future.successful(Ack)
     }
 
-    val sender1 = rabbitFactory.newProducer[Try]("producer", Monitor.noOp())
-    val sender2 = rabbitFactory.newProducer[Try]("producer2", Monitor.noOp())
+    val sender1 = rabbitConnection.newProducer[Try]("producer", sched, Monitor.noOp())
+    val sender2 = rabbitConnection.newProducer[Try]("producer2", sched, Monitor.noOp())
 
     for (_ <- 1 to 10) {
       sender1.send("test", Bytes.copyFromUtf8(Random.nextString(10)))
@@ -150,11 +153,11 @@ class LiveTest extends FunSuite with Eventually {
     val c = createConfig()
     import c._
 
-    val rabbitFactory = DefaultRabbitMQFactory.fromConfig(config, Some(ex))
+    val rabbitConnection = RabbitMQConnection.fromConfig(config, Some(ex))
 
     val cnt = new AtomicInteger(0)
 
-    rabbitFactory.newConsumer("consumer", Monitor.noOp()) { delivery =>
+    rabbitConnection.newConsumer("consumer", Monitor.noOp()) { delivery =>
       cnt.incrementAndGet()
       assertResult(true)(Kluzo.getTraceId.nonEmpty)
 
@@ -165,7 +168,7 @@ class LiveTest extends FunSuite with Eventually {
       }
     }
 
-    val sender = rabbitFactory.newProducer[Try]("producer", Monitor.noOp())
+    val sender = rabbitConnection.newProducer[Try]("producer", sched, Monitor.noOp())
 
     for (_ <- 1 to 10) {
       sender.send("test", Bytes.copyFromUtf8(Random.nextString(10)))
@@ -181,18 +184,18 @@ class LiveTest extends FunSuite with Eventually {
     val c = createConfig()
     import c._
 
-    val rabbitFactory = DefaultRabbitMQFactory.fromConfig(config, Some(ex))
+    val rabbitConnection = RabbitMQConnection.fromConfig(config, Some(ex))
 
     val cnt = new AtomicInteger(0)
 
-    rabbitFactory.newConsumer("consumer", Monitor.noOp()) { delivery =>
+    rabbitConnection.newConsumer("consumer", Monitor.noOp()) { delivery =>
       cnt.incrementAndGet()
 
       Thread.sleep(800) // timeout is set to 500 ms
       Future.successful(Ack)
     }
 
-    val sender = rabbitFactory.newProducer[Try]("producer", Monitor.noOp())
+    val sender = rabbitConnection.newProducer[Try]("producer", sched, Monitor.noOp())
 
     for (_ <- 1 to 10) {
       sender.send("test", Bytes.copyFromUtf8(Random.nextString(10)))
@@ -208,19 +211,19 @@ class LiveTest extends FunSuite with Eventually {
     val c = createConfig()
     import c._
 
-    val rabbitFactory = DefaultRabbitMQFactory.fromConfig(config, Some(ex))
+    val rabbitConnection = RabbitMQConnection.fromConfig(config, Some(ex))
 
     val cnt = new AtomicInteger(0)
 
     val traceId = TraceId.generate
 
-    rabbitFactory.newConsumer("consumer", Monitor.noOp()) { delivery =>
+    rabbitConnection.newConsumer("consumer", Monitor.noOp()) { delivery =>
       cnt.incrementAndGet()
       assertResult(Some(traceId))(Kluzo.getTraceId)
       Future.successful(Ack)
     }
 
-    val sender = rabbitFactory.newProducer[Try]("producer", Monitor.noOp())
+    val sender = rabbitConnection.newProducer[Try]("producer", sched, Monitor.noOp())
 
     for (_ <- 1 to 10) {
       Kluzo.withTraceId(Some(traceId)) {
@@ -238,19 +241,19 @@ class LiveTest extends FunSuite with Eventually {
     val c = createConfig()
     import c._
 
-    val rabbitFactory = DefaultRabbitMQFactory.fromConfig(config, Some(ex))
+    val rabbitConnection = RabbitMQConnection.fromConfig(config, Some(ex))
 
     val cnt = new AtomicInteger(0)
 
     val traceId = "someTraceId"
 
-    rabbitFactory.newConsumer("consumer", Monitor.noOp()) { delivery =>
+    rabbitConnection.newConsumer("consumer", Monitor.noOp()) { delivery =>
       cnt.incrementAndGet()
       assertResult(Some(TraceId(traceId)))(Kluzo.getTraceId)
       Future.successful(Ack)
     }
 
-    val sender = rabbitFactory.newProducer[Try]("producer", Monitor.noOp())
+    val sender = rabbitConnection.newProducer[Try]("producer", sched, Monitor.noOp())
 
     for (_ <- 1 to 10) {
       val properties = MessageProperties(headers = Map(Kluzo.HttpHeaderName -> traceId.asInstanceOf[AnyRef]))
@@ -270,20 +273,20 @@ class LiveTest extends FunSuite with Eventually {
 
     val latch = new CountDownLatch(10)
 
-    val rabbitFactory = DefaultRabbitMQFactory.fromConfig(config, Some(ex))
+    val rabbitConnection = RabbitMQConnection.fromConfig(config, Some(ex))
 
-    val sender = rabbitFactory.newProducer[Try]("producer", Monitor.noOp())
+    val sender = rabbitConnection.newProducer[Try]("producer", sched, Monitor.noOp())
 
     // additional declarations
 
     val Success(_) = for {
-      _ <- rabbitFactory.declareExchange("additionalDeclarations.declareExchange")
-      _ <- rabbitFactory.bindExchange("additionalDeclarations.bindExchange")
-      _ <- rabbitFactory.declareQueue("additionalDeclarations.declareQueue")
-      _ <- rabbitFactory.bindQueue("additionalDeclarations.bindQueue")
+      _ <- rabbitConnection.declareExchange("additionalDeclarations.declareExchange")
+      _ <- rabbitConnection.bindExchange("additionalDeclarations.bindExchange")
+      _ <- rabbitConnection.declareQueue("additionalDeclarations.declareQueue")
+      _ <- rabbitConnection.bindQueue("additionalDeclarations.bindQueue")
     } yield Done
 
-    rabbitFactory.newConsumer("consumer", Monitor.noOp()) { _ =>
+    rabbitConnection.newConsumer("consumer", Monitor.noOp()) { _ =>
       latch.countDown()
       Future.successful(DeliveryResult.Ack)
     }
