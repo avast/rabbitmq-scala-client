@@ -66,7 +66,7 @@ class LiveTest extends FunSuite with Eventually {
 
     val latch = new CountDownLatch(1)
 
-    val rabbitFactory = RabbitMQFactory.fromConfig(config, Some(ex))
+    val rabbitFactory = DefaultRabbitMQFactory.fromConfig(config, Some(ex))
 
     rabbitFactory.newConsumer("consumer", Monitor.noOp()) { delivery =>
       latch.countDown()
@@ -92,7 +92,7 @@ class LiveTest extends FunSuite with Eventually {
 
     val latch = new CountDownLatch(count + 5)
 
-    val rabbitFactory = RabbitMQFactory.fromConfig(config, Some(ex))
+    val rabbitFactory = DefaultRabbitMQFactory.fromConfig(config, Some(ex))
 
     val d = new AtomicInteger(0)
 
@@ -126,7 +126,7 @@ class LiveTest extends FunSuite with Eventually {
 
     val latch = new CountDownLatch(20)
 
-    val rabbitFactory = RabbitMQFactory.fromConfig(config, Some(ex))
+    val rabbitFactory = DefaultRabbitMQFactory.fromConfig(config, Some(ex))
 
     rabbitFactory.newConsumer("consumer", Monitor.noOp()) { delivery =>
       latch.countDown()
@@ -150,7 +150,7 @@ class LiveTest extends FunSuite with Eventually {
     val c = createConfig()
     import c._
 
-    val rabbitFactory = RabbitMQFactory.fromConfig(config, Some(ex))
+    val rabbitFactory = DefaultRabbitMQFactory.fromConfig(config, Some(ex))
 
     val cnt = new AtomicInteger(0)
 
@@ -181,7 +181,7 @@ class LiveTest extends FunSuite with Eventually {
     val c = createConfig()
     import c._
 
-    val rabbitFactory = RabbitMQFactory.fromConfig(config, Some(ex))
+    val rabbitFactory = DefaultRabbitMQFactory.fromConfig(config, Some(ex))
 
     val cnt = new AtomicInteger(0)
 
@@ -208,7 +208,7 @@ class LiveTest extends FunSuite with Eventually {
     val c = createConfig()
     import c._
 
-    val rabbitFactory = RabbitMQFactory.fromConfig(config, Some(ex))
+    val rabbitFactory = DefaultRabbitMQFactory.fromConfig(config, Some(ex))
 
     val cnt = new AtomicInteger(0)
 
@@ -238,7 +238,7 @@ class LiveTest extends FunSuite with Eventually {
     val c = createConfig()
     import c._
 
-    val rabbitFactory = RabbitMQFactory.fromConfig(config, Some(ex))
+    val rabbitFactory = DefaultRabbitMQFactory.fromConfig(config, Some(ex))
 
     val cnt = new AtomicInteger(0)
 
@@ -270,7 +270,7 @@ class LiveTest extends FunSuite with Eventually {
 
     val latch = new CountDownLatch(10)
 
-    val rabbitFactory = RabbitMQFactory.fromConfig(config, Some(ex))
+    val rabbitFactory = DefaultRabbitMQFactory.fromConfig(config, Some(ex))
 
     val sender = rabbitFactory.newProducer[Try]("producer", Monitor.noOp())
 

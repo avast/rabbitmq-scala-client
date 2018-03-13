@@ -5,6 +5,7 @@ import com.avast.clients.rabbitmq.api.MessageProperties
 import com.avast.metrics.scalaapi.Monitor
 import com.rabbitmq.client.AMQP
 import com.rabbitmq.client.impl.recovery.AutorecoveringChannel
+import monix.execution.Scheduler
 import monix.execution.Scheduler.Implicits.global
 import org.mockito.Mockito._
 import org.mockito.{ArgumentCaptor, Matchers}
@@ -27,7 +28,8 @@ class DefaultRabbitMQProducerTest extends FunSuite with MockitoSugar with Eventu
       channel = channel,
       monitor = Monitor.noOp,
       useKluzo = true,
-      reportUnroutable = false
+      reportUnroutable = false,
+      scheduler = Scheduler.Implicits.global
     )
 
     val properties = new AMQP.BasicProperties.Builder()

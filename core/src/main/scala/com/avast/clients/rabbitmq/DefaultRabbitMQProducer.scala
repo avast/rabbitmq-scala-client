@@ -3,7 +3,6 @@ package com.avast.clients.rabbitmq
 import java.util.UUID
 
 import com.avast.bytes.Bytes
-import com.avast.clients.rabbitmq.RabbitMQFactory.ServerChannel
 import com.avast.clients.rabbitmq.api.{MessageProperties, RabbitMQProducer}
 import com.avast.clients.rabbitmq.javaapi.JavaConverters._
 import com.avast.kluzo.Kluzo
@@ -21,7 +20,8 @@ class DefaultRabbitMQProducer(name: String,
                               channel: ServerChannel,
                               useKluzo: Boolean,
                               reportUnroutable: Boolean,
-                              monitor: Monitor)(implicit s: Scheduler)
+                              scheduler: Scheduler,
+                              monitor: Monitor)
     extends RabbitMQProducer[Task]
     with AutoCloseable
     with StrictLogging {
@@ -71,7 +71,7 @@ class DefaultRabbitMQProducer(name: String,
           sentFailedMeter.mark()
           throw e
       }
-    }.executeOn(s)
+    }.executeOn(scheduler)
   }
 
   override def send(routingKey: String, body: Bytes): Task[Unit] = {

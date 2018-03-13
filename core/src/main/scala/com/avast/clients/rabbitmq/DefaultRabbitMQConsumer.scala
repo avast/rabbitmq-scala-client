@@ -4,7 +4,6 @@ import java.util.concurrent.RejectedExecutionException
 import java.util.concurrent.atomic.AtomicInteger
 
 import com.avast.bytes.Bytes
-import com.avast.clients.rabbitmq.RabbitMQFactory.ServerChannel
 import com.avast.clients.rabbitmq.api._
 import com.avast.clients.rabbitmq.javaapi.JavaConverters._
 import com.avast.kluzo.{Kluzo, TraceId}
