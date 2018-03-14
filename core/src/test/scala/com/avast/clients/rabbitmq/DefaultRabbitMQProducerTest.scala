@@ -38,7 +38,7 @@ class DefaultRabbitMQProducerTest extends FunSuite with MockitoSugar with Eventu
 
     val body = Bytes.copyFromUtf8(Random.nextString(10))
 
-    producer.send(routingKey, body, MessageProperties.empty).futureValue
+    producer.send(routingKey, body, Some(MessageProperties.empty)).futureValue
 
     val captor = ArgumentCaptor.forClass(classOf[AMQP.BasicProperties])
 

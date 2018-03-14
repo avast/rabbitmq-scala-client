@@ -35,12 +35,14 @@ class DefaultRabbitMQProducer[F[_]: FromTask](name: String,
 
   channel.addReturnListener(if (reportUnroutable) LoggingReturnListener else NoOpReturnListener)
 
-  override def send(routingKey: String, body: Bytes, properties: MessageProperties): F[Unit] = {
+  override def send(routingKey: String, body: Bytes, properties: Option[MessageProperties] = None): F[Unit] = {
     val finalProperties = {
+      val messageProperties = properties.getOrElse(MessageProperties(messageId = Some(UUID.randomUUID().toString)))
+
       if (useKluzo && Kluzo.getTraceId.nonEmpty) {
 
         val headers = {
-          val headers = properties.headers
+          val headers = messageProperties.headers
 
           headers
             .get(Kluzo.HttpHeaderName)
@@ -51,9 +53,9 @@ class DefaultRabbitMQProducer[F[_]: FromTask](name: String,
           }
         }
 
-        properties.copy(headers = headers)
+        messageProperties.copy(headers = headers)
       } else {
-        properties
+        messageProperties
       }
     }
 
@@ -75,12 +77,6 @@ class DefaultRabbitMQProducer[F[_]: FromTask](name: String,
     }.executeOn(scheduler)
 
     implicitly[FromTask[F]].apply(task)
-  }
-
-  override def send(routingKey: String, body: Bytes): F[Unit] = {
-    val properties = MessageProperties(messageId = Some(UUID.randomUUID().toString))
-
-    send(routingKey, body, properties)
   }
 
   override def close(): Unit = {

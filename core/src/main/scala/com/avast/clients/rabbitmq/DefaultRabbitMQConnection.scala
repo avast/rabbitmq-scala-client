@@ -111,7 +111,7 @@ class DefaultRabbitMQConnection(connection: ServerConnection,
 
   protected def addAutoCloseable[A <: AutoCloseable](a: A): A = {
     closeablesLock.synchronized {
-      closeables = closeables.+:(a)
+      closeables = a +: closeables
     }
     a
   }

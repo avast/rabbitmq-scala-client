@@ -258,7 +258,7 @@ class LiveTest extends FunSuite with Eventually {
     for (_ <- 1 to 10) {
       val properties = MessageProperties(headers = Map(Kluzo.HttpHeaderName -> traceId.asInstanceOf[AnyRef]))
 
-      sender.send("test", Bytes.copyFromUtf8(Random.nextString(10)), properties)
+      sender.send("test", Bytes.copyFromUtf8(Random.nextString(10)), Some(properties))
     }
 
     eventually(timeout(Span(3, Seconds)), interval(Span(0.25, Seconds))) {

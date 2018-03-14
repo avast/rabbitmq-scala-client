@@ -7,7 +7,5 @@ import scala.language.higherKinds
 
 @autoFunctorK(autoDerivation = false)
 trait RabbitMQProducer[F[_]] {
-  def send(routingKey: String, body: Bytes): F[Unit]
-
-  def send(routingKey: String, body: Bytes, properties: MessageProperties): F[Unit]
+  def send(routingKey: String, body: Bytes, properties: Option[MessageProperties] = None): F[Unit]
 }
