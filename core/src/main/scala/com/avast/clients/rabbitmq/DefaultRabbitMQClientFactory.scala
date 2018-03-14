@@ -3,10 +3,10 @@ package com.avast.clients.rabbitmq
 import java.time.Duration
 import java.util.concurrent.{ScheduledExecutorService, TimeoutException}
 
-import com.avast.clients.rabbitmq.RabbitMQFactory.ServerChannel
 import com.avast.clients.rabbitmq.api.DeliveryResult.{Ack, Reject, Republish, Retry}
-import com.avast.clients.rabbitmq.api.{Delivery, DeliveryResult, RabbitMQConsumer, RabbitMQProducer}
+import com.avast.clients.rabbitmq.api._
 import com.avast.continuity.Continuity
+import com.avast.continuity.monix.Monix
 import com.avast.kluzo.Kluzo
 import com.avast.metrics.scalaapi.Monitor
 import com.avast.utils2.Done
@@ -15,17 +15,18 @@ import com.rabbitmq.client.AMQP
 import com.rabbitmq.client.AMQP.Queue
 import com.typesafe.config.{Config, ConfigFactory, ConfigValueFactory}
 import com.typesafe.scalalogging.LazyLogging
+import monix.execution.Scheduler
 import net.ceedubs.ficus.Ficus._
 import net.ceedubs.ficus.readers.ArbitraryTypeReader._
 import net.ceedubs.ficus.readers.ValueReader
 
 import scala.collection.JavaConverters._
 import scala.concurrent.{ExecutionContext, Future}
-import scala.language.implicitConversions
+import scala.language.{higherKinds, implicitConversions}
 import scala.util.Try
 import scala.util.control.NonFatal
 
-private[rabbitmq] object RabbitMQClientFactory extends LazyLogging {
+private[rabbitmq] object DefaultRabbitMQClientFactory extends LazyLogging {
 
   private type ArgumentsMap = Map[String, Any]
 
@@ -87,18 +88,23 @@ private[rabbitmq] object RabbitMQClientFactory extends LazyLogging {
 
   object Producer {
 
-    def fromConfig(providedConfig: Config, channel: ServerChannel, factoryInfo: RabbitMqFactoryInfo, monitor: Monitor): RabbitMQProducer = {
+    def fromConfig[F[_]: FromTask](providedConfig: Config,
+                                   channel: ServerChannel,
+                                   factoryInfo: RabbitMqFactoryInfo,
+                                   scheduler: Scheduler,
+                                   monitor: Monitor): DefaultRabbitMQProducer[F] = {
       val producerConfig = providedConfig.wrapped.as[ProducerConfig]("root")
 
-      create(producerConfig, channel, factoryInfo, monitor)
+      create[F](producerConfig, channel, factoryInfo, scheduler, monitor)
     }
 
-    def create(producerConfig: ProducerConfig,
-               channel: ServerChannel,
-               factoryInfo: RabbitMqFactoryInfo,
-               monitor: Monitor): DefaultRabbitMQProducer = {
+    def create[F[_]: FromTask](producerConfig: ProducerConfig,
+                               channel: ServerChannel,
+                               factoryInfo: RabbitMqFactoryInfo,
+                               scheduler: Scheduler,
+                               monitor: Monitor): DefaultRabbitMQProducer[F] = {
 
-      prepareProducer(producerConfig, channel, factoryInfo, monitor)
+      prepareProducer[F](producerConfig, channel, factoryInfo, scheduler, monitor)
     }
   }
 
@@ -163,7 +169,7 @@ private[rabbitmq] object RabbitMQClientFactory extends LazyLogging {
       import config._
 
       Try {
-        RabbitMQClientFactory.this.declareExchange(name, `type`, durable, autoDelete, arguments, channel, channelFactoryInfo)
+        DefaultRabbitMQClientFactory.this.declareExchange(name, `type`, durable, autoDelete, arguments, channel, channelFactoryInfo)
         Done
       }
     }
@@ -172,7 +178,7 @@ private[rabbitmq] object RabbitMQClientFactory extends LazyLogging {
       import config._
 
       Try {
-        RabbitMQClientFactory.this.declareQueue(channel, name, durable, exclusive, autoDelete, arguments)
+        DefaultRabbitMQClientFactory.this.declareQueue(channel, name, durable, exclusive, autoDelete, arguments)
         Done
       }
     }
@@ -182,7 +188,7 @@ private[rabbitmq] object RabbitMQClientFactory extends LazyLogging {
 
       Try {
         routingKeys.foreach(
-          RabbitMQClientFactory.this.bindQueue(channelFactoryInfo)(channel, queueName)(exchangeName, _, bindArguments.value))
+          DefaultRabbitMQClientFactory.this.bindQueue(channelFactoryInfo)(channel, queueName)(exchangeName, _, bindArguments.value))
         Done
       }
     }
@@ -192,17 +198,21 @@ private[rabbitmq] object RabbitMQClientFactory extends LazyLogging {
 
       Try {
         routingKeys.foreach(
-          RabbitMQClientFactory.this.bindExchange(channelFactoryInfo)(channel, sourceExchangeName, destExchangeName, arguments.value))
+          DefaultRabbitMQClientFactory.this
+            .bindExchange(channelFactoryInfo)(channel, sourceExchangeName, destExchangeName, arguments.value))
         Done
       }
     }
   }
 
-  private def prepareProducer(producerConfig: ProducerConfig,
-                              channel: ServerChannel,
-                              channelFactoryInfo: RabbitMqFactoryInfo,
-                              monitor: Monitor): DefaultRabbitMQProducer = {
+  private def prepareProducer[F[_]: FromTask](producerConfig: ProducerConfig,
+                                              channel: ServerChannel,
+                                              channelFactoryInfo: RabbitMqFactoryInfo,
+                                              scheduler: Scheduler,
+                                              monitor: Monitor): DefaultRabbitMQProducer[F] = {
     import producerConfig._
+
+    val finalScheduler = if (useKluzo) Monix.wrapScheduler(scheduler) else scheduler
 
     // auto declare of exchange
     // parse it only if it's needed
@@ -211,7 +221,7 @@ private[rabbitmq] object RabbitMQClientFactory extends LazyLogging {
       val d = declare.wrapped.as[AutoDeclareExchange]("root")
       declareExchange(exchange, channelFactoryInfo, channel, d)
     }
-    new DefaultRabbitMQProducer(producerConfig.name, exchange, channel, useKluzo, reportUnroutable, monitor)
+    new DefaultRabbitMQProducer[F](producerConfig.name, exchange, channel, useKluzo, reportUnroutable, finalScheduler, monitor)
   }
 
   private[rabbitmq] def declareExchange(name: String,

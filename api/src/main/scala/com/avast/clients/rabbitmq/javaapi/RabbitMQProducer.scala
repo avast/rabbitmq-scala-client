@@ -6,12 +6,12 @@ import com.avast.clients.rabbitmq.api.{MessageProperties => ScalaProperties, Rab
 import scala.collection.JavaConverters._
 import scala.language.implicitConversions
 import scala.util.control.NonFatal
-import scala.util.{Failure, Success}
+import scala.util.{Failure, Success, Try}
 
-class RabbitMQProducer(scalaProducer: ScalaProducer) extends AutoCloseable {
+class RabbitMQProducer(scalaProducer: ScalaProducer[Try] with AutoCloseable) extends AutoCloseable {
   @throws[Exception]
   def send(routingKey: String, body: Bytes): Unit = {
-    scalaProducer.send(routingKey, body) match {
+    scalaProducer.send(routingKey, body, None) match {
       case Success(_) => ()
       case Failure(NonFatal(e)) => throw e // thrown intentionally, it's Java API!
     }
@@ -19,7 +19,7 @@ class RabbitMQProducer(scalaProducer: ScalaProducer) extends AutoCloseable {
 
   @throws[Exception]
   def send(routingKey: String, body: Bytes, properties: MessageProperties): Unit = {
-    scalaProducer.send(routingKey, body, properties) match {
+    scalaProducer.send(routingKey, body, Some(properties)) match {
       case Success(_) => ()
       case Failure(NonFatal(e)) => throw e // thrown intentionally, it's Java API!
     }

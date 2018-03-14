@@ -7,7 +7,7 @@ import scala.util.{Failure, Try}
 class RabbitMQJavaFactoryImplTest extends FunSuite {
 
   test("ThrowFailure") {
-    import RabbitMQJavaFactoryImpl._
+    import RabbitMQJavaConnectionImpl._
 
     Try(123).throwFailure()
     Try("123").throwFailure()

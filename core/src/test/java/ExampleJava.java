@@ -18,17 +18,18 @@ public class ExampleJava {
 
         final ExecutorService executor = Executors.newCachedThreadPool();
 
-        final RabbitMQJavaFactory factory = RabbitMQFactory.newBuilder(config).withExecutor(executor).build();
+        final RabbitMQJavaConnection connection = RabbitMQJavaConnection.newBuilder(config).withExecutor(executor).build();
 
-        final RabbitMQConsumer rabbitMQConsumer = factory.newConsumer(
+        final RabbitMQConsumer rabbitMQConsumer = connection.newConsumer(
                 "consumer",
                 NoOpMonitor.INSTANCE,
                 executor,
                 ExampleJava::handleDelivery
         );
 
-        final RabbitMQProducer rabbitMQProducer = factory.newProducer("producer",
-                NoOpMonitor.INSTANCE
+        final RabbitMQProducer rabbitMQProducer = connection.newProducer("producer",
+                NoOpMonitor.INSTANCE,
+                executor
         );
 
         for (int i = 0; i < 1000; i++) {
