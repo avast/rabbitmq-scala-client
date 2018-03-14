@@ -40,7 +40,7 @@ dependencies {
     compile 'io.monix:monix_?:2.3.3'
 
     compile 'com.avast.kluzo:kluzo-scala_?:3.0.1'
-    compile 'com.avast.continuity:continuity-core-scala_?:3.0.1'
+    compile 'com.avast.continuity:continuity-monix_?:3.2.0'
 
     compile 'org.xbib:jsr-305:1.0.0'
 

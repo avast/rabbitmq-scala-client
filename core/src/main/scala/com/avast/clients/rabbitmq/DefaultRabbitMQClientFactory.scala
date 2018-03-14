@@ -6,6 +6,7 @@ import java.util.concurrent.{ScheduledExecutorService, TimeoutException}
 import com.avast.clients.rabbitmq.api.DeliveryResult.{Ack, Reject, Republish, Retry}
 import com.avast.clients.rabbitmq.api._
 import com.avast.continuity.Continuity
+import com.avast.continuity.monix.Monix
 import com.avast.kluzo.Kluzo
 import com.avast.metrics.scalaapi.Monitor
 import com.avast.utils2.Done
@@ -211,6 +212,8 @@ private[rabbitmq] object DefaultRabbitMQClientFactory extends LazyLogging {
                                               monitor: Monitor): DefaultRabbitMQProducer[F] = {
     import producerConfig._
 
+    val finalScheduler = if (useKluzo) Monix.wrapScheduler(scheduler) else scheduler
+
     // auto declare of exchange
     // parse it only if it's needed
     // "Lazy" parsing, because exchange type is not part of reference.conf and we don't want to make it fail on missing type when enabled=false
@@ -218,7 +221,7 @@ private[rabbitmq] object DefaultRabbitMQClientFactory extends LazyLogging {
       val d = declare.wrapped.as[AutoDeclareExchange]("root")
       declareExchange(exchange, channelFactoryInfo, channel, d)
     }
-    new DefaultRabbitMQProducer[F](producerConfig.name, exchange, channel, useKluzo, reportUnroutable, scheduler, monitor)
+    new DefaultRabbitMQProducer[F](producerConfig.name, exchange, channel, useKluzo, reportUnroutable, finalScheduler, monitor)
   }
 
   private[rabbitmq] def declareExchange(name: String,
