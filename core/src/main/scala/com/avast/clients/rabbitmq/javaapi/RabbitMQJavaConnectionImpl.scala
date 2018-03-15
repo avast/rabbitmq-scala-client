@@ -8,54 +8,44 @@ import com.avast.clients.rabbitmq.{DefaultRabbitMQConnection => ScalaConnection}
 import com.avast.metrics.api.Monitor
 import com.avast.metrics.scalaapi.{Monitor => ScalaMonitor}
 import monix.execution.Scheduler
+import monix.execution.schedulers.SchedulerService
 
-import scala.concurrent.{ExecutionContext, ExecutionContextExecutor}
-import scala.util.Try
+import scala.concurrent.{ExecutionContext, Future}
 
-private class RabbitMQJavaConnectionImpl(ScalaConnection: ScalaConnection) extends RabbitMQJavaConnection {
-
-  import RabbitMQJavaConnectionImpl._
+private class RabbitMQJavaConnectionImpl(scalaConnection: ScalaConnection[Future])(implicit ec: ExecutionContext)
+    extends RabbitMQJavaConnection {
 
   override def newConsumer(configName: String,
                            monitor: Monitor,
                            executor: ExecutorService,
-                           readAction: function.Function[Delivery, CompletableFuture[DeliveryResult]]): RabbitMQConsumer = {
-    implicit val ec: ExecutionContextExecutor = ExecutionContext.fromExecutor(executor)
+                           readAction: function.Function[Delivery, CompletableFuture[DeliveryResult]]): DefaultRabbitMQConsumer = {
+    implicit val sch: SchedulerService = Scheduler(executor)
 
-    new RabbitMQConsumer(ScalaConnection.newConsumer(configName, ScalaMonitor(monitor))(readAction.asScala))
+    new DefaultRabbitMQConsumer(scalaConnection.newConsumer(configName, ScalaMonitor(monitor))(readAction.asScala))
   }
 
   override def newProducer(configName: String, monitor: Monitor, executor: ExecutorService): RabbitMQProducer = {
-    implicit val ec: ExecutionContextExecutor = ExecutionContext.fromExecutor(executor)
-    import com.avast.clients.rabbitmq.fkTry
-    new RabbitMQProducer(ScalaConnection.newProducer[Try](configName, Scheduler(executor), ScalaMonitor(monitor)))
+    implicit val sch: SchedulerService = Scheduler(executor)
+
+    new DefaultRabbitMQProducer(scalaConnection.newProducer(configName, ScalaMonitor(monitor)))
   }
 
-  override def declareExchange(configName: String): Unit = {
-    ScalaConnection.declareExchange(configName).throwFailure()
+  override def declareExchange(configName: String): CompletableFuture[Void] = {
+    scalaConnection.declareExchange(configName).map(_ => null: Void).asJava
   }
 
-  override def declareQueue(configName: String): Unit = {
-    ScalaConnection.declareQueue(configName).throwFailure()
+  override def declareQueue(configName: String): CompletableFuture[Void] = {
+    scalaConnection.declareQueue(configName).map(_ => null: Void).asJava
   }
 
-  override def bindQueue(configName: String): Unit = {
-    ScalaConnection.bindQueue(configName).throwFailure()
+  override def bindQueue(configName: String): CompletableFuture[Void] = {
+    scalaConnection.bindQueue(configName).map(_ => null: Void).asJava
   }
 
-  override def bindExchange(configName: String): Unit = {
-    ScalaConnection.bindExchange(configName).throwFailure()
+  override def bindExchange(configName: String): CompletableFuture[Void] = {
+    scalaConnection.bindExchange(configName).map(_ => null: Void).asJava
   }
 
-  override def close(): Unit = ScalaConnection.close()
-
-}
-
-private object RabbitMQJavaConnectionImpl {
-
-  // this is just to "hack" the ScalaFmt and ScalaStyle ;-) - it's equivalent to `.get`
-  implicit class ThrowFailure(val t: Try[_]) {
-    def throwFailure(): Unit = t.failed.foreach(throw _)
-  }
+  override def close(): Unit = scalaConnection.close()
 
 }
