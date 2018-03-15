@@ -1,6 +1,6 @@
 package com.avast.clients.rabbitmq
 
-import java.util.{Collections, UUID}
+import java.util.UUID
 
 import com.avast.clients.rabbitmq.RabbitMQConnection.DefaultListeners
 import com.avast.clients.rabbitmq.api.DeliveryResult
@@ -8,6 +8,8 @@ import com.avast.metrics.scalaapi.Monitor
 import com.rabbitmq.client.AMQP.BasicProperties
 import com.rabbitmq.client.Envelope
 import com.rabbitmq.client.impl.recovery.AutorecoveringChannel
+import monix.eval.Task
+import monix.execution.Scheduler
 import org.mockito.Matchers
 import org.mockito.Matchers.any
 import org.mockito.Mockito._
@@ -16,9 +18,7 @@ import org.scalatest.concurrent.Eventually
 import org.scalatest.mockito.MockitoSugar
 import org.scalatest.time.{Seconds, Span}
 
-import scala.collection.JavaConverters._
-import scala.concurrent.ExecutionContext.Implicits.global
-import scala.concurrent.Future
+import Scheduler.Implicits.global
 import scala.util.Random
 
 class DefaultRabbitMQConsumerTest extends FunSuite with MockitoSugar with Eventually {
@@ -43,11 +43,11 @@ class DefaultRabbitMQConsumerTest extends FunSuite with MockitoSugar with Eventu
       Monitor.noOp,
       DeliveryResult.Reject,
       DefaultListeners.DefaultConsumerListener,
-      (_, _, _) => ???
+      Scheduler.global
     )({ delivery =>
       assertResult(Some(messageId))(delivery.properties.messageId)
 
-      Future.successful(DeliveryResult.Ack)
+      Task.now(DeliveryResult.Ack)
     })
 
     val body = Random.nextString(5).getBytes
@@ -82,11 +82,11 @@ class DefaultRabbitMQConsumerTest extends FunSuite with MockitoSugar with Eventu
       Monitor.noOp,
       DeliveryResult.Reject,
       DefaultListeners.DefaultConsumerListener,
-      (_, _, _) => ???
+      Scheduler.global
     )({ delivery =>
       assertResult(Some(messageId))(delivery.properties.messageId)
 
-      Future.successful(DeliveryResult.Retry)
+      Task.now(DeliveryResult.Retry)
     })
 
     val body = Random.nextString(5).getBytes
@@ -121,11 +121,11 @@ class DefaultRabbitMQConsumerTest extends FunSuite with MockitoSugar with Eventu
       Monitor.noOp,
       DeliveryResult.Reject,
       DefaultListeners.DefaultConsumerListener,
-      (_, _, _) => ???
+      Scheduler.global
     )({ delivery =>
       assertResult(Some(messageId))(delivery.properties.messageId)
 
-      Future.successful(DeliveryResult.Reject)
+      Task.now(DeliveryResult.Reject)
     })
 
     val body = Random.nextString(5).getBytes
@@ -159,11 +159,11 @@ class DefaultRabbitMQConsumerTest extends FunSuite with MockitoSugar with Eventu
       Monitor.noOp,
       DeliveryResult.Reject,
       DefaultListeners.DefaultConsumerListener,
-      (_, _, _) => ???
+      Scheduler.global
     )({ delivery =>
       assertResult(Some(messageId))(delivery.properties.messageId)
 
-      Future.successful(DeliveryResult.Republish())
+      Task.now(DeliveryResult.Republish())
     })
 
     val body = Random.nextString(5).getBytes
@@ -198,11 +198,11 @@ class DefaultRabbitMQConsumerTest extends FunSuite with MockitoSugar with Eventu
       Monitor.noOp,
       DeliveryResult.Retry,
       DefaultListeners.DefaultConsumerListener,
-      (_, _, _) => ???
+      Scheduler.global
     )({ delivery =>
       assertResult(Some(messageId))(delivery.properties.messageId)
 
-      Future.failed(new RuntimeException)
+      Task.raiseError(new RuntimeException)
     })
 
     consumer.handleDelivery("abcd", envelope, properties, Random.nextString(5).getBytes)
@@ -234,7 +234,7 @@ class DefaultRabbitMQConsumerTest extends FunSuite with MockitoSugar with Eventu
       Monitor.noOp,
       DeliveryResult.Retry,
       DefaultListeners.DefaultConsumerListener,
-      (_, _, _) => ???
+      Scheduler.global
     )({ delivery =>
       assertResult(Some(messageId))(delivery.properties.messageId)
 
@@ -249,45 +249,4 @@ class DefaultRabbitMQConsumerTest extends FunSuite with MockitoSugar with Eventu
     }
   }
 
-  val args: java.util.Map[String, AnyRef] = Collections.emptyMap()
-
-  test("should bind to another exchange") {
-    val messageId = UUID.randomUUID().toString
-
-    val deliveryTag = Random.nextInt(1000)
-
-    val envelope = mock[Envelope]
-    when(envelope.getDeliveryTag).thenReturn(deliveryTag)
-
-    val properties = mock[BasicProperties]
-    when(properties.getMessageId).thenReturn(messageId)
-
-    val channel = mock[AutorecoveringChannel]
-
-    val queueName = Random.nextString(10)
-    val exchange = Random.nextString(10)
-    val routingKey = Random.nextString(10)
-
-    val consumer = new DefaultRabbitMQConsumer(
-      "test",
-      channel,
-      "queueName",
-      true,
-      Monitor.noOp,
-      DeliveryResult.Retry,
-      DefaultListeners.DefaultConsumerListener,
-      (exchange, routingKey, args) => {
-        channel.queueBind(queueName, exchange, routingKey, args.mapValues(_.asInstanceOf[Object]).asJava)
-      }
-    )({ delivery =>
-      assertResult(Some(messageId))(delivery.properties.messageId)
-
-      throw new RuntimeException
-    })
-
-    consumer.bindTo(exchange, routingKey)
-
-    verify(channel, times(1)).queueBind(Matchers.eq(queueName), Matchers.eq(exchange), Matchers.eq(routingKey), Matchers.eq(args))
-    ()
-  }
 }

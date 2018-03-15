@@ -8,16 +8,14 @@ import com.avast.clients.rabbitmq.api._
 import com.avast.clients.rabbitmq.javaapi.JavaConverters._
 import com.avast.kluzo.{Kluzo, TraceId}
 import com.avast.metrics.scalaapi.Monitor
-import com.avast.utils2.Done
 import com.rabbitmq.client.AMQP.BasicProperties
-import com.rabbitmq.client.AMQP.Queue.BindOk
 import com.rabbitmq.client.{DefaultConsumer, Envelope, ShutdownSignalException}
 import com.typesafe.scalalogging.StrictLogging
+import monix.eval.Task
+import monix.execution.Scheduler
 
 import scala.collection.JavaConverters._
-import scala.concurrent.{ExecutionContext, Future}
 import scala.util.control.NonFatal
-import scala.util.{Failure, Success, Try}
 
 class DefaultRabbitMQConsumer(val name: String,
                               channel: ServerChannel,
@@ -26,10 +24,10 @@ class DefaultRabbitMQConsumer(val name: String,
                               monitor: Monitor,
                               failureAction: DeliveryResult,
                               consumerListener: ConsumerListener,
-                              bindToAction: (String, String, Map[String, Any]) => BindOk)(readAction: Delivery => Future[DeliveryResult])(
-    implicit ec: ExecutionContext)
+                              blockingScheduler: Scheduler)(readAction: DeliveryReadAction[Task])(implicit callbackScheduler: Scheduler)
     extends DefaultConsumer(channel)
     with RabbitMQConsumer
+    with AutoCloseable
     with StrictLogging {
 
   import DefaultRabbitMQConsumer._
@@ -65,40 +63,39 @@ class DefaultRabbitMQConsumer(val name: String,
       case None => envelope.getRoutingKey
     }
 
-    Kluzo.withTraceId(traceId) {
+    val task = {
       try {
-        ec.execute(() => {
-          try {
-            readMeter.mark()
+        readMeter.mark()
 
-            logger.debug(s"[$name] Read delivery with ID $messageId, deliveryTag $deliveryTag")
+        logger.debug(s"[$name] Read delivery with ID $messageId, deliveryTag $deliveryTag")
 
-            val message = Delivery(Bytes.copyFrom(body), properties.asScala, Option(routingKey).getOrElse(""))
+        val message = Delivery(Bytes.copyFrom(body), properties.asScala, Option(routingKey).getOrElse(""))
 
-            processedTimer.time {
-              readAction(message).andThen(handleResult(messageId, deliveryTag, properties, routingKey, body))
-            }
-
-            ()
-          } catch {
-            case NonFatal(e) =>
-              processingCount.decrementAndGet()
-              processingFailedMeter.mark()
-              logger.warn(s"[$name] Error while executing callback, it's probably u BUG", e)
-              consumerListener.onError(this, name, channel, e)
-              executeFailureAction(messageId, deliveryTag, properties, routingKey, body)
+        readAction(message)
+          .flatMap {
+            handleResult(messageId, deliveryTag, properties, routingKey, body)
           }
-        })
+          .onErrorHandleWith {
+            handleCallbackFailure(messageId, deliveryTag, properties, routingKey, body)
+          }
+          .executeOn(callbackScheduler)
       } catch {
         // we catch this specific exception, handling of others is up to Lyra
         case e: RejectedExecutionException =>
-          processingCount.decrementAndGet()
-          processingFailedMeter.mark()
           logger.debug(s"[$name] Executor was unable to plan the handling task", e)
-          consumerListener.onError(this, name, channel, e)
-          executeFailureAction(messageId, deliveryTag, properties, routingKey, body)
+          handleFailure(messageId, deliveryTag, properties, routingKey, body, e)
+
+        case NonFatal(e) => handleCallbackFailure(messageId, deliveryTag, properties, routingKey, body)(e)
+      }
+    }.executeOn(callbackScheduler)
+
+    Kluzo.withTraceId(traceId) {
+      processedTimer.time {
+        task.runAsync
       }
     }
+
+    ()
   }
 
   private def extractTraceId(properties: BasicProperties) = {
@@ -114,34 +111,49 @@ class DefaultRabbitMQConsumer(val name: String,
     }
   }
 
-  private def handleResult(messageId: String,
-                           deliveryTag: Long,
-                           properties: BasicProperties,
-                           routingKey: String,
-                           body: Array[Byte]): PartialFunction[Try[DeliveryResult], Unit] = {
+  private def handleResult(messageId: String, deliveryTag: Long, properties: BasicProperties, routingKey: String, body: Array[Byte])(
+      res: DeliveryResult): Task[Unit] = {
     import DeliveryResult._
 
     processingCount.decrementAndGet()
 
-    {
-      case Success(Ack) => ack(messageId, deliveryTag)
-      case Success(Reject) => reject(messageId, deliveryTag)
-      case Success(Retry) => retry(messageId, deliveryTag)
-      case Success(Republish(newHeaders)) =>
+    res match {
+      case Ack => ack(messageId, deliveryTag)
+      case Reject => reject(messageId, deliveryTag)
+      case Retry => retry(messageId, deliveryTag)
+      case Republish(newHeaders) =>
         republish(messageId, deliveryTag, mergeHeadersForRepublish(newHeaders, properties, routingKey), body)
-      case Failure(NonFatal(e)) =>
-        processingFailedMeter.mark()
-        logger.error(s"[$name] Error while executing callback, it's probably a BUG", e)
-
-        executeFailureAction(messageId, deliveryTag, properties, routingKey, body)
     }
+  }
+
+  private def handleCallbackFailure(messageId: String,
+                                    deliveryTag: Long,
+                                    properties: BasicProperties,
+                                    routingKey: String,
+                                    body: Array[Byte])(t: Throwable): Task[Unit] = {
+
+    logger.error(s"[$name] Error while executing callback, it's probably a BUG", t)
+
+    handleFailure(messageId, deliveryTag, properties, routingKey, body, t)
+  }
+
+  private def handleFailure(messageId: String,
+                            deliveryTag: Long,
+                            properties: BasicProperties,
+                            routingKey: String,
+                            body: Array[Byte],
+                            t: Throwable): Task[Unit] = {
+    processingCount.decrementAndGet()
+    processingFailedMeter.mark()
+    consumerListener.onError(this, name, channel, t)
+    executeFailureAction(messageId, deliveryTag, properties, routingKey, body)
   }
 
   private def executeFailureAction(messageId: String,
                                    deliveryTag: Long,
                                    properties: BasicProperties,
                                    routingKey: String,
-                                   body: Array[Byte]): Unit = {
+                                   body: Array[Byte]): Task[Unit] = {
     import DeliveryResult._
 
     failureAction match {
@@ -161,55 +173,54 @@ class DefaultRabbitMQConsumer(val name: String,
     properties.builder().headers(headers.asJava).build()
   }
 
-  override def bindTo(exchange: String, routingKey: String, arguments: Map[String, Any]): Try[Done] = Try {
-    bindToAction(exchange, routingKey, arguments)
-    Done
-  }
-
   override def close(): Unit = {
     channel.close()
   }
 
-  private def ack(messageId: String, deliveryTag: Long): Unit = {
-    try {
-      logger.debug(s"[$name] ACK delivery ID $messageId, deliveryTag $deliveryTag")
-      channel.basicAck(deliveryTag, false)
-      resultAckMeter.mark()
-    } catch {
-      case NonFatal(e) => logger.warn(s"[$name] Error while confirming the delivery", e)
-    }
-  }
+  private def ack(messageId: String, deliveryTag: Long): Task[Unit] =
+    Task {
+      try {
+        logger.debug(s"[$name] ACK delivery ID $messageId, deliveryTag $deliveryTag")
+        channel.basicAck(deliveryTag, false)
+        resultAckMeter.mark()
+      } catch {
+        case NonFatal(e) => logger.warn(s"[$name] Error while confirming the delivery", e)
+      }
+    }.executeOn(blockingScheduler)
 
-  private def reject(messageId: String, deliveryTag: Long): Unit = {
-    try {
-      logger.debug(s"[$name] REJECT delivery ID $messageId, deliveryTag $deliveryTag")
-      channel.basicReject(deliveryTag, false)
-      resultRejectMeter.mark()
-    } catch {
-      case NonFatal(e) => logger.warn(s"[$name] Error while rejecting the delivery", e)
-    }
-  }
+  private def reject(messageId: String, deliveryTag: Long): Task[Unit] =
+    Task {
+      try {
+        logger.debug(s"[$name] REJECT delivery ID $messageId, deliveryTag $deliveryTag")
+        channel.basicReject(deliveryTag, false)
+        resultRejectMeter.mark()
+      } catch {
+        case NonFatal(e) => logger.warn(s"[$name] Error while rejecting the delivery", e)
+      }
+    }.executeOn(blockingScheduler)
 
-  private def retry(messageId: String, deliveryTag: Long): Unit = {
-    try {
-      logger.debug(s"[$name] REJECT (with requeue) delivery ID $messageId, deliveryTag $deliveryTag")
-      channel.basicReject(deliveryTag, true)
-      resultRetryMeter.mark()
-    } catch {
-      case NonFatal(e) => logger.warn(s"[$name] Error while rejecting (with requeue) the delivery", e)
-    }
-  }
+  private def retry(messageId: String, deliveryTag: Long): Task[Unit] =
+    Task {
+      try {
+        logger.debug(s"[$name] REJECT (with requeue) delivery ID $messageId, deliveryTag $deliveryTag")
+        channel.basicReject(deliveryTag, true)
+        resultRetryMeter.mark()
+      } catch {
+        case NonFatal(e) => logger.warn(s"[$name] Error while rejecting (with requeue) the delivery", e)
+      }
+    }.executeOn(blockingScheduler)
 
-  private def republish(messageId: String, deliveryTag: Long, properties: BasicProperties, body: Array[Byte]): Unit = {
-    try {
-      logger.debug(s"[$name] Republishing delivery (ID $messageId, deliveryTag $deliveryTag) to end of queue '$queueName'")
-      channel.basicPublish("", queueName, properties, body)
-      channel.basicAck(deliveryTag, false)
-      resultRepublishMeter.mark()
-    } catch {
-      case NonFatal(e) => logger.warn(s"[$name] Error while republishing the delivery", e)
-    }
-  }
+  private def republish(messageId: String, deliveryTag: Long, properties: BasicProperties, body: Array[Byte]): Task[Unit] =
+    Task {
+      try {
+        logger.debug(s"[$name] Republishing delivery (ID $messageId, deliveryTag $deliveryTag) to end of queue '$queueName'")
+        channel.basicPublish("", queueName, properties, body)
+        channel.basicAck(deliveryTag, false)
+        resultRepublishMeter.mark()
+      } catch {
+        case NonFatal(e) => logger.warn(s"[$name] Error while republishing the delivery", e)
+      }
+    }.executeOn(blockingScheduler)
 }
 
 object DefaultRabbitMQConsumer {

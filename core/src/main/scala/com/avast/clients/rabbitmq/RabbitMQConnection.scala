@@ -2,12 +2,10 @@ package com.avast.clients.rabbitmq
 
 import java.nio.file.{Path, Paths}
 import java.time.Duration
-import java.util.concurrent.{ExecutorService, ScheduledExecutorService}
+import java.util.concurrent.ExecutorService
 
-import com.avast.clients.rabbitmq.api.{Delivery, _}
+import com.avast.clients.rabbitmq.api._
 import com.avast.metrics.scalaapi.Monitor
-import com.avast.utils2.Done
-import com.avast.utils2.errorhandling.FutureTimeouter
 import com.avast.utils2.ssl.{KeyStoreTypes, SSLBuilder}
 import com.rabbitmq.client._
 import com.typesafe.config.{Config, ConfigFactory}
@@ -17,12 +15,10 @@ import net.ceedubs.ficus.Ficus._
 import net.ceedubs.ficus.readers.ArbitraryTypeReader._
 import net.ceedubs.ficus.readers.ValueReader
 
-import scala.concurrent.{ExecutionContext, Future}
 import scala.language.higherKinds
-import scala.util.Try
 import scala.util.control.NonFatal
 
-trait RabbitMQConnection extends AutoCloseable {
+trait RabbitMQConnection[F[_]] extends AutoCloseable {
 
   /** Creates new channel inside this connection. Usable for some applications-specific actions which are not supported by the library.
     */
@@ -33,39 +29,45 @@ trait RabbitMQConnection extends AutoCloseable {
     * @param configName Name of configuration of the consumer.
     * @param monitor    Monitor for metrics.
     * @param readAction Action executed for each delivered message. You should never return a failed future.
-    * @param ec         [[ExecutionContext]] used for callbacks.
+    * @param scheduler  [[Scheduler]] used for callbacks.
     */
-  def newConsumer(configName: String, monitor: Monitor)(readAction: Delivery => Future[DeliveryResult])(
-      implicit ec: ExecutionContext): RabbitMQConsumer
+  def newConsumer(configName: String, monitor: Monitor)(readAction: DeliveryReadAction[F])(
+      implicit scheduler: Scheduler): RabbitMQConsumer with AutoCloseable
 
   /** Creates new instance of producer, using the TypeSafe configuration passed to the factory and producer name.
     *
     * @param configName Name of configuration of the producer.
     * @param monitor    Monitor for metrics.F
     */
-  def newProducer[F[_]: FromTask](configName: String, scheduler: Scheduler, monitor: Monitor): RabbitMQProducer[F] with AutoCloseable
+  def newProducer(configName: String, monitor: Monitor): RabbitMQProducer[F] with AutoCloseable
 
   /**
     * Declares and additional exchange, using the TypeSafe configuration passed to the factory and config name.
     */
-  def declareExchange(configName: String): Try[Done]
+  def declareExchange(configName: String): F[Unit]
 
   /**
     * Declares and additional queue, using the TypeSafe configuration passed to the factory and config name.
     */
-  def declareQueue(configName: String): Try[Done]
+  def declareQueue(configName: String): F[Unit]
 
   /**
     * Binds a queue to an exchange, using the TypeSafe configuration passed to the factory and config name.<br>
     * Failure indicates that the binding has failed for AT LEAST one routing key.
     */
-  def bindQueue(configName: String): Try[Done]
+  def bindQueue(configName: String): F[Unit]
 
   /**
     * Binds an exchange to an another exchange, using the TypeSafe configuration passed to the factory and config name.<br>
     * Failure indicates that the binding has failed for AT LEAST one routing key.
     */
-  def bindExchange(configName: String): Try[Done]
+  def bindExchange(configName: String): F[Unit]
+
+  /** Executes a specified action with newly created [[ServerChannel]] which is then closed.
+    * @see #newChannel()
+    * @return Result of performed action.
+    */
+  def withChannel[A](f: ServerChannel => F[A]): F[A]
 }
 
 object RabbitMQConnection extends StrictLogging {
@@ -86,17 +88,15 @@ object RabbitMQConnection extends StrictLogging {
 
   /** Creates new instance of channel factory, using the passed configuration.
     *
-    * @param providedConfig           The configuration.
-    * @param executor                 [[ExecutorService]] which should be used as shared for all channels from this factory. Optional parameter.
-    * @param scheduledExecutorService [[ScheduledExecutorService]] used for timeouting tasks for all created consumers.
+    * @param providedConfig   The configuration.
+    * @param blockingExecutor [[ExecutorService]] which should be used as shared blocking pool (IO operations) for all channels from this factory.
     */
-  def fromConfig(providedConfig: Config,
-                 executor: Option[ExecutorService] = None,
-                 connectionListener: ConnectionListener = DefaultListeners.DefaultConnectionListener,
-                 channelListener: ChannelListener = DefaultListeners.DefaultChannelListener,
-                 consumerListener: ConsumerListener = DefaultListeners.DefaultConsumerListener,
-                 scheduledExecutorService: ScheduledExecutorService = FutureTimeouter.Implicits.DefaultScheduledExecutor)
-    : DefaultRabbitMQConnection = {
+  def fromConfig[F[_]: FromTask: ToTask](
+      providedConfig: Config,
+      blockingExecutor: ExecutorService,
+      connectionListener: ConnectionListener = DefaultListeners.DefaultConnectionListener,
+      channelListener: ChannelListener = DefaultListeners.DefaultChannelListener,
+      consumerListener: ConsumerListener = DefaultListeners.DefaultConsumerListener): DefaultRabbitMQConnection[F] = {
     // we need to wrap it with one level, to be able to parse it with Ficus
     val config = ConfigFactory
       .empty()
@@ -104,7 +104,7 @@ object RabbitMQConnection extends StrictLogging {
 
     val connectionConfig = config.as[RabbitMQConnectionConfig]("root")
 
-    val connection = createConnection(connectionConfig, executor, connectionListener, channelListener, consumerListener)
+    val connection = createConnection(connectionConfig, blockingExecutor, connectionListener, channelListener, consumerListener)
 
     new DefaultRabbitMQConnection(
       connection = connection,
@@ -116,12 +116,12 @@ object RabbitMQConnection extends StrictLogging {
       connectionListener = connectionListener,
       channelListener = channelListener,
       consumerListener = consumerListener,
-      scheduledExecutorService
+      blockingScheduler = Scheduler(blockingExecutor)
     )
   }
 
   protected def createConnection(connectionConfig: RabbitMQConnectionConfig,
-                                 executor: Option[ExecutorService],
+                                 executor: ExecutorService,
                                  connectionListener: ConnectionListener,
                                  channelListener: ChannelListener,
                                  consumerListener: ConsumerListener): ServerConnection = {
@@ -159,7 +159,7 @@ object RabbitMQConnection extends StrictLogging {
   private def setUpConnection(connectionConfig: RabbitMQConnectionConfig,
                               factory: ConnectionFactory,
                               exceptionHandler: ExceptionHandler,
-                              executor: Option[ExecutorService]): Unit = {
+                              executor: ExecutorService): Unit = {
     import connectionConfig._
 
     factory.setVirtualHost(virtualHost)
@@ -170,7 +170,7 @@ object RabbitMQConnection extends StrictLogging {
     factory.setExceptionHandler(exceptionHandler)
     factory.setRequestedHeartbeat(heartBeatInterval.getSeconds.toInt)
 
-    executor.foreach(factory.setSharedExecutor)
+    factory.setSharedExecutor(executor)
 
     if (credentials.enabled) {
       import credentials._

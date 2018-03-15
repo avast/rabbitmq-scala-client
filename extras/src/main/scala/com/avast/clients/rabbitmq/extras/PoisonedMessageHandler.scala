@@ -9,7 +9,6 @@ import com.avast.clients.rabbitmq.extras.PoisonedMessageHandler._
 import com.avast.clients.rabbitmq.javaapi
 import com.avast.clients.rabbitmq.javaapi.JavaConverters._
 import com.avast.utils2.Done
-import com.avast.utils2.JavaConverters._
 import com.typesafe.scalalogging.StrictLogging
 
 import scala.concurrent.{ExecutionContext, ExecutionContextExecutor, Future}

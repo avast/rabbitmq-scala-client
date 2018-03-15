@@ -18,7 +18,7 @@ public class ExampleJava {
 
         final ExecutorService executor = Executors.newCachedThreadPool();
 
-        final RabbitMQJavaConnection connection = RabbitMQJavaConnection.newBuilder(config).withExecutor(executor).build();
+        final RabbitMQJavaConnection connection = RabbitMQJavaConnection.newBuilder(config, executor).build();
 
         final RabbitMQConsumer rabbitMQConsumer = connection.newConsumer(
                 "consumer",
@@ -34,7 +34,7 @@ public class ExampleJava {
 
         for (int i = 0; i < 1000; i++) {
             try {
-                rabbitMQProducer.send(routingKey, Bytes.copyFromUtf8("hello world"));
+                rabbitMQProducer.send(routingKey, Bytes.copyFromUtf8("hello world")).get();
             } catch (Exception e) {
                 System.err.println("Message could not be sent: " + e.getClass().getName() + ": " + e.getMessage());
             }

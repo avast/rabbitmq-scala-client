@@ -6,21 +6,23 @@ import java.util.concurrent.{CountDownLatch, Executors, TimeUnit}
 import com.avast.bytes.Bytes
 import com.avast.clients.rabbitmq.api.{DeliveryResult, MessageProperties}
 import com.avast.continuity.Continuity
+import com.avast.continuity.monix.Monix
 import com.avast.kluzo.{Kluzo, TraceId}
 import com.avast.metrics.scalaapi.Monitor
 import com.avast.utils2.Done
 import com.typesafe.config.{Config, ConfigFactory, ConfigValueFactory}
+import monix.eval.Task
 import monix.execution.Scheduler
 import net.ceedubs.ficus.Ficus._
 import org.scalatest.FunSuite
-import org.scalatest.concurrent.Eventually
+import org.scalatest.concurrent.{Eventually, ScalaFutures}
 import org.scalatest.time.{Milliseconds, Seconds, Span}
 
 import scala.collection.JavaConverters._
-import scala.concurrent.{ExecutionContext, Future}
+import scala.concurrent.ExecutionContext
 import scala.util.{Random, Success, Try}
 
-class LiveTest extends FunSuite with Eventually {
+class LiveTest extends FunSuite with Eventually with ScalaFutures {
 
   import com.avast.clients.rabbitmq.api.DeliveryResult._
 
@@ -56,9 +58,9 @@ class LiveTest extends FunSuite with Eventually {
       Random.alphanumeric.take(length).mkString("")
     }
 
-    implicit val ex = Continuity.wrapExecutionContextExecutorService(ExecutionContext.fromExecutorService(Executors.newCachedThreadPool()))
+    val ex = Continuity.wrapExecutionContextExecutorService(ExecutionContext.fromExecutorService(Executors.newCachedThreadPool()))
 
-    val sched = Scheduler(ex: ExecutionContext)
+    implicit val sched: Scheduler = Monix.wrapScheduler(Scheduler(Executors.newCachedThreadPool()))
   }
 
   val testHelper = new TestHelper(System.getProperty("rabbit.host"), System.getProperty("rabbit.tcp.15672").toInt)
@@ -69,17 +71,17 @@ class LiveTest extends FunSuite with Eventually {
 
     val latch = new CountDownLatch(1)
 
-    val rabbitConnection = RabbitMQConnection.fromConfig(config, Some(ex))
+    val rabbitConnection = RabbitMQConnection.fromConfig[Task](config, ex)
 
-    rabbitConnection.newConsumer("consumer", Monitor.noOp()) { delivery =>
+    rabbitConnection.newConsumer("consumer", Monitor.noOp()) { _ =>
       latch.countDown()
       assertResult(true)(Kluzo.getTraceId.nonEmpty)
-      Future.successful(DeliveryResult.Ack)
+      Task.now(DeliveryResult.Ack)
     }
 
-    val sender = rabbitConnection.newProducer[Try]("producer", sched, Monitor.noOp())
+    val sender = rabbitConnection.newProducer("producer", Monitor.noOp())
 
-    sender.send("test", Bytes.copyFromUtf8(Random.nextString(10)))
+    sender.send("test", Bytes.copyFromUtf8(Random.nextString(10))).runAsync.futureValue
 
     assertResult(true)(latch.await(500, TimeUnit.MILLISECONDS))
 
@@ -95,12 +97,12 @@ class LiveTest extends FunSuite with Eventually {
 
     val latch = new CountDownLatch(count + 5)
 
-    val rabbitConnection = RabbitMQConnection.fromConfig(config, Some(ex))
+    val rabbitConnection = RabbitMQConnection.fromConfig[Task](config, ex)
 
     val d = new AtomicInteger(0)
 
-    rabbitConnection.newConsumer("consumer", Monitor.noOp()) { delivery =>
-      Future {
+    rabbitConnection.newConsumer("consumer", Monitor.noOp()) { _ =>
+      Task {
         Thread.sleep(if (d.get() % 2 == 0) 300 else 0)
         latch.countDown()
 
@@ -111,10 +113,10 @@ class LiveTest extends FunSuite with Eventually {
       }
     }
 
-    val sender = rabbitConnection.newProducer[Try]("producer", sched, Monitor.noOp())
+    val sender = rabbitConnection.newProducer("producer", Monitor.noOp())
 
     for (_ <- 1 to count) {
-      sender.send("test", Bytes.copyFromUtf8(Random.nextString(10)))
+      sender.send("test", Bytes.copyFromUtf8(Random.nextString(10))).runAsync.futureValue
     }
 
     eventually(timeout(Span(3, Seconds)), interval(Span(0.1, Seconds))) {
@@ -129,19 +131,19 @@ class LiveTest extends FunSuite with Eventually {
 
     val latch = new CountDownLatch(20)
 
-    val rabbitConnection = RabbitMQConnection.fromConfig(config, Some(ex))
+    val rabbitConnection = RabbitMQConnection.fromConfig[Task](config, ex)
 
-    rabbitConnection.newConsumer("consumer", Monitor.noOp()) { delivery =>
+    rabbitConnection.newConsumer("consumer", Monitor.noOp()) { _ =>
       latch.countDown()
-      Future.successful(Ack)
+      Task.now(Ack)
     }
 
-    val sender1 = rabbitConnection.newProducer[Try]("producer", sched, Monitor.noOp())
-    val sender2 = rabbitConnection.newProducer[Try]("producer2", sched, Monitor.noOp())
+    val sender1 = rabbitConnection.newProducer("producer", Monitor.noOp())
+    val sender2 = rabbitConnection.newProducer("producer2", Monitor.noOp())
 
     for (_ <- 1 to 10) {
-      sender1.send("test", Bytes.copyFromUtf8(Random.nextString(10)))
-      sender2.send("test2", Bytes.copyFromUtf8(Random.nextString(10)))
+      sender1.send("test", Bytes.copyFromUtf8(Random.nextString(10))).runAsync.futureValue
+      sender2.send("test2", Bytes.copyFromUtf8(Random.nextString(10))).runAsync.futureValue
     }
 
     assertResult(true)(latch.await(500, TimeUnit.MILLISECONDS))
@@ -153,25 +155,25 @@ class LiveTest extends FunSuite with Eventually {
     val c = createConfig()
     import c._
 
-    val rabbitConnection = RabbitMQConnection.fromConfig(config, Some(ex))
+    val rabbitConnection = RabbitMQConnection.fromConfig[Task](config, ex)
 
     val cnt = new AtomicInteger(0)
 
-    rabbitConnection.newConsumer("consumer", Monitor.noOp()) { delivery =>
+    rabbitConnection.newConsumer("consumer", Monitor.noOp()) { _ =>
       cnt.incrementAndGet()
       assertResult(true)(Kluzo.getTraceId.nonEmpty)
 
-      Future {
+      Task {
         assertResult(true)(Kluzo.getTraceId.nonEmpty)
         Thread.sleep(800) // timeout is set to 500 ms
         Ack
       }
     }
 
-    val sender = rabbitConnection.newProducer[Try]("producer", sched, Monitor.noOp())
+    val sender = rabbitConnection.newProducer("producer", Monitor.noOp())
 
     for (_ <- 1 to 10) {
-      sender.send("test", Bytes.copyFromUtf8(Random.nextString(10)))
+      sender.send("test", Bytes.copyFromUtf8(Random.nextString(10))).runAsync.futureValue
     }
 
     eventually(timeout(Span(3, Seconds)), interval(Span(0.25, Seconds))) {
@@ -184,24 +186,24 @@ class LiveTest extends FunSuite with Eventually {
     val c = createConfig()
     import c._
 
-    val rabbitConnection = RabbitMQConnection.fromConfig(config, Some(ex))
+    val rabbitConnection = RabbitMQConnection.fromConfig[Try](config, ex)
 
     val cnt = new AtomicInteger(0)
 
-    rabbitConnection.newConsumer("consumer", Monitor.noOp()) { delivery =>
+    rabbitConnection.newConsumer("consumer", Monitor.noOp()) { _ =>
       cnt.incrementAndGet()
 
       Thread.sleep(800) // timeout is set to 500 ms
-      Future.successful(Ack)
+      Success(Ack)
     }
 
-    val sender = rabbitConnection.newProducer[Try]("producer", sched, Monitor.noOp())
+    val sender = rabbitConnection.newProducer("producer", Monitor.noOp())
 
     for (_ <- 1 to 10) {
       sender.send("test", Bytes.copyFromUtf8(Random.nextString(10)))
     }
 
-    eventually(timeout(Span(3, Seconds)), interval(Span(0.25, Seconds))) {
+    eventually(timeout(Span(5, Seconds)), interval(Span(0.25, Seconds))) {
       assert(cnt.get() >= 40)
       assert(testHelper.getMessagesCount(queueName) <= 20)
     }
@@ -211,19 +213,19 @@ class LiveTest extends FunSuite with Eventually {
     val c = createConfig()
     import c._
 
-    val rabbitConnection = RabbitMQConnection.fromConfig(config, Some(ex))
+    val rabbitConnection = RabbitMQConnection.fromConfig[Try](config, ex)
 
     val cnt = new AtomicInteger(0)
 
     val traceId = TraceId.generate
 
-    rabbitConnection.newConsumer("consumer", Monitor.noOp()) { delivery =>
+    rabbitConnection.newConsumer("consumer", Monitor.noOp()) { _ =>
       cnt.incrementAndGet()
       assertResult(Some(traceId))(Kluzo.getTraceId)
-      Future.successful(Ack)
+      Success(Ack)
     }
 
-    val sender = rabbitConnection.newProducer[Try]("producer", sched, Monitor.noOp())
+    val sender = rabbitConnection.newProducer("producer", Monitor.noOp())
 
     for (_ <- 1 to 10) {
       Kluzo.withTraceId(Some(traceId)) {
@@ -241,24 +243,24 @@ class LiveTest extends FunSuite with Eventually {
     val c = createConfig()
     import c._
 
-    val rabbitConnection = RabbitMQConnection.fromConfig(config, Some(ex))
+    val rabbitConnection = RabbitMQConnection.fromConfig[Try](config, ex)
 
     val cnt = new AtomicInteger(0)
 
     val traceId = "someTraceId"
 
-    rabbitConnection.newConsumer("consumer", Monitor.noOp()) { delivery =>
+    rabbitConnection.newConsumer("consumer", Monitor.noOp()) { _ =>
       cnt.incrementAndGet()
       assertResult(Some(TraceId(traceId)))(Kluzo.getTraceId)
-      Future.successful(Ack)
+      Success(Ack)
     }
 
-    val sender = rabbitConnection.newProducer[Try]("producer", sched, Monitor.noOp())
+    val sender = rabbitConnection.newProducer("producer", Monitor.noOp())
 
     for (_ <- 1 to 10) {
       val properties = MessageProperties(headers = Map(Kluzo.HttpHeaderName -> traceId.asInstanceOf[AnyRef]))
 
-      sender.send("test", Bytes.copyFromUtf8(Random.nextString(10)), Some(properties))
+      sender.send("test", Bytes.copyFromUtf8(Random.nextString(10)), Some(properties)).failed.foreach(fail(_: Throwable))
     }
 
     eventually(timeout(Span(3, Seconds)), interval(Span(0.25, Seconds))) {
@@ -273,9 +275,9 @@ class LiveTest extends FunSuite with Eventually {
 
     val latch = new CountDownLatch(10)
 
-    val rabbitConnection = RabbitMQConnection.fromConfig(config, Some(ex))
+    val rabbitConnection = RabbitMQConnection.fromConfig[Try](config, ex)
 
-    val sender = rabbitConnection.newProducer[Try]("producer", sched, Monitor.noOp())
+    val sender = rabbitConnection.newProducer("producer", Monitor.noOp())
 
     // additional declarations
 
@@ -288,11 +290,11 @@ class LiveTest extends FunSuite with Eventually {
 
     rabbitConnection.newConsumer("consumer", Monitor.noOp()) { _ =>
       latch.countDown()
-      Future.successful(DeliveryResult.Ack)
+      Success(DeliveryResult.Ack)
     }
 
     for (_ <- 1 to 10) {
-      sender.send("test", Bytes.copyFromUtf8(Random.nextString(10)))
+      sender.send("test", Bytes.copyFromUtf8(Random.nextString(10))).failed.foreach(fail(_: Throwable))
     }
 
     eventually(timeout(Span(2, Seconds)), interval(Span(200, Milliseconds))) {

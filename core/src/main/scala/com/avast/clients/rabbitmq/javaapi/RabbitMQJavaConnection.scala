@@ -1,13 +1,14 @@
 package com.avast.clients.rabbitmq.javaapi
 
 import java.io.IOException
-import java.util.concurrent.{CompletableFuture, ExecutorService, ScheduledExecutorService}
+import java.util.concurrent.{CompletableFuture, ExecutorService}
 
 import com.avast.clients.rabbitmq.RabbitMQConnection.DefaultListeners
 import com.avast.clients.rabbitmq.{ChannelListener, ConnectionListener, ConsumerListener, RabbitMQConnection => ScalaConnection}
 import com.avast.metrics.api.Monitor
 import com.typesafe.config.Config
-import monix.execution.Scheduler
+
+import scala.concurrent.{ExecutionContext, Future}
 
 trait RabbitMQJavaConnection extends AutoCloseable {
 
@@ -35,47 +36,40 @@ trait RabbitMQJavaConnection extends AutoCloseable {
     * Declares and additional exchange, using the TypeSafe configuration passed to the factory and config name.
     */
   @throws[IOException]
-  def declareExchange(configName: String): Unit
+  def declareExchange(configName: String): CompletableFuture[Void]
 
   /**
     * Declares and additional queue, using the TypeSafe configuration passed to the factory and config name.
     */
   @throws[IOException]
-  def declareQueue(configName: String): Unit
+  def declareQueue(configName: String): CompletableFuture[Void]
 
   /**
     * Binds a queue to an exchange, using the TypeSafe configuration passed to the factory and config name.<br>
     * Failure indicates that the binding has failed for AT LEAST one routing key.
     */
   @throws[IOException]
-  def bindQueue(configName: String): Unit
+  def bindQueue(configName: String): CompletableFuture[Void]
 
   /**
     * Binds an exchange to an another exchange, using the TypeSafe configuration passed to the factory and config name.<br>
     * Failure indicates that the binding has failed for AT LEAST one routing key.
     */
   @throws[IOException]
-  def bindExchange(configName: String): Unit
+  def bindExchange(configName: String): CompletableFuture[Void]
 }
 
 object RabbitMQJavaConnection {
 
-  def newBuilder(config: Config): Builder = {
-    new Builder(config)
+  def newBuilder(config: Config, executorService: ExecutorService): Builder = {
+    new Builder(config, executorService)
   }
 
   //scalastyle:off
-  class Builder private[RabbitMQJavaConnection] (config: Config) {
-    private var executor: Option[ExecutorService] = None
+  class Builder private[RabbitMQJavaConnection] (config: Config, executorService: ExecutorService) {
     private var connectionListener: ConnectionListener = DefaultListeners.DefaultConnectionListener
     private var channelListener: ChannelListener = DefaultListeners.DefaultChannelListener
     private var consumerListener: ConsumerListener = DefaultListeners.DefaultConsumerListener
-    private var scheduledExecutorService: ScheduledExecutorService = Scheduler.DefaultScheduledExecutor
-
-    def withExecutor(executor: ExecutorService): Builder = {
-      this.executor = Option(executor)
-      this
-    }
 
     def withConnectionListener(connectionListener: ConnectionListener): Builder = {
       this.connectionListener = connectionListener
@@ -92,21 +86,19 @@ object RabbitMQJavaConnection {
       this
     }
 
-    def withScheduledExecutorService(ses: ScheduledExecutorService): Builder = {
-      this.scheduledExecutorService = ses
-      this
-    }
-
     def build(): RabbitMQJavaConnection = {
+      import com.avast.clients.rabbitmq._
+
+      implicit val ec: ExecutionContext = ExecutionContext.fromExecutorService(executorService)
+
       new RabbitMQJavaConnectionImpl(
         ScalaConnection
-          .fromConfig(
+          .fromConfig[Future](
             config,
-            executor,
+            executorService,
             Option(connectionListener).getOrElse(DefaultListeners.DefaultConnectionListener),
             Option(channelListener).getOrElse(DefaultListeners.DefaultChannelListener),
-            Option(consumerListener).getOrElse(DefaultListeners.DefaultConsumerListener),
-            scheduledExecutorService = scheduledExecutorService
+            Option(consumerListener).getOrElse(DefaultListeners.DefaultConsumerListener)
           )
       )
     }
