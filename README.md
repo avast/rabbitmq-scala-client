@@ -151,14 +151,14 @@ For full list of options please see [reference.conf](core/src/main/resources/ref
 
 ### Scala usage
 
-The library uses two types of executors - one is for blocking (IO) operations and the second for callbacks. You _have to_ provide both of them:
-1. Blocking executor as `ExecutorService`
-1. Callback executor as `monix.execution.Scheduler` - you can get it e.g. by calling `Scheduler(myFavoriteExecutionContext)`
-
 The Scala API is now _finally tagless_ (read more e.g. [here](https://www.beyondthelines.net/programming/introduction-to-tagless-final/)) -
 you can change the type it works with by specifying it when creating the _connection_. In general you have to provide
 `cats.arrow.FunctionK[Task, A]` and `cats.arrow.FunctionK[A, Task]` however there are some types supported out-of-the-box by just importing
-`import com.avast.clients.rabbitmq._` (`scala.util.Try`, `scala.concurrent.Future` and `monix.eval.Task` are currently supported).
+`import com.avast.clients.rabbitmq._` (`scala.util.Try`, `scala.concurrent.Future` and `monix.eval.Task` currently).
+
+The library uses two types of executors - one is for blocking (IO) operations and the second for callbacks. You _have to_ provide both of them:
+1. Blocking executor as `ExecutorService`
+1. Callback executor as `monix.execution.Scheduler` - you can get it e.g. by calling `Scheduler(myFavoriteExecutionContext)`
 
 ```scala
 import com.typesafe.config.ConfigFactory
