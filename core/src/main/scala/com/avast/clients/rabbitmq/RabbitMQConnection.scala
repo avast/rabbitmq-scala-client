@@ -20,7 +20,8 @@ import scala.util.control.NonFatal
 
 trait RabbitMQConnection[F[_]] extends AutoCloseable {
 
-  /** Creates new channel inside this connection. Usable for some applications-specific actions which are not supported by the library.
+  /** Creates new channel inside this connection. Usable for some applications-specific actions which are not supported by the library.<br>
+    * The caller is responsible for closing the created channel - it's closed automatically only when the whole connection is closed.
     */
   def newChannel(): ServerChannel
 

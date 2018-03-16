@@ -12,12 +12,10 @@ import scala.language.implicitConversions
 
 class DefaultRabbitMQProducer(scalaProducer: ScalaProducer[Future] with AutoCloseable)(implicit ec: ExecutionContext)
     extends RabbitMQProducer {
-  @throws[Exception]
   def send(routingKey: String, body: Bytes): CompletableFuture[Void] = {
     scalaProducer.send(routingKey, body, None).map(_ => null: Void).asJava
   }
 
-  @throws[Exception]
   def send(routingKey: String, body: Bytes, properties: MessageProperties): CompletableFuture[Void] = {
     scalaProducer.send(routingKey, body, Some(properties)).map(_ => null: Void).asJava
   }
