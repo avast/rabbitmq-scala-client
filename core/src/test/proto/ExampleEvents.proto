@@ -1,4 +1,4 @@
-package com.avast.client.rabbitmq.test;
+package com.avast.clients.rabbitmq.test;
 
 message FileSource {
     optional bytes file_id = 1;

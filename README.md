@@ -264,7 +264,7 @@ Usage example:
 ```scala
 import com.avast.bytes.Bytes
 import com.avast.cactus.bytes._ // Cactus support for Bytes, see https://github.com/avast/cactus#bytes
-import com.avast.client.rabbitmq.test.ExampleEvents.{NewFileSourceAdded => NewFileSourceAddedGpb}
+import com.avast.clients.rabbitmq.test.ExampleEvents.{NewFileSourceAdded => NewFileSourceAddedGpb}
 import com.avast.clients.rabbitmq.extras.multiformat._
 import io.circe.Decoder
 import io.circe.generic.auto._ // to auto derive `io.circe.Decoder[A]` with https://circe.github.io/circe/codec.html#fully-automatic-derivation
