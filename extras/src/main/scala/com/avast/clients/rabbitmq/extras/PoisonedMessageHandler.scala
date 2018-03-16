@@ -1,26 +1,30 @@
 package com.avast.clients.rabbitmq.extras
 
-import java.util.concurrent.{CompletableFuture, Executor}
+import java.util.concurrent.{CompletableFuture, ExecutorService}
 import java.util.function.{Function => JavaFunction}
 
 import com.avast.clients.rabbitmq.api.DeliveryResult.{Reject, Republish}
 import com.avast.clients.rabbitmq.api.{Delivery, DeliveryResult}
 import com.avast.clients.rabbitmq.extras.PoisonedMessageHandler._
-import com.avast.clients.rabbitmq.javaapi
 import com.avast.clients.rabbitmq.javaapi.JavaConverters._
+import com.avast.clients.rabbitmq.{FromTask, ToTask, javaapi, _}
 import com.avast.utils2.Done
 import com.typesafe.scalalogging.StrictLogging
+import monix.eval.Task
 
 import scala.concurrent.{ExecutionContext, ExecutionContextExecutor, Future}
+import scala.language.higherKinds
 import scala.util.Try
 import scala.util.control.NonFatal
 
-class PoisonedMessageHandler(maxCount: Int)(wrappedAction: Delivery => Future[DeliveryResult])(implicit ec: ExecutionContext)
-    extends (Delivery => Future[DeliveryResult])
+class PoisonedMessageHandler[F[_]: FromTask: ToTask](maxAttempts: Int)(wrappedAction: Delivery => F[DeliveryResult])
+    extends (Delivery => F[DeliveryResult])
     with StrictLogging {
 
-  override def apply(delivery: Delivery): Future[DeliveryResult] = {
-    wrappedAction(delivery).flatMap {
+  override def apply(delivery: Delivery): F[DeliveryResult] = convertToF {
+    convertFromF {
+      wrappedAction(delivery)
+    }.flatMap {
       case Republish(newHeaders) =>
         // get current attempt no. from passed headers with fallback to original (incoming) headers - the fallback will most likely happen
         // but we're giving the programmer chance to programatically _pretend_ lower attempt number
@@ -29,11 +33,14 @@ class PoisonedMessageHandler(maxCount: Int)(wrappedAction: Delivery => Future[De
           .flatMap(v => Try(v.toString.toInt).toOption)
           .getOrElse(0) + 1
 
-        if (attempt < maxCount) {
-          Future.successful(Republish(newHeaders + (RepublishCountHeaderName -> attempt.asInstanceOf[AnyRef])))
+        logger.debug(s"Attempt $attempt/$maxAttempts")
+
+        if (attempt < maxAttempts) {
+          Task.now(Republish(newHeaders + (RepublishCountHeaderName -> attempt.asInstanceOf[AnyRef])))
         } else {
-          handlePoisonedMessage(delivery)
-            .recover {
+          convertFromF {
+            handlePoisonedMessage(delivery)
+          }.onErrorRecover {
               case NonFatal(e) =>
                 logger.warn("Custom poisoned message handler failed", e)
                 Done
@@ -41,15 +48,23 @@ class PoisonedMessageHandler(maxCount: Int)(wrappedAction: Delivery => Future[De
             .map(_ => Reject) // always REJECT the message
         }
 
-      case r => Future.successful(r) // keep other results as they are
+      case r => Task.now(r) // keep other results as they are
     }
   }
 
   /** This method logs the delivery by default but can be overridden. The delivery is always REJECTed after this method execution.
     */
-  protected def handlePoisonedMessage(delivery: Delivery): Future[Done] = {
-    logger.warn(s"Message failures reached the limit $maxCount attempts, throwing away: $delivery")
-    Future.successful(Done)
+  protected def handlePoisonedMessage(delivery: Delivery): F[Unit] = convertToF {
+    logger.warn(s"Message failures reached the limit $maxAttempts attempts, throwing away: $delivery")
+    Task.now(())
+  }
+
+  private def convertFromF[A](task: F[A]): Task[A] = {
+    implicitly[ToTask[F]].apply(task)
+  }
+
+  private def convertToF[A](task: Task[A]): F[A] = {
+    implicitly[FromTask[F]].apply(task)
   }
 }
 
@@ -59,21 +74,24 @@ object PoisonedMessageHandler {
   type JavaAction = JavaFunction[javaapi.Delivery, CompletableFuture[javaapi.DeliveryResult]]
   type CustomJavaPoisonedAction = JavaFunction[javaapi.Delivery, CompletableFuture[Void]]
 
+  def apply[F[_]: FromTask: ToTask](maxAttempts: Int)(wrappedAction: Delivery => F[DeliveryResult]): PoisonedMessageHandler[F] = {
+    new PoisonedMessageHandler(maxAttempts)(wrappedAction)
+  }
+
   /**
     * @param customPoisonedAction The delivery is always REJECTed after this method execution.
     */
-  def withCustomPoisonedAction(maxCount: Int)(wrappedAction: Delivery => Future[DeliveryResult])(
-      customPoisonedAction: Delivery => Future[Done])(implicit ec: ExecutionContext): PoisonedMessageHandler = {
-    new PoisonedMessageHandler(maxCount)(wrappedAction) {
-
+  def withCustomPoisonedAction[F[_]: FromTask: ToTask](maxAttempts: Int)(wrappedAction: Delivery => F[DeliveryResult])(
+      customPoisonedAction: Delivery => F[Unit]): PoisonedMessageHandler[F] = {
+    new PoisonedMessageHandler(maxAttempts)(wrappedAction) {
       override protected def handlePoisonedMessage(delivery: Delivery) = customPoisonedAction(delivery)
     }
   }
 
-  def forJava(maxCount: Int, wrapped: JavaAction, ex: Executor): JavaAction = new JavaAction {
+  def forJava(maxAttempts: Int, wrapped: JavaAction, ex: ExecutorService): JavaAction = new JavaAction {
     private implicit val ec: ExecutionContextExecutor = ExecutionContext.fromExecutor(ex)
 
-    private val handler = new PoisonedMessageHandler(maxCount)(wrapped.asScala)
+    private val handler = new PoisonedMessageHandler[Future](maxAttempts)(wrapped.asScala)
 
     override def apply(t: javaapi.Delivery): CompletableFuture[javaapi.DeliveryResult] = {
       handler(t.asScala).map(_.asJava).asJava
@@ -83,13 +101,13 @@ object PoisonedMessageHandler {
   /**
     * @param customPoisonedAction The delivery is always REJECTed after this method execution.
     */
-  def forJava(maxCount: Int, wrapped: JavaAction, customPoisonedAction: CustomJavaPoisonedAction, ex: Executor): JavaAction =
+  def forJava(maxAttempts: Int, wrapped: JavaAction, customPoisonedAction: CustomJavaPoisonedAction, ex: ExecutorService): JavaAction =
     new JavaAction {
       private implicit val ec: ExecutionContextExecutor = ExecutionContext.fromExecutor(ex)
 
-      private val handler = new PoisonedMessageHandler(maxCount)(wrapped.asScala) {
-        override protected def handlePoisonedMessage(delivery: Delivery): Future[Done] = {
-          customPoisonedAction(delivery.asJava).asScala.map(_ => Done)
+      private val handler = new PoisonedMessageHandler[Future](maxAttempts)(wrapped.asScala) {
+        override protected def handlePoisonedMessage(delivery: Delivery): Future[Unit] = {
+          customPoisonedAction(delivery.asJava).asScala.map(_ => ())
         }
       }
 

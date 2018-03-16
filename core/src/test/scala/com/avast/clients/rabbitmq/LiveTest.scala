@@ -5,6 +5,7 @@ import java.util.concurrent.{CountDownLatch, Executors, Semaphore, TimeUnit}
 
 import com.avast.bytes.Bytes
 import com.avast.clients.rabbitmq.api.{DeliveryResult, MessageProperties}
+import com.avast.clients.rabbitmq.extras.PoisonedMessageHandler
 import com.avast.continuity.Continuity
 import com.avast.continuity.monix.Monix
 import com.avast.kluzo.{Kluzo, TraceId}
@@ -312,6 +313,42 @@ class LiveTest extends FunSuite with Eventually with ScalaFutures with StrictLog
 
       assertResult(0)(testHelper.getMessagesCount(queueName))
       assertResult(10)(testHelper.getMessagesCount(queueName2))
+    }
+  }
+
+  test("PoisonedMessageHandler") {
+    val c = createConfig()
+    import c._
+
+    val poisoned = new AtomicInteger(0)
+    val processed = new AtomicInteger(0)
+
+    val rabbitConnection = RabbitMQConnection.fromConfig[Task](config, ex)
+
+    val h = PoisonedMessageHandler.withCustomPoisonedAction[Task](2) { _ =>
+      Task {
+        processed.incrementAndGet()
+        DeliveryResult.Republish()
+      }
+    } { _ =>
+      Task {
+        poisoned.incrementAndGet()
+        ()
+      }
+    }
+
+    rabbitConnection.newConsumer("consumer", Monitor.noOp())(h)
+
+    val sender = rabbitConnection.newProducer("producer", Monitor.noOp())
+
+    for (_ <- 1 to 10) {
+      sender.send("test", Bytes.copyFromUtf8(Random.nextString(10))).runAsync.futureValue
+    }
+
+    eventually {
+      assertResult(20)(processed.get())
+      assertResult(0)(testHelper.getMessagesCount(queueName))
+      assertResult(10)(poisoned.get())
     }
   }
 }

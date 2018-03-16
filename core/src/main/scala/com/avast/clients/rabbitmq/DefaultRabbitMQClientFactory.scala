@@ -323,7 +323,8 @@ private[rabbitmq] object DefaultRabbitMQClientFactory extends LazyLogging {
       destExchangeName: String,
       arguments: ArgumentsMap)(routingKey: String): AMQP.Exchange.BindOk = {
     logger.info(
-      s"Binding exchange $sourceExchangeName($routingKey) -> exchange '$destExchangeName' in virtual host '${channelFactoryInfo.virtualHost}'")
+      s"Binding exchange $sourceExchangeName($routingKey) -> exchange '$destExchangeName' in virtual host '${channelFactoryInfo.virtualHost}'"
+    )
 
     channel.exchangeBind(destExchangeName, sourceExchangeName, routingKey, arguments)
   }
@@ -380,19 +381,20 @@ private[rabbitmq] object DefaultRabbitMQClientFactory extends LazyLogging {
           .onErrorRecover {
             case e: TimeoutException =>
               traceId.foreach(Kluzo.setTraceId)
-              logger.warn(s"Task timed-out, applying DeliveryResult.${consumerConfig.timeoutAction}", e)
+
+              logger.warn(s"[$name] Task timed-out, applying DeliveryResult.${consumerConfig.timeoutAction}", e)
               consumerConfig.timeoutAction
 
             case NonFatal(e) =>
               traceId.foreach(Kluzo.setTraceId)
 
-              logger.warn(s"Error while executing callback, applying DeliveryResult.${consumerConfig.failureAction}", e)
+              logger.warn(s"[$name] Error while executing callback, applying DeliveryResult.${consumerConfig.failureAction}", e)
               consumerConfig.failureAction
           }
           .executeOn(callbackScheduler)
       } catch {
         case NonFatal(e) =>
-          logger.error(s"Error while executing callback, applying DeliveryResult.${consumerConfig.failureAction}", e)
+          logger.error(s"[$name] Error while executing callback, applying DeliveryResult.${consumerConfig.failureAction}", e)
           Task.now(consumerConfig.failureAction)
       }
 
