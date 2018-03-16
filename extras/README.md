@@ -28,8 +28,11 @@ It's quite often use-case we want to republish failed message but want to avoid 
 with [PoisonedMessageHandler](src/main/scala/com/avast/clients/rabbitmq/extras/PoisonedMessageHandler.scala) to solve this issue. It will count no.
 of attempts and won't let the message to be republished again and again (above the limit you set).  
 _Note: it works ONLY for `Republish` and not for `Retry`!_
+
+The `PoisonedMessageHandler` is _finally tagless_ for Scala (see [related info](../README.md#scala-usage)) and bound to `CompletableFuture` for Java.
+
 ```scala
-val newReadAction = new PoisonedMessageHandler(3)(myReadAction)
+val newReadAction = PoisonedMessageHandler[Future](3)(myReadAction)
 ```
 Java:
 ```java
@@ -41,9 +44,9 @@ Republish(Map(PoisonedMessageHandler.RepublishCountHeaderName -> 1.asInstanceOf[
 ```
 Note you can provide your custom poisoned-message handle action:
 ```scala
-val newReadAction = PoisonedMessageHandler.withCustomPoisonedAction(3)(myReadAction) { delivery =>
+val newReadAction = PoisonedMessageHandler.withCustomPoisonedAction[Future](3)(myReadAction) { delivery =>
   logger.warn(s"Delivery $delivery is poisoned!")
-  Future.successful(Done)
+  Future.successful(())
 }
 ```
 After the execution of the poisoned-message action (no matter whether default or custom one), the delivery is REJECTed.

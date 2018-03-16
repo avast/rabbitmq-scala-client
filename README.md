@@ -8,9 +8,12 @@ This client is lightweight wrapper over standard [RabbitMQ java client](https://
 It's API may be difficult to use for inexperienced RabbitMQ users. Goal of this library is to simplify basic use cases and shadow the programmer
 from the underlying client.
 
-It uses [Lyra library](https://github.com/jhalterman/lyra) for better recovery ability.
+The library has both Scala and Java API where the Scala API is generic and gives you an option to adapt it to your application's manner -
+see [Scala usage below](#scala-usage).
 
-Author: [Jenda Kolena](mailto:kolena@avast.com)
+The library uses concept of _connection_ and derived _producers_ and _consumers_. Note that the _connection_ shadows you from the underlying
+concept of AMQP connection and derived channels - it handles channels automatically according to best practises. Each _producer_ and _consumer_
+can be closed separately while closing _connection_ causes closing all derived channels and all _producers_ and _consumers_.
 
 ## Dependency
 `compile 'com.avast.clients:rabbitmq-client-core_?:x.x.x'`
@@ -23,6 +26,10 @@ some optional functionality:
 1. [extras](extras/README.md)
 1. [extras-circe](extras-circe/README.md) (adds some circe-dependent functionality)
 1. [extras-cactus](extras-cactus/README.md) (adds some cactus-dependent functionality)
+
+## Migration
+
+There is a [migration guide](Migration-5-6.md) between versions 5 and 6.
 
 ## Usage
 
@@ -60,7 +67,7 @@ myConfig {
   hosts = ["localhost:5672"]
   virtualHost = "/"
   
-  name="Cluster01Connection" // used for logging AND is also visible in client properties in RabbitMQ management console
+  name = "Cluster01Connection" // used for logging AND is also visible in client properties in RabbitMQ management console
 
   ssl {
     enabled = false // enabled by default
@@ -144,26 +151,42 @@ For full list of options please see [reference.conf](core/src/main/resources/ref
 
 ### Scala usage
 
+The library uses two types of executors - one is for blocking (IO) operations and the second for callbacks. You _have to_ provide both of them:
+1. Blocking executor as `ExecutorService`
+1. Callback executor as `monix.execution.Scheduler` - you can get it e.g. by calling `Scheduler(myFavoriteExecutionContext)`
+
+The Scala API is now _finally tagless_ (read more e.g. [here](https://www.beyondthelines.net/programming/introduction-to-tagless-final/)) -
+you can change the type it works with by specifying it when creating the _connection_. In general you have to provide
+`cats.arrow.FunctionK[Task, A]` and `cats.arrow.FunctionK[A, Task]` however there are some types supported out-of-the-box by just importing
+`import com.avast.clients.rabbitmq._` (`scala.util.Try`, `scala.concurrent.Future` and `monix.eval.Task` are currently supported).
+
 ```scala
-  val config = ConfigFactory.load().getConfig("myRabbitConfig")
+import com.typesafe.config.ConfigFactory
+import com.avast.metrics.dropwizard.AvastJmxMetricsMonitor
+import com.avast.clients.rabbitmq._ // for generic types support
+import monix.execution._
+import monix.eval._
 
-  // you need both `ExecutorService` (optionally passed to `RabbitMQFactory`) and `ExecutionContext` (implicitly passed to consumer), both are
-  // used for callbacks execution, so why not to use a `ExecutionContextExecutionService`?
-  implicit val ex: ExecutionContextExecutorService = ???
+val config = ConfigFactory.load().getConfig("myRabbitConfig")
 
-  val monitor = new JmxMetricsMonitor("TestDomain")
+implicit val sch: Scheduler = ???
+val blockingExecutor: ExecutorService = Executors.newCachedThreadPool()
 
-  // here you create the factory; it's shared for all producers/consumers amongst one RabbitMQ server - they will share a single TCP connection
-  // but have separated channels
-  // if you expect very high load, you can use separate connections for each producer/consumer, but it's usually not needed
-  val rabbitFactory = RabbitMQFactory.fromConfig(config, Some(ex))
+val monitor = new AvastJmxMetricsMonitor("TestDomain")
 
-  val receiver = rabbitFactory.newConsumer("consumer", monitor) { delivery =>
-    println(delivery)
-    Future.successful(DeliveryResult.Ack)
-  }
+// here you create the connection; it's shared for all producers/consumers amongst one RabbitMQ server - they will share a single TCP connection
+// but have separated channels
+// if you expect very high load, you can use separate connections for each producer/consumer, but it's usually not needed
+val rabbitConnection = RabbitMQConnection.fromConfig[Task](config, blockingExecutor) // DefaultRabbitMQConnection[Task]
 
-  val sender = rabbitFactory.newProducer("producer", monitor)
+val consumer = rabbitConnection.newConsumer("consumer", monitor) { delivery =>
+  println(delivery)
+  Task.now(DeliveryResult.Ack)
+} // DefaultRabbitMQConsumer
+
+val sender = rabbitConnection.newProducer("producer", monitor) // DefaultRabbitMQProducer[Task]
+
+sender.send(...).runAsync // because it's Task, don't forget to run it ;-)
 ```
 
 ### Java usage
@@ -173,19 +196,39 @@ depending on your usage).
 Don't get confused by the Java API partially implemented in Scala.
 
 ```java
-final RabbitMQJavaFactory factory = RabbitMQFactory.newBuilder(config).withExecutor(executor).build();
+import com.avast.clients.rabbitmq.javaapi.*;
+import com.typesafe.config.Config;
+import com.typesafe.config.ConfigFactory;
 
-final RabbitMQConsumer rabbitMQConsumer = factory.newConsumer(
-    "consumer",
-    NoOpMonitor.INSTANCE,
-    executor,
-    ExampleJava::handleDelivery
-);
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ForkJoinPool;
 
-final RabbitMQProducer rabbitMQProducer = factory.newProducer("producer",
-    NoOpMonitor.INSTANCE
-);
+public class ExampleJava {
+    public static void main(String[] args) {
+        final Config config = ConfigFactory.load().getConfig("myConfig");
+        final String routingKey = config.getString("consumer.queueName");
 
+        final ExecutorService executor = Executors.newCachedThreadPool();
+        final ForkJoinPool callbackExecutor = new ForkJoinPool();
+
+        final RabbitMQJavaConnection connection = RabbitMQJavaConnection.newBuilder(config, executor).build();
+
+        final RabbitMQConsumer rabbitMQConsumer = connection.newConsumer(
+                "consumer",
+                ...,
+                callbackExecutor,
+                ...
+        );
+
+        final RabbitMQProducer rabbitMQProducer = connection.newProducer(
+                "producer",
+                ...,
+                callbackExecutor
+        );
+    }
+
+}
 ```
 
 See [full example](core/src/test/java/ExampleJava.java)
@@ -236,7 +279,7 @@ Sometimes it's necessary to declare an additional queue or exchange which is not
 in your application (e.g. dead-letter queue).  
 The library makes possible to do such thing, e.g.:
 ```scala
-    rabbitMqFactory.bindExchange("backupExchangeBinding")
+    rabbitConnection.bindExchange("backupExchangeBinding")
 ```
 where the "backupExchangeBinding" is link to the configuration (use relative path to the factory configuration):
 ```hocon
@@ -257,6 +300,8 @@ the message. This is where `MultiTypeConsumer` could be used.
 Modules [extras-circe](extras-circe/README.md) and [extras-cactus](extras-cactus/README.md) provide support for JSON and GPB conversion. They
 are both used in the example below.
 
+The `MultiFormatConsumer` is Scala only and is _finally tagless_ (see [related info](#scala-usage)).
+
 Usage example:
 
 [Proto file](core/src/test/proto/ExampleEvents.proto)
@@ -265,10 +310,11 @@ Usage example:
 import com.avast.bytes.Bytes
 import com.avast.cactus.bytes._ // Cactus support for Bytes, see https://github.com/avast/cactus#bytes
 import com.avast.clients.rabbitmq.test.ExampleEvents.{NewFileSourceAdded => NewFileSourceAddedGpb}
+import com.avast.clients.rabbitmq._
 import com.avast.clients.rabbitmq.extras.multiformat._
 import io.circe.Decoder
 import io.circe.generic.auto._ // to auto derive `io.circe.Decoder[A]` with https://circe.github.io/circe/codec.html#fully-automatic-derivation
-
+import scala.concurrent.Future
 import scala.collection.JavaConverters._
 
 private implicit val d: Decoder[Bytes] = Decoder.decodeString.map(Utils.hexToBytesImmutable)
@@ -277,7 +323,7 @@ case class FileSource(fileId: Bytes, source: String)
 
 case class NewFileSourceAdded(fileSources: Seq[FileSource])
 
-val consumer = MultiFormatConsumer.forType[NewFileSourceAdded](
+val consumer = MultiFormatConsumer.forType[Future, NewFileSourceAdded](
   JsonFormatConverter.derive(), // requires implicit `io.circe.Decoder[NewFileSourceAdded]`
   GpbFormatConverter[NewFileSourceAddedGpb].derive() // requires implicit `com.avast.cactus.Converter[NewFileSourceAddedGpb, NewFileSourceAdded]`
 )(
