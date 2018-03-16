@@ -8,7 +8,7 @@ This client is lightweight wrapper over standard [RabbitMQ java client](https://
 It's API may be difficult to use for inexperienced RabbitMQ users. Goal of this library is to simplify basic use cases and shadow the programmer
 from the underlying client.
 
-The library has both Scala and Java API where the Scala API is generic and gives you an option to adapt it to your application's manner -
+The library has both Scala and Java API where the Scala API is generic and gives you an option to adapt to your application's type -
 see [Scala usage below](#scala-usage).
 
 The library uses concept of _connection_ and derived _producers_ and _consumers_. Note that the _connection_ shadows you from the underlying
@@ -300,7 +300,7 @@ the message. This is where `MultiTypeConsumer` could be used.
 Modules [extras-circe](extras-circe/README.md) and [extras-cactus](extras-cactus/README.md) provide support for JSON and GPB conversion. They
 are both used in the example below.
 
-The `MultiFormatConsumer` is Scala only and is _finally tagless_ (see [related info](#scala-usage)).
+The `MultiFormatConsumer` is Scala only.
 
 Usage example:
 
