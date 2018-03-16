@@ -1,7 +1,7 @@
 package com.avast.clients.rabbitmq
 
 import java.util.concurrent.atomic.AtomicInteger
-import java.util.concurrent.{CountDownLatch, Executors, TimeUnit}
+import java.util.concurrent.{CountDownLatch, Executors, Semaphore, TimeUnit}
 
 import com.avast.bytes.Bytes
 import com.avast.clients.rabbitmq.api.{DeliveryResult, MessageProperties}
@@ -11,6 +11,7 @@ import com.avast.kluzo.{Kluzo, TraceId}
 import com.avast.metrics.scalaapi.Monitor
 import com.avast.utils2.Done
 import com.typesafe.config.{Config, ConfigFactory, ConfigValueFactory}
+import com.typesafe.scalalogging.StrictLogging
 import monix.eval.Task
 import monix.execution.Scheduler
 import net.ceedubs.ficus.Ficus._
@@ -22,7 +23,7 @@ import scala.collection.JavaConverters._
 import scala.concurrent.ExecutionContext
 import scala.util.{Random, Success, Try}
 
-class LiveTest extends FunSuite with Eventually with ScalaFutures {
+class LiveTest extends FunSuite with Eventually with ScalaFutures with StrictLogging {
 
   import com.avast.clients.rabbitmq.api.DeliveryResult._
 
@@ -69,23 +70,32 @@ class LiveTest extends FunSuite with Eventually with ScalaFutures {
     val c = createConfig()
     import c._
 
-    val latch = new CountDownLatch(1)
+    val counter = new AtomicInteger(0)
+    val processed = new Semaphore(0)
 
     val rabbitConnection = RabbitMQConnection.fromConfig[Task](config, ex)
 
     rabbitConnection.newConsumer("consumer", Monitor.noOp()) { _ =>
-      latch.countDown()
+      counter.incrementAndGet()
+      logger.debug(s"Kluzo: ${Kluzo.getTraceId}")
       assertResult(true)(Kluzo.getTraceId.nonEmpty)
-      Task.now(DeliveryResult.Ack)
+
+      Task {
+        processed.release()
+        DeliveryResult.Ack
+      }
     }
 
     val sender = rabbitConnection.newProducer("producer", Monitor.noOp())
 
     sender.send("test", Bytes.copyFromUtf8(Random.nextString(10))).runAsync.futureValue
 
-    assertResult(true)(latch.await(500, TimeUnit.MILLISECONDS))
+    assert(processed.tryAcquire(1, TimeUnit.SECONDS)) // this is to prevent bug where the event was processed multiple times
 
-    assertResult(0)(testHelper.getMessagesCount(queueName))
+    eventually {
+      assertResult(1)(counter.get())
+      assertResult(0)(testHelper.getMessagesCount(queueName))
+    }
   }
 
   test("bunch") {

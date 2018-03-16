@@ -56,22 +56,42 @@ class DefaultRabbitMQConsumer(val name: String,
 
     val traceId = extractTraceId(properties)
 
-    val deliveryTag = envelope.getDeliveryTag
-    val messageId = properties.getMessageId
-    val routingKey = Option(properties.getHeaders).flatMap(p => Option(p.get(RepublishOriginalRoutingKeyHeaderName))) match {
-      case Some(originalRoutingKey) => originalRoutingKey.toString
-      case None => envelope.getRoutingKey
-    }
+    Kluzo.withTraceId(traceId) {
+      logger.debug(s"[$name] Kluzo Id: $traceId")
 
-    val task = {
+      val deliveryTag = envelope.getDeliveryTag
+      val messageId = properties.getMessageId
+      val routingKey = Option(properties.getHeaders).flatMap(p => Option(p.get(RepublishOriginalRoutingKeyHeaderName))) match {
+        case Some(originalRoutingKey) => originalRoutingKey.toString
+        case None => envelope.getRoutingKey
+      }
+
+      val task = handleDelivery(messageId, deliveryTag, properties, routingKey, body)
+
+      processedTimer.time {
+        task.runAsync
+      }
+
+      ()
+    }
+  }
+
+  private def handleDelivery(messageId: String,
+                             deliveryTag: Long,
+                             properties: BasicProperties,
+                             routingKey: String,
+                             body: Array[Byte]): Task[Unit] = {
+    {
       try {
         readMeter.mark()
 
         logger.debug(s"[$name] Read delivery with ID $messageId, deliveryTag $deliveryTag")
 
-        val message = Delivery(Bytes.copyFrom(body), properties.asScala, Option(routingKey).getOrElse(""))
+        val delivery = Delivery(Bytes.copyFrom(body), properties.asScala, Option(routingKey).getOrElse(""))
 
-        readAction(message)
+        logger.trace(s"[$name] Received delivery: $delivery")
+
+        readAction(delivery)
           .flatMap {
             handleResult(messageId, deliveryTag, properties, routingKey, body)
           }
@@ -88,19 +108,12 @@ class DefaultRabbitMQConsumer(val name: String,
         case NonFatal(e) => handleCallbackFailure(messageId, deliveryTag, properties, routingKey, body)(e)
       }
     }.executeOn(callbackScheduler)
-
-    Kluzo.withTraceId(traceId) {
-      processedTimer.time {
-        task.runAsync
-      }
-    }
-
-    ()
   }
 
   private def extractTraceId(properties: BasicProperties) = {
-    if (useKluzo && properties.getHeaders != null) {
-      val traceId = Option(properties.getHeaders.get(Kluzo.HttpHeaderName))
+    if (useKluzo) {
+      val traceId = Option(properties.getHeaders)
+        .flatMap(h => Option(h.get(Kluzo.HttpHeaderName)))
         .map(_.toString)
         .map(TraceId(_))
         .getOrElse(TraceId.generate)
