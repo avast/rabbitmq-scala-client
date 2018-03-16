@@ -4,15 +4,15 @@ import com.avast.clients.rabbitmq.api.{Delivery, DeliveryResult, MessageProperti
 import com.typesafe.scalalogging.StrictLogging
 
 import scala.collection.immutable
-import scala.concurrent.Future
+import scala.language.higherKinds
 import scala.util.control.NonFatal
 
-class MultiFormatConsumer[A] private (supportedConverters: immutable.Seq[FormatConverter[A]],
-                                      action: (A, MessageProperties, String) => Future[DeliveryResult],
-                                      failureAction: (Delivery, ConversionException) => Future[DeliveryResult])
-    extends (Delivery => Future[DeliveryResult])
+class MultiFormatConsumer[F[_], A] private (supportedConverters: immutable.Seq[FormatConverter[A]],
+                                            action: (A, MessageProperties, String) => F[DeliveryResult],
+                                            failureAction: (Delivery, ConversionException) => F[DeliveryResult])
+    extends (Delivery => F[DeliveryResult])
     with StrictLogging {
-  override def apply(delivery: Delivery): Future[DeliveryResult] = {
+  override def apply(delivery: Delivery): F[DeliveryResult] = {
     val converted: Either[ConversionException, A] = try {
       supportedConverters
         .collectFirst {
@@ -40,10 +40,10 @@ class MultiFormatConsumer[A] private (supportedConverters: immutable.Seq[FormatC
 }
 
 object MultiFormatConsumer {
-  def forType[A](supportedConverters: FormatConverter[A]*)(
-      action: (A, MessageProperties, String) => Future[DeliveryResult],
-      failureAction: (Delivery, ConversionException) => Future[DeliveryResult]): MultiFormatConsumer[A] = {
-    new MultiFormatConsumer[A](supportedConverters.toList, action, failureAction)
+  def forType[F[_], A](supportedConverters: FormatConverter[A]*)(
+      action: (A, MessageProperties, String) => F[DeliveryResult],
+      failureAction: (Delivery, ConversionException) => F[DeliveryResult]): MultiFormatConsumer[F, A] = {
+    new MultiFormatConsumer[F, A](supportedConverters.toList, action, failureAction)
   }
 }
 
