@@ -3,9 +3,9 @@ package com.avast.clients.rabbitmq
 import com.avast.bytes.Bytes
 import com.avast.bytes.gpb.ByteStringBytes
 import com.avast.cactus.bytes._
-import com.avast.clients.rabbitmq.test.ExampleEvents.{FileSource => FileSourceGpb, NewFileSourceAdded => NewFileSourceAddedGpb}
 import com.avast.clients.rabbitmq.api.{Delivery, DeliveryResult, MessageProperties}
 import com.avast.clients.rabbitmq.extras.multiformat._
+import com.avast.clients.rabbitmq.test.ExampleEvents.{FileSource => FileSourceGpb, NewFileSourceAdded => NewFileSourceAddedGpb}
 import com.avast.utils2.ByteUtils
 import com.google.protobuf.ByteString
 import io.circe.Decoder
@@ -33,7 +33,7 @@ class MultiFormatConsumerTest extends FunSuite with ScalaFutures {
   case class NewFileSourceAdded(fileSources: Seq[FileSource])
 
   test("basic") {
-    val consumer = MultiFormatConsumer.forType[String](StringFormatConverter)(
+    val consumer = MultiFormatConsumer.forType[Future, String](StringFormatConverter)(
       (message, _, _) => {
         assertResult("abc321")(message)
         Future.successful(DeliveryResult.Ack)
@@ -53,7 +53,7 @@ class MultiFormatConsumerTest extends FunSuite with ScalaFutures {
   }
 
   test("non-supported content-type") {
-    val consumer = MultiFormatConsumer.forType[String](StringFormatConverter)(
+    val consumer = MultiFormatConsumer.forType[Future, String](StringFormatConverter)(
       (_, _, _) => Future.successful(DeliveryResult.Ack),
       (_, _) => Future.successful(DeliveryResult.Reject)
     )
@@ -70,7 +70,7 @@ class MultiFormatConsumerTest extends FunSuite with ScalaFutures {
   }
 
   test("json") {
-    val consumer = MultiFormatConsumer.forType[NewFileSourceAdded](JsonFormatConverter.derive())(
+    val consumer = MultiFormatConsumer.forType[Future, NewFileSourceAdded](JsonFormatConverter.derive())(
       (message, _, _) => {
         assertResult(
           NewFileSourceAdded(
@@ -101,7 +101,7 @@ class MultiFormatConsumerTest extends FunSuite with ScalaFutures {
   }
 
   test("gpb") {
-    val consumer = MultiFormatConsumer.forType[NewFileSourceAdded](
+    val consumer = MultiFormatConsumer.forType[Future, NewFileSourceAdded](
       JsonFormatConverter.derive(),
       GpbFormatConverter[NewFileSourceAddedGpb].derive()
     )(
