@@ -3,6 +3,7 @@ package com.avast.clients.rabbitmq.javaapi
 import java.util.concurrent.{CompletableFuture, ExecutorService}
 import java.util.function
 
+import com.avast.bytes.Bytes
 import com.avast.clients.rabbitmq.javaapi.JavaConverters._
 import com.avast.clients.rabbitmq.{DefaultRabbitMQConnection => ScalaConnection}
 import com.avast.metrics.api.Monitor
@@ -27,7 +28,7 @@ private class RabbitMQJavaConnectionImpl(scalaConnection: ScalaConnection[Future
   override def newProducer(configName: String, monitor: Monitor, executor: ExecutorService): RabbitMQProducer = {
     implicit val sch: SchedulerService = Scheduler(executor)
 
-    new DefaultRabbitMQProducer(scalaConnection.newProducer(configName, ScalaMonitor(monitor)))
+    new DefaultRabbitMQProducer(scalaConnection.newProducer[Bytes](configName, ScalaMonitor(monitor)))
   }
 
   override def declareExchange(configName: String): CompletableFuture[Void] = {

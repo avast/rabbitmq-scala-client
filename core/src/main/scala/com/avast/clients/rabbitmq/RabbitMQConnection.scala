@@ -40,7 +40,7 @@ trait RabbitMQConnection[F[_]] extends AutoCloseable {
     * @param configName Name of configuration of the producer.
     * @param monitor    Monitor for metrics.F
     */
-  def newProducer(configName: String, monitor: Monitor): RabbitMQProducer[F] with AutoCloseable
+  def newProducer[A: ProductConverter](configName: String, monitor: Monitor): RabbitMQProducer[F, A] with AutoCloseable
 
   /**
     * Declares and additional exchange, using the TypeSafe configuration passed to the factory and config name.

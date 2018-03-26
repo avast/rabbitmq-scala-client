@@ -88,23 +88,23 @@ private[rabbitmq] object DefaultRabbitMQClientFactory extends LazyLogging {
 
   object Producer {
 
-    def fromConfig[F[_]: FromTask](providedConfig: Config,
-                                   channel: ServerChannel,
-                                   factoryInfo: RabbitMqFactoryInfo,
-                                   blockingScheduler: Scheduler,
-                                   monitor: Monitor): DefaultRabbitMQProducer[F] = {
+    def fromConfig[F[_]: FromTask, A: ProductConverter](providedConfig: Config,
+                                                        channel: ServerChannel,
+                                                        factoryInfo: RabbitMqFactoryInfo,
+                                                        blockingScheduler: Scheduler,
+                                                        monitor: Monitor): DefaultRabbitMQProducer[F, A] = {
       val producerConfig = providedConfig.wrapped.as[ProducerConfig]("root")
 
-      create[F](producerConfig, channel, factoryInfo, blockingScheduler, monitor)
+      create[F, A](producerConfig, channel, factoryInfo, blockingScheduler, monitor)
     }
 
-    def create[F[_]: FromTask](producerConfig: ProducerConfig,
-                               channel: ServerChannel,
-                               factoryInfo: RabbitMqFactoryInfo,
-                               blockingScheduler: Scheduler,
-                               monitor: Monitor): DefaultRabbitMQProducer[F] = {
+    def create[F[_]: FromTask, A: ProductConverter](producerConfig: ProducerConfig,
+                                                    channel: ServerChannel,
+                                                    factoryInfo: RabbitMqFactoryInfo,
+                                                    blockingScheduler: Scheduler,
+                                                    monitor: Monitor): DefaultRabbitMQProducer[F, A] = {
 
-      prepareProducer[F](producerConfig, channel, factoryInfo, blockingScheduler, monitor)
+      prepareProducer[F, A](producerConfig, channel, factoryInfo, blockingScheduler, monitor)
     }
   }
 
@@ -197,11 +197,11 @@ private[rabbitmq] object DefaultRabbitMQClientFactory extends LazyLogging {
     }
   }
 
-  private def prepareProducer[F[_]: FromTask](producerConfig: ProducerConfig,
-                                              channel: ServerChannel,
-                                              channelFactoryInfo: RabbitMqFactoryInfo,
-                                              blockingScheduler: Scheduler,
-                                              monitor: Monitor): DefaultRabbitMQProducer[F] = {
+  private def prepareProducer[F[_]: FromTask, A: ProductConverter](producerConfig: ProducerConfig,
+                                                                   channel: ServerChannel,
+                                                                   channelFactoryInfo: RabbitMqFactoryInfo,
+                                                                   blockingScheduler: Scheduler,
+                                                                   monitor: Monitor): DefaultRabbitMQProducer[F, A] = {
     import producerConfig._
 
     val finalBlockingScheduler = if (useKluzo) Monix.wrapScheduler(blockingScheduler) else blockingScheduler
@@ -213,7 +213,7 @@ private[rabbitmq] object DefaultRabbitMQClientFactory extends LazyLogging {
       val d = declare.wrapped.as[AutoDeclareExchange]("root")
       declareExchange(exchange, channelFactoryInfo, channel, d)
     }
-    new DefaultRabbitMQProducer[F](producerConfig.name, exchange, channel, useKluzo, reportUnroutable, finalBlockingScheduler, monitor)
+    new DefaultRabbitMQProducer[F, A](producerConfig.name, exchange, channel, useKluzo, reportUnroutable, finalBlockingScheduler, monitor)
   }
 
   private[rabbitmq] def declareExchange(name: String,

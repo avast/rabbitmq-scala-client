@@ -7,7 +7,7 @@ import scala.collection.immutable
 import scala.language.higherKinds
 import scala.util.control.NonFatal
 
-class MultiFormatConsumer[F[_], A] private (supportedConverters: immutable.Seq[FormatConverter[A]],
+class MultiFormatConsumer[F[_], A] private (supportedConverters: immutable.Seq[DeliveryConverter[A]],
                                             action: (A, MessageProperties, String) => F[DeliveryResult],
                                             failureAction: (Delivery, ConversionException) => F[DeliveryResult])
     extends (Delivery => F[DeliveryResult])
@@ -40,11 +40,9 @@ class MultiFormatConsumer[F[_], A] private (supportedConverters: immutable.Seq[F
 }
 
 object MultiFormatConsumer {
-  def forType[F[_], A](supportedConverters: FormatConverter[A]*)(
+  def forType[F[_], A](supportedConverters: DeliveryConverter[A]*)(
       action: (A, MessageProperties, String) => F[DeliveryResult],
       failureAction: (Delivery, ConversionException) => F[DeliveryResult]): MultiFormatConsumer[F, A] = {
     new MultiFormatConsumer[F, A](supportedConverters.toList, action, failureAction)
   }
 }
-
-case class ConversionException(desc: String, cause: Throwable = null) extends RuntimeException(desc, cause)

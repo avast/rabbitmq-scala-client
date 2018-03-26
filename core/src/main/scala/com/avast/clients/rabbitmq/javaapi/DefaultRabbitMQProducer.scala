@@ -10,7 +10,7 @@ import scala.collection.JavaConverters._
 import scala.concurrent.{ExecutionContext, Future}
 import scala.language.implicitConversions
 
-class DefaultRabbitMQProducer(scalaProducer: ScalaProducer[Future] with AutoCloseable)(implicit ec: ExecutionContext)
+class DefaultRabbitMQProducer(scalaProducer: ScalaProducer[Future, Bytes] with AutoCloseable)(implicit ec: ExecutionContext)
     extends RabbitMQProducer {
   def send(routingKey: String, body: Bytes): CompletableFuture[Void] = {
     scalaProducer.send(routingKey, body, None).map(_ => null: Void).asJava

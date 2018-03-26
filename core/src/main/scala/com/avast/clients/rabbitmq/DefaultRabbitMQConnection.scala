@@ -54,9 +54,10 @@ class DefaultRabbitMQConnection[F[_]: FromTask: ToTask](connection: ServerConnec
     }
   }
 
-  def newProducer(configName: String, monitor: Monitor): DefaultRabbitMQProducer[F] = {
+  def newProducer[A: ProductConverter](configName: String, monitor: Monitor): DefaultRabbitMQProducer[F, A] = {
     addAutoCloseable {
-      DefaultRabbitMQClientFactory.Producer.fromConfig(config.getConfig(configName), createChannel(), info, blockingScheduler, monitor)
+      DefaultRabbitMQClientFactory.Producer
+        .fromConfig[F, A](config.getConfig(configName), createChannel(), info, blockingScheduler, monitor)
     }
   }
 

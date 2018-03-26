@@ -19,7 +19,7 @@ import scala.concurrent.Future
 
 class MultiFormatConsumerTest extends FunSuite with ScalaFutures {
 
-  val StringFormatConverter: FormatConverter[String] = new FormatConverter[String] {
+  val StringFormatConverter: DeliveryConverter[String] = new DeliveryConverter[String] {
     override def fits(d: Delivery): Boolean = d.properties.contentType.contains("text/plain")
 
     override def convert(d: Delivery): Either[ConversionException, String] = Right(d.body.toStringUtf8)
@@ -70,7 +70,7 @@ class MultiFormatConsumerTest extends FunSuite with ScalaFutures {
   }
 
   test("json") {
-    val consumer = MultiFormatConsumer.forType[Future, NewFileSourceAdded](JsonFormatConverter.derive())(
+    val consumer = MultiFormatConsumer.forType[Future, NewFileSourceAdded](JsonDeliveryConverter.derive())(
       (message, _, _) => {
         assertResult(
           NewFileSourceAdded(
@@ -102,8 +102,8 @@ class MultiFormatConsumerTest extends FunSuite with ScalaFutures {
 
   test("gpb") {
     val consumer = MultiFormatConsumer.forType[Future, NewFileSourceAdded](
-      JsonFormatConverter.derive(),
-      GpbFormatConverter[NewFileSourceAddedGpb].derive()
+      JsonDeliveryConverter.derive(),
+      GpbDeliveryConverter[NewFileSourceAddedGpb].derive()
     )(
       (message, _, _) => {
         assertResult(
@@ -129,7 +129,7 @@ class MultiFormatConsumerTest extends FunSuite with ScalaFutures {
           .build()
           .toByteString
       },
-      properties = MessageProperties(contentType = GpbFormatConverter.ContentTypes.headOption.map(_.toUpperCase)),
+      properties = MessageProperties(contentType = GpbDeliveryConverter.ContentTypes.headOption.map(_.toUpperCase)),
       routingKey = ""
     )
 

@@ -2,7 +2,7 @@ package com.avast.clients.rabbitmq.extras.multiformat
 
 import cats.syntax.either._
 import com.avast.clients.rabbitmq.api.Delivery
-import com.avast.clients.rabbitmq.{ConversionException, FormatConverter}
+import com.avast.clients.rabbitmq.{ConversionException, DeliveryConverter}
 import io.circe.Decoder
 import io.circe.parser.decode
 
@@ -10,12 +10,12 @@ import scala.annotation.implicitNotFound
 import scala.reflect.ClassTag
 
 @implicitNotFound("Could not generate JsonFormatConverter for $A, try to import or define some")
-trait JsonFormatConverter[A] extends FormatConverter[A]
+trait JsonDeliveryConverter[A] extends DeliveryConverter[A]
 
-object JsonFormatConverter {
-  def derive[A: JsonFormatConverter](): JsonFormatConverter[A] = implicitly[JsonFormatConverter[A]]
+object JsonDeliveryConverter {
+  def derive[A: JsonDeliveryConverter](): JsonDeliveryConverter[A] = implicitly[JsonDeliveryConverter[A]]
 
-  implicit def createJsonFormatConverter[A: Decoder: ClassTag]: JsonFormatConverter[A] = new JsonFormatConverter[A] {
+  implicit def createJsonFormatConverter[A: Decoder: ClassTag]: JsonDeliveryConverter[A] = new JsonDeliveryConverter[A] {
     override def convert(d: Delivery): Either[ConversionException, A] = {
       decode[A](d.body.toStringUtf8).leftMap {
         ConversionException(s"Could not decode class ${implicitly[ClassTag[A]].runtimeClass.getName} from json", _)

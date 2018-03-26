@@ -16,14 +16,14 @@ import monix.execution.Scheduler
 import scala.language.higherKinds
 import scala.util.control.NonFatal
 
-class DefaultRabbitMQProducer[F[_]: FromTask](name: String,
-                                              exchangeName: String,
-                                              channel: ServerChannel,
-                                              useKluzo: Boolean,
-                                              reportUnroutable: Boolean,
-                                              scheduler: Scheduler,
-                                              monitor: Monitor)
-    extends RabbitMQProducer[F]
+class DefaultRabbitMQProducer[F[_]: FromTask, A: ProductConverter](name: String,
+                                                                   exchangeName: String,
+                                                                   channel: ServerChannel,
+                                                                   useKluzo: Boolean,
+                                                                   reportUnroutable: Boolean,
+                                                                   scheduler: Scheduler,
+                                                                   monitor: Monitor)
+    extends RabbitMQProducer[F, A]
     with AutoCloseable
     with StrictLogging {
 
@@ -31,13 +31,17 @@ class DefaultRabbitMQProducer[F[_]: FromTask](name: String,
   private val sentFailedMeter = monitor.meter("sentFailed")
   private val unroutableMeter = monitor.meter("unroutable")
 
+  private val converter = implicitly[ProductConverter[A]]
+
   private val sendLock = new Object
 
   channel.addReturnListener(if (reportUnroutable) LoggingReturnListener else NoOpReturnListener)
 
-  override def send(routingKey: String, body: Bytes, properties: Option[MessageProperties] = None): F[Unit] = {
+  override def send(routingKey: String, body: A, properties: Option[MessageProperties] = None): F[Unit] = {
     val finalProperties = {
-      val messageProperties = properties.getOrElse(MessageProperties(messageId = Some(UUID.randomUUID().toString)))
+      val messageProperties = converter.fillProperties {
+        properties.getOrElse(MessageProperties(messageId = Some(UUID.randomUUID().toString)))
+      }
 
       if (useKluzo && Kluzo.getTraceId.nonEmpty) {
 
@@ -59,11 +63,20 @@ class DefaultRabbitMQProducer[F[_]: FromTask](name: String,
       }
     }
 
-    val task = Task {
+    val task = converter.convert(body) match {
+      case Right(convertedBody) => send(routingKey, convertedBody, finalProperties)
+      case Left(ce) => Task.raiseError(ce)
+    }
+
+    implicitly[FromTask[F]].apply(task)
+  }
+
+  private def send(routingKey: String, body: Bytes, properties: MessageProperties): Task[Unit] = {
+    Task {
       try {
         sendLock.synchronized {
           // see https://www.rabbitmq.com/api-guide.html#channel-threads
-          channel.basicPublish(exchangeName, routingKey, finalProperties.asAMQP, body.toByteArray)
+          channel.basicPublish(exchangeName, routingKey, properties.asAMQP, body.toByteArray)
         }
 
         // ok!
@@ -75,8 +88,6 @@ class DefaultRabbitMQProducer[F[_]: FromTask](name: String,
           throw e
       }
     }.executeOn(scheduler)
-
-    implicitly[FromTask[F]].apply(task)
   }
 
   override def close(): Unit = {
