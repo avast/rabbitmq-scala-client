@@ -1,22 +1,23 @@
 package com.avast.clients.rabbitmq
 
-import com.avast.clients.rabbitmq.api.{Delivery, DeliveryResult, MessageProperties}
+import com.avast.bytes.Bytes
+import com.avast.clients.rabbitmq.api.{Delivery, DeliveryResult}
 import com.typesafe.scalalogging.StrictLogging
 
 import scala.collection.immutable
 import scala.language.higherKinds
 import scala.util.control.NonFatal
 
-class MultiFormatConsumer[F[_], A] private (supportedConverters: immutable.Seq[DeliveryConverter[A]],
-                                            action: (A, MessageProperties, String) => F[DeliveryResult],
-                                            failureAction: (Delivery, ConversionException) => F[DeliveryResult])
-    extends (Delivery => F[DeliveryResult])
+class MultiFormatConsumer[F[_], A] private (supportedConverters: immutable.Seq[CheckedDeliveryConverter[A]],
+                                            action: Delivery[A] => F[DeliveryResult],
+                                            failureAction: (Delivery[Bytes], ConversionException) => F[DeliveryResult])
+    extends (Delivery[Bytes] => F[DeliveryResult])
     with StrictLogging {
-  override def apply(delivery: Delivery): F[DeliveryResult] = {
-    val converted: Either[ConversionException, A] = try {
+  override def apply(delivery: Delivery[Bytes]): F[DeliveryResult] = {
+    val converted: Either[ConversionException, Delivery[A]] = try {
       supportedConverters
         .collectFirst {
-          case c if c.fits(delivery) => c.convert(delivery)
+          case c if c.canConvert(delivery) => c.convert(delivery)
         }
         .getOrElse {
           Left(ConversionException(s"Could not find suitable converter for $delivery"))
@@ -28,7 +29,7 @@ class MultiFormatConsumer[F[_], A] private (supportedConverters: immutable.Seq[D
     }
 
     converted match {
-      case Right(cc) => action(cc, delivery.properties, delivery.routingKey)
+      case Right(convertedDelivery) => action(convertedDelivery)
       case Left(ex: ConversionException) =>
         logger.debug("Could not find suitable converter", ex)
         failureAction(delivery, ex)
@@ -40,9 +41,9 @@ class MultiFormatConsumer[F[_], A] private (supportedConverters: immutable.Seq[D
 }
 
 object MultiFormatConsumer {
-  def forType[F[_], A](supportedConverters: DeliveryConverter[A]*)(
-      action: (A, MessageProperties, String) => F[DeliveryResult],
-      failureAction: (Delivery, ConversionException) => F[DeliveryResult]): MultiFormatConsumer[F, A] = {
+  def forType[F[_], A](supportedConverters: CheckedDeliveryConverter[A]*)(
+      action: Delivery[A] => F[DeliveryResult],
+      failureAction: (Delivery[Bytes], ConversionException) => F[DeliveryResult]): MultiFormatConsumer[F, A] = {
     new MultiFormatConsumer[F, A](supportedConverters.toList, action, failureAction)
   }
 }

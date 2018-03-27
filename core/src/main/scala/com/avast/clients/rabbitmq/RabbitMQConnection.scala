@@ -32,7 +32,7 @@ trait RabbitMQConnection[F[_]] extends AutoCloseable {
     * @param readAction Action executed for each delivered message. You should never return a failed future.
     * @param scheduler  [[Scheduler]] used for callbacks.
     */
-  def newConsumer(configName: String, monitor: Monitor)(readAction: DeliveryReadAction[F])(
+  def newConsumer[A: DeliveryConverter](configName: String, monitor: Monitor)(readAction: DeliveryReadAction[F, A])(
       implicit scheduler: Scheduler): RabbitMQConsumer with AutoCloseable
 
   /** Creates new instance of producer, using the TypeSafe configuration passed to the factory and producer name.
@@ -65,6 +65,7 @@ trait RabbitMQConnection[F[_]] extends AutoCloseable {
   def bindExchange(configName: String): F[Unit]
 
   /** Executes a specified action with newly created [[ServerChannel]] which is then closed.
+    *
     * @see #newChannel()
     * @return Result of performed action.
     */
@@ -109,7 +110,7 @@ object RabbitMQConnection extends StrictLogging {
 
     new DefaultRabbitMQConnection(
       connection = connection,
-      info = RabbitMqFactoryInfo(
+      info = RabbitMQConnectionInfo(
         hosts = connectionConfig.hosts.toVector,
         virtualHost = connectionConfig.virtualHost
       ),

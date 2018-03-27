@@ -4,7 +4,7 @@ import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.{CountDownLatch, Executors, Semaphore, TimeUnit}
 
 import com.avast.bytes.Bytes
-import com.avast.clients.rabbitmq.api.{DeliveryResult, MessageProperties}
+import com.avast.clients.rabbitmq.api.{Delivery, DeliveryResult, MessageProperties}
 import com.avast.clients.rabbitmq.extras.PoisonedMessageHandler
 import com.avast.continuity.Continuity
 import com.avast.continuity.monix.Monix
@@ -76,7 +76,7 @@ class LiveTest extends FunSuite with Eventually with ScalaFutures with StrictLog
 
     val rabbitConnection = RabbitMQConnection.fromConfig[Task](config, ex)
 
-    rabbitConnection.newConsumer("consumer", Monitor.noOp()) { _ =>
+    rabbitConnection.newConsumer("consumer", Monitor.noOp()) { (_: Delivery[Bytes]) =>
       counter.incrementAndGet()
       logger.debug(s"Kluzo: ${Kluzo.getTraceId}")
       assertResult(true)(Kluzo.getTraceId.nonEmpty)
@@ -112,7 +112,7 @@ class LiveTest extends FunSuite with Eventually with ScalaFutures with StrictLog
 
     val d = new AtomicInteger(0)
 
-    rabbitConnection.newConsumer("consumer", Monitor.noOp()) { _ =>
+    rabbitConnection.newConsumer("consumer", Monitor.noOp()) { (_: Delivery[Bytes]) =>
       Task {
         Thread.sleep(if (d.get() % 2 == 0) 300 else 0)
         latch.countDown()
@@ -144,7 +144,7 @@ class LiveTest extends FunSuite with Eventually with ScalaFutures with StrictLog
 
     val rabbitConnection = RabbitMQConnection.fromConfig[Task](config, ex)
 
-    rabbitConnection.newConsumer("consumer", Monitor.noOp()) { _ =>
+    rabbitConnection.newConsumer("consumer", Monitor.noOp()) { (_: Delivery[Bytes]) =>
       latch.countDown()
       Task.now(Ack)
     }
@@ -170,7 +170,7 @@ class LiveTest extends FunSuite with Eventually with ScalaFutures with StrictLog
 
     val cnt = new AtomicInteger(0)
 
-    rabbitConnection.newConsumer("consumer", Monitor.noOp()) { _ =>
+    rabbitConnection.newConsumer("consumer", Monitor.noOp()) { (_: Delivery[Bytes]) =>
       cnt.incrementAndGet()
       assertResult(true)(Kluzo.getTraceId.nonEmpty)
 
@@ -201,7 +201,7 @@ class LiveTest extends FunSuite with Eventually with ScalaFutures with StrictLog
 
     val cnt = new AtomicInteger(0)
 
-    rabbitConnection.newConsumer("consumer", Monitor.noOp()) { _ =>
+    rabbitConnection.newConsumer("consumer", Monitor.noOp()) { (_: Delivery[Bytes]) =>
       cnt.incrementAndGet()
 
       Thread.sleep(800) // timeout is set to 500 ms
@@ -230,7 +230,7 @@ class LiveTest extends FunSuite with Eventually with ScalaFutures with StrictLog
 
     val traceId = TraceId.generate
 
-    rabbitConnection.newConsumer("consumer", Monitor.noOp()) { _ =>
+    rabbitConnection.newConsumer("consumer", Monitor.noOp()) { (_: Delivery[Bytes]) =>
       cnt.incrementAndGet()
       assertResult(Some(traceId))(Kluzo.getTraceId)
       Success(Ack)
@@ -260,7 +260,7 @@ class LiveTest extends FunSuite with Eventually with ScalaFutures with StrictLog
 
     val traceId = "someTraceId"
 
-    rabbitConnection.newConsumer("consumer", Monitor.noOp()) { _ =>
+    rabbitConnection.newConsumer("consumer", Monitor.noOp()) { (_: Delivery[Bytes]) =>
       cnt.incrementAndGet()
       assertResult(Some(TraceId(traceId)))(Kluzo.getTraceId)
       Success(Ack)
@@ -299,7 +299,7 @@ class LiveTest extends FunSuite with Eventually with ScalaFutures with StrictLog
       _ <- rabbitConnection.bindQueue("additionalDeclarations.bindQueue")
     } yield Done
 
-    rabbitConnection.newConsumer("consumer", Monitor.noOp()) { _ =>
+    rabbitConnection.newConsumer("consumer", Monitor.noOp()) { (_: Delivery[Bytes]) =>
       latch.countDown()
       Success(DeliveryResult.Ack)
     }
@@ -325,12 +325,12 @@ class LiveTest extends FunSuite with Eventually with ScalaFutures with StrictLog
 
     val rabbitConnection = RabbitMQConnection.fromConfig[Task](config, ex)
 
-    val h = PoisonedMessageHandler.withCustomPoisonedAction[Task](2) { _ =>
+    val h = PoisonedMessageHandler.withCustomPoisonedAction[Task, Bytes](2) { (_: Delivery[Bytes]) =>
       Task {
         processed.incrementAndGet()
         DeliveryResult.Republish()
       }
-    } { _ =>
+    } { (_: Delivery[Bytes]) =>
       Task {
         poisoned.incrementAndGet()
         ()

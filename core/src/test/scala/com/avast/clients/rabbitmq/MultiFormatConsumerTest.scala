@@ -19,10 +19,10 @@ import scala.concurrent.Future
 
 class MultiFormatConsumerTest extends FunSuite with ScalaFutures {
 
-  val StringFormatConverter: DeliveryConverter[String] = new DeliveryConverter[String] {
-    override def fits(d: Delivery): Boolean = d.properties.contentType.contains("text/plain")
+  val StringFormatConverter: CheckedDeliveryConverter[String] = new CheckedDeliveryConverter[String] {
+    override def canConvert(d: Delivery[Bytes]): Boolean = d.properties.contentType.contains("text/plain")
 
-    override def convert(d: Delivery): Either[ConversionException, String] = Right(d.body.toStringUtf8)
+    override def convert(d: Delivery[Bytes]): Either[ConversionException, Delivery[String]] = Right(d.copy(body = d.body.toStringUtf8))
   }
 
   private implicit val c: Configuration = Configuration.default.withSnakeCaseMemberNames
@@ -34,8 +34,8 @@ class MultiFormatConsumerTest extends FunSuite with ScalaFutures {
 
   test("basic") {
     val consumer = MultiFormatConsumer.forType[Future, String](StringFormatConverter)(
-      (message, _, _) => {
-        assertResult("abc321")(message)
+      d => {
+        assertResult("abc321")(d.body)
         Future.successful(DeliveryResult.Ack)
       },
       (_, _) => Future.successful(DeliveryResult.Reject)
@@ -54,7 +54,7 @@ class MultiFormatConsumerTest extends FunSuite with ScalaFutures {
 
   test("non-supported content-type") {
     val consumer = MultiFormatConsumer.forType[Future, String](StringFormatConverter)(
-      (_, _, _) => Future.successful(DeliveryResult.Ack),
+      _ => Future.successful(DeliveryResult.Ack),
       (_, _) => Future.successful(DeliveryResult.Reject)
     )
 
@@ -71,13 +71,13 @@ class MultiFormatConsumerTest extends FunSuite with ScalaFutures {
 
   test("json") {
     val consumer = MultiFormatConsumer.forType[Future, NewFileSourceAdded](JsonDeliveryConverter.derive())(
-      (message, _, _) => {
+      d => {
         assertResult(
           NewFileSourceAdded(
             Seq(
               FileSource(Bytes.copyFromUtf8("abc"), "theSource"),
               FileSource(Bytes.copyFromUtf8("def"), "theSource")
-            )))(message)
+            )))(d.body)
 
         Future.successful(DeliveryResult.Ack)
       },
@@ -105,13 +105,13 @@ class MultiFormatConsumerTest extends FunSuite with ScalaFutures {
       JsonDeliveryConverter.derive(),
       GpbDeliveryConverter[NewFileSourceAddedGpb].derive()
     )(
-      (message, _, _) => {
+      d => {
         assertResult(
           NewFileSourceAdded(
             Seq(
               FileSource(Bytes.copyFromUtf8("abc"), "theSource"),
               FileSource(Bytes.copyFromUtf8("def"), "theSource")
-            )))(message)
+            )))(d.body)
 
         Future.successful(DeliveryResult.Ack)
       },
@@ -128,7 +128,7 @@ class MultiFormatConsumerTest extends FunSuite with ScalaFutures {
           ).asJava)
           .build()
           .toByteString
-      },
+      }: Bytes,
       properties = MessageProperties(contentType = GpbDeliveryConverter.ContentTypes.headOption.map(_.toUpperCase)),
       routingKey = ""
     )

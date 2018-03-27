@@ -15,11 +15,11 @@ class PoisonedMessageHandlerTest extends FunSuite with ScalaFutures {
 
   test("basic") {
 
-    def readAction(d: Delivery): Future[DeliveryResult] = {
+    def readAction(d: Delivery[Bytes]): Future[DeliveryResult] = {
       Future.successful(Republish())
     }
 
-    val handler = new PoisonedMessageHandler[Future](5)(readAction)
+    val handler = new PoisonedMessageHandler[Future, Bytes](5)(readAction)
 
     def run(properties: MessageProperties): DeliveryResult = {
       handler(Delivery(Bytes.empty(), properties, "")).futureValue
@@ -43,11 +43,11 @@ class PoisonedMessageHandlerTest extends FunSuite with ScalaFutures {
 
   test("pretend lower no. of attempts") {
 
-    def readAction(d: Delivery): Future[DeliveryResult] = {
+    def readAction(d: Delivery[Bytes]): Future[DeliveryResult] = {
       Future.successful(Republish())
     }
 
-    val handler = new PoisonedMessageHandler[Future](5)(readAction)
+    val handler = new PoisonedMessageHandler[Future, Bytes](5)(readAction)
 
     def run(properties: MessageProperties): DeliveryResult = {
       handler(Delivery(Bytes.empty(), properties, "")).futureValue

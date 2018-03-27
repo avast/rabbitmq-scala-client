@@ -11,7 +11,7 @@ import scala.language.higherKinds
 import scala.util.control.NonFatal
 
 class DefaultRabbitMQConnection[F[_]: FromTask: ToTask](connection: ServerConnection,
-                                                        info: RabbitMqFactoryInfo,
+                                                        info: RabbitMQConnectionInfo,
                                                         config: Config,
                                                         connectionListener: ConnectionListener,
                                                         channelListener: ChannelListener,
@@ -46,11 +46,11 @@ class DefaultRabbitMQConnection[F[_]: FromTask: ToTask](connection: ServerConnec
     }
   }
 
-  def newConsumer(configName: String, monitor: Monitor)(readAction: DeliveryReadAction[F])(
+  def newConsumer[A: DeliveryConverter](configName: String, monitor: Monitor)(readAction: DeliveryReadAction[F, A])(
       implicit scheduler: Scheduler): DefaultRabbitMQConsumer = {
     addAutoCloseable {
       DefaultRabbitMQClientFactory.Consumer
-        .fromConfig[F](config.getConfig(configName), createChannel(), info, blockingScheduler, monitor, consumerListener)(readAction)
+        .fromConfig[F, A](config.getConfig(configName), createChannel(), info, blockingScheduler, monitor, consumerListener)(readAction)
     }
   }
 

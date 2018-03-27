@@ -3,10 +3,22 @@ package com.avast.clients.rabbitmq
 import com.avast.bytes.Bytes
 import com.avast.clients.rabbitmq.api.{Delivery, MessageProperties}
 
-trait DeliveryConverter[A] {
-  def fits(d: Delivery): Boolean
+import scala.annotation.implicitNotFound
 
-  def convert(d: Delivery): Either[ConversionException, A]
+@implicitNotFound("Could not find DeliveryConverter for ${A}, try to import or define some")
+trait DeliveryConverter[A] {
+  def convert(d: Delivery[Bytes]): Either[ConversionException, Delivery[A]]
+}
+
+trait DeliveryConverterCheck {
+  def canConvert(d: Delivery[Bytes]): Boolean
+}
+
+@implicitNotFound("Could not find CheckedDeliveryConverter for ${A}, try to import or define some")
+trait CheckedDeliveryConverter[A] extends DeliveryConverter[A] with DeliveryConverterCheck
+
+object DeliveryConverter {
+  implicit val identity: DeliveryConverter[Bytes] = (d: Delivery[Bytes]) => Right(d)
 }
 
 trait ProductConverter[A] {
