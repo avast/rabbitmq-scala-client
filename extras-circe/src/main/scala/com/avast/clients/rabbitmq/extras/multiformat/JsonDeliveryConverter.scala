@@ -10,13 +10,14 @@ import io.circe.parser.decode
 import scala.annotation.implicitNotFound
 import scala.reflect.ClassTag
 
-@implicitNotFound("Could not generate JsonFormatConverter for ${A}, try to import or define some\nMaybe you're missing some circe imports?")
+@implicitNotFound(
+  "Could not generate JsonDeliveryConverter for ${A}, try to import or define some\nMaybe you're missing some circe imports?")
 trait JsonDeliveryConverter[A] extends CheckedDeliveryConverter[A]
 
 object JsonDeliveryConverter {
   def derive[A: JsonDeliveryConverter](): JsonDeliveryConverter[A] = implicitly[JsonDeliveryConverter[A]]
 
-  implicit def createJsonFormatConverter[A: Decoder: ClassTag]: JsonDeliveryConverter[A] = new JsonDeliveryConverter[A] {
+  implicit def createJsonDeliveryConverter[A: Decoder: ClassTag]: JsonDeliveryConverter[A] = new JsonDeliveryConverter[A] {
     override def convert(d: Delivery[Bytes]): Either[ConversionException, Delivery[A]] = {
       decode[A](d.body.toStringUtf8)
         .leftMap {

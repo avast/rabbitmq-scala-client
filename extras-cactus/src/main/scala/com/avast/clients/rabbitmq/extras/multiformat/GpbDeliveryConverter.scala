@@ -14,22 +14,22 @@ import scala.util.control.NonFatal
 import scala.util.{Failure, Success}
 
 @implicitNotFound(
-  "Could not generate GpbFormatConverter from $GpbMessage to ${A}, try to import or define some\nMaybe you're missing some Cactus imports?")
+  "Could not generate GpbDeliveryConverter from $GpbMessage to ${A}, try to import or define some\nMaybe you're missing some Cactus imports?")
 trait GpbDeliveryConverter[GpbMessage, A] extends CheckedDeliveryConverter[A]
 
 object GpbDeliveryConverter {
   final val ContentTypes: Set[String] = Set("application/protobuf", "application/x-protobuf")
 
-  def apply[GpbMessage <: MessageLite]: GpbConverterDerivator[GpbMessage] = new GpbConverterDerivator[GpbMessage] {
+  def apply[GpbMessage <: MessageLite]: GpbDeliveryConverterDerivator[GpbMessage] = new GpbDeliveryConverterDerivator[GpbMessage] {
     override def derive[A: GpbDeliveryConverter[GpbMessage, ?]](): GpbDeliveryConverter[GpbMessage, A] =
       implicitly[GpbDeliveryConverter[GpbMessage, A]]
   }
 
-  trait GpbConverterDerivator[GpbMessage <: MessageLite] {
+  trait GpbDeliveryConverterDerivator[GpbMessage <: MessageLite] {
     def derive[A: GpbDeliveryConverter[GpbMessage, ?]](): GpbDeliveryConverter[GpbMessage, A]
   }
 
-  implicit def createGpbFormatConverter[GpbMessage <: MessageLite: GpbParser: Converter[?, A]: ClassTag, A: ClassTag]
+  implicit def createGpbDeliveryConverter[GpbMessage <: MessageLite: GpbParser: Converter[?, A]: ClassTag, A: ClassTag]
     : GpbDeliveryConverter[GpbMessage, A] = new GpbDeliveryConverter[GpbMessage, A] {
     override def convert(d: Delivery[Bytes]): Either[ConversionException, Delivery[A]] = {
       implicitly[GpbParser[GpbMessage]].parseFrom(d.body) match {

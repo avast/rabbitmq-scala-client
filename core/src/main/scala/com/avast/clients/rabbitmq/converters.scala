@@ -21,6 +21,7 @@ object DeliveryConverter {
   implicit val identity: DeliveryConverter[Bytes] = (d: Delivery[Bytes]) => Right(d)
 }
 
+@implicitNotFound("Could not find ProductConverter for ${A}, try to import or define some")
 trait ProductConverter[A] {
   def convert(p: A): Either[ConversionException, Bytes]
 
