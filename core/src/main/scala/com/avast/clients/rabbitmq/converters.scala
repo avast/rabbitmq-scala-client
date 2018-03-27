@@ -5,15 +5,23 @@ import com.avast.clients.rabbitmq.api.{Delivery, MessageProperties}
 
 import scala.annotation.implicitNotFound
 
+/** Tries to convert `Delivery[Bytes]` to `Delivery[A]`.
+  */
 @implicitNotFound("Could not find DeliveryConverter for ${A}, try to import or define some")
 trait DeliveryConverter[A] {
   def convert(d: Delivery[Bytes]): Either[ConversionException, Delivery[A]]
 }
 
+/** Checks whether the mixed `DeliveryConverter[A]` is able to convert specified `Delivery[Bytes]` to `Delivery[A]`.
+  */
 trait DeliveryConverterCheck {
+  self: DeliveryConverter[_] =>
+
   def canConvert(d: Delivery[Bytes]): Boolean
 }
 
+/** Tries to convert `Delivery[Bytes]` to `Delivery[A]`. Contains check whether the `Delivery[Bytes]` fits for the conversion.
+  */
 @implicitNotFound("Could not find CheckedDeliveryConverter for ${A}, try to import or define some")
 trait CheckedDeliveryConverter[A] extends DeliveryConverter[A] with DeliveryConverterCheck
 
@@ -25,6 +33,8 @@ object DeliveryConverter {
 trait ProductConverter[A] {
   def convert(p: A): Either[ConversionException, Bytes]
 
+  /** Fills some properties for the producer's message. It's usually just Content-Type but that is implementation-specific.
+    */
   def fillProperties(properties: MessageProperties): MessageProperties
 }
 
