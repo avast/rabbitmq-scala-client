@@ -350,8 +350,11 @@ private[rabbitmq] object DefaultRabbitMQClientFactory extends LazyLogging {
     val readAction: DefaultDeliveryReadAction = {
       val convAction: DefaultDeliveryReadAction = { (d: Delivery[Bytes]) =>
         try {
-          implicitly[DeliveryConverter[A]].convert(d) match {
-            case Right(devA) => implicitly[ToTask[F]].apply(userReadAction(devA))
+          implicitly[DeliveryConverter[A]].convert(d.body) match {
+            case Right(a) =>
+              val devA = d.copy(body = a)
+              implicitly[ToTask[F]].apply(userReadAction(devA))
+
             case Left(ce) => Task.raiseError(ce)
           }
         } catch {

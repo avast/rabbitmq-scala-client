@@ -31,8 +31,8 @@ object GpbDeliveryConverter {
 
   implicit def createGpbDeliveryConverter[GpbMessage <: MessageLite: GpbParser: Converter[?, A]: ClassTag, A: ClassTag]
     : GpbDeliveryConverter[GpbMessage, A] = new GpbDeliveryConverter[GpbMessage, A] {
-    override def convert(d: Delivery[Bytes]): Either[ConversionException, Delivery[A]] = {
-      implicitly[GpbParser[GpbMessage]].parseFrom(d.body) match {
+    override def convert(body: Bytes): Either[ConversionException, A] = {
+      implicitly[GpbParser[GpbMessage]].parseFrom(body) match {
         case Success(gpb) =>
           gpb
             .asCaseClass[A]
@@ -41,7 +41,6 @@ object GpbDeliveryConverter {
                 s"Errors while converting to ${implicitly[ClassTag[A]].runtimeClass.getName}: ${fs.toList.mkString("[", ", ", "]")}"
               }
             }
-            .map(a => d.copy(body = a))
         case Failure(NonFatal(e)) =>
           Left {
             ConversionException(s"Could not parse GPB message ${implicitly[ClassTag[GpbMessage]].runtimeClass.getName}", e)

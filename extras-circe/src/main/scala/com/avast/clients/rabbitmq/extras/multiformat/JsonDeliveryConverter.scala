@@ -18,12 +18,11 @@ object JsonDeliveryConverter {
   def derive[A: JsonDeliveryConverter](): JsonDeliveryConverter[A] = implicitly[JsonDeliveryConverter[A]]
 
   implicit def createJsonDeliveryConverter[A: Decoder: ClassTag]: JsonDeliveryConverter[A] = new JsonDeliveryConverter[A] {
-    override def convert(d: Delivery[Bytes]): Either[ConversionException, Delivery[A]] = {
-      decode[A](d.body.toStringUtf8)
+    override def convert(body: Bytes): Either[ConversionException, A] = {
+      decode[A](body.toStringUtf8)
         .leftMap {
           ConversionException(s"Could not decode class ${implicitly[ClassTag[A]].runtimeClass.getName} from json", _)
         }
-        .map(a => d.copy(body = a))
     }
 
     override def canConvert(d: Delivery[Bytes]): Boolean = d.properties.contentType.map(_.toLowerCase).contains("application/json")

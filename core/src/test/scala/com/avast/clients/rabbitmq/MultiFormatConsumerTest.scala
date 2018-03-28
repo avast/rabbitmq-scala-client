@@ -22,7 +22,7 @@ class MultiFormatConsumerTest extends FunSuite with ScalaFutures {
   val StringFormatConverter: CheckedDeliveryConverter[String] = new CheckedDeliveryConverter[String] {
     override def canConvert(d: Delivery[Bytes]): Boolean = d.properties.contentType.contains("text/plain")
 
-    override def convert(d: Delivery[Bytes]): Either[ConversionException, Delivery[String]] = Right(d.copy(body = d.body.toStringUtf8))
+    override def convert(b: Bytes): Either[ConversionException, String] = Right(b.toStringUtf8)
   }
 
   private implicit val c: Configuration = Configuration.default.withSnakeCaseMemberNames

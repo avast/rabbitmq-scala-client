@@ -17,7 +17,10 @@ class MultiFormatConsumer[F[_], A] private (supportedConverters: immutable.Seq[C
     val converted: Either[ConversionException, Delivery[A]] = try {
       supportedConverters
         .collectFirst {
-          case c if c.canConvert(delivery) => c.convert(delivery)
+          case c if c.canConvert(delivery) =>
+            c.convert(delivery.body).map { newBody =>
+              delivery.copy(body = newBody)
+            }
         }
         .getOrElse {
           Left(ConversionException(s"Could not find suitable converter for $delivery"))

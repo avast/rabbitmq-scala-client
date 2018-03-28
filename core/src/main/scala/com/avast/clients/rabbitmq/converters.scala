@@ -9,7 +9,7 @@ import scala.annotation.implicitNotFound
   */
 @implicitNotFound("Could not find DeliveryConverter for ${A}, try to import or define some")
 trait DeliveryConverter[A] {
-  def convert(d: Delivery[Bytes]): Either[ConversionException, Delivery[A]]
+  def convert(d: Bytes): Either[ConversionException, A]
 }
 
 /** Checks whether the mixed `DeliveryConverter[A]` is able to convert specified `Delivery[Bytes]` to `Delivery[A]`.
@@ -26,7 +26,7 @@ trait DeliveryConverterCheck {
 trait CheckedDeliveryConverter[A] extends DeliveryConverter[A] with DeliveryConverterCheck
 
 object DeliveryConverter {
-  implicit val identity: DeliveryConverter[Bytes] = (d: Delivery[Bytes]) => Right(d)
+  implicit val identity: DeliveryConverter[Bytes] = (b: Bytes) => Right(b)
 }
 
 @implicitNotFound("Could not find ProductConverter for ${A}, try to import or define some")
