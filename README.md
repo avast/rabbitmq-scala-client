@@ -156,6 +156,9 @@ you can change the type it works with by specifying it when creating the _connec
 `cats.arrow.FunctionK[Task, A]` and `cats.arrow.FunctionK[A, Task]` however there are some types supported out-of-the-box by just importing
 `import com.avast.clients.rabbitmq._` (`scala.util.Try`, `scala.concurrent.Future` and `monix.eval.Task` currently).
 
+The Scala API uses types-conversions for both consumer and producer, that means you don't have to work directly with `Bytes` (however you
+still can, if you want) and you touch only your business class which is then (de)serialized using provided converter.
+
 The library uses two types of executors - one is for blocking (IO) operations and the second for callbacks. You _have to_ provide both of them:
 1. Blocking executor as `ExecutorService`
 1. Callback executor as `monix.execution.Scheduler` - you can get it e.g. by calling `Scheduler(myFavoriteExecutionContext)`
@@ -164,6 +167,7 @@ The library uses two types of executors - one is for blocking (IO) operations an
 import com.typesafe.config.ConfigFactory
 import com.avast.metrics.dropwizard.AvastJmxMetricsMonitor
 import com.avast.clients.rabbitmq._ // for generic types support
+import com.avast.bytes.Bytes
 import monix.execution._
 import monix.eval._
 
@@ -179,7 +183,7 @@ val monitor = new AvastJmxMetricsMonitor("TestDomain")
 // if you expect very high load, you can use separate connections for each producer/consumer, but it's usually not needed
 val rabbitConnection = RabbitMQConnection.fromConfig[Task](config, blockingExecutor) // DefaultRabbitMQConnection[Task]
 
-val consumer = rabbitConnection.newConsumer("consumer", monitor) { delivery =>
+val consumer = rabbitConnection.newConsumer[Bytes]("consumer", monitor) { (delivery: Delivery[Bytes]) =>
   println(delivery)
   Task.now(DeliveryResult.Ack)
 } // DefaultRabbitMQConsumer
@@ -188,6 +192,17 @@ val sender = rabbitConnection.newProducer("producer", monitor) // DefaultRabbitM
 
 sender.send(...).runAsync // because it's Task, don't forget to run it ;-)
 ```
+
+#### Providing converters for producer/consumer
+
+Both the producer and consumer require type argument when creating from _connection_:
+1. `connection.newConsumer[MyClass]` which requires implicit `DeliveryConverter[MyClass]`
+1. `connection.newProducer[MyClass]` which requires implicit `ProductConverter[MyClass]`
+
+There are multiple options where to get the _converter_ (it's the same case for `DeliveryConverter` as for `ProductConverter`):
+1. Implement your own implicit _converter_ for the type
+1. Modules [extras-circe](extras-circe/README.md) and [extras-cactus](extras-cactus/README.md) provide support for JSON and GPB conversion. 
+1. Use `identity` converter by specifying `Bytes` type argument. No further action needed in that case.
 
 ### Java usage
 
@@ -294,8 +309,8 @@ Check [reference.conf](core/src/main/resources/reference.conf) for all options o
 
 ### MultiFormatConsumer
 
-Quite often you receive a single type of message but you want to receive it already decoded or even to support multiple formats of
-the message. This is where `MultiTypeConsumer` could be used.  
+Quite often you receive a single type of message but you want to support multiple formats of encoding (Protobuf, Json, ...).
+This is where `MultiTypeConsumer` could be used.  
 
 Modules [extras-circe](extras-circe/README.md) and [extras-cactus](extras-cactus/README.md) provide support for JSON and GPB conversion. They
 are both used in the example below.
@@ -333,15 +348,14 @@ val consumer = MultiFormatConsumer.forType[Future, NewFileSourceAdded](
 ```
 (see [unit test](core/src/test/scala/com/avast/clients/rabbitmq/MultiFormatConsumerTest.scala) for full example)
 
-#### Implementing own `FormatConverter`
+#### Implementing own `DeliveryConverter`
 
-The [FormatConverter](core/src/main/scala/com/avast/clients/rabbitmq/FormatConverter.scala) is usually reacting to Content-Type (like in
+The [CheckedDeliveryConverter](core/src/main/scala/com/avast/clients/rabbitmq/converters.scala) is usually reacting to Content-Type (like in
 the example below) but it's not required - it could e.g. analyze the payload (or first bytes) too. 
 
 ```scala
-val StringFormatConverter: FormatConverter[String] = new FormatConverter[String] {
-  override def fits(d: Delivery): Boolean = d.properties.contentType.contains("text/plain")
-
-  override def convert(d: Delivery): Either[ConversionException, String] = Right(d.body.toStringUtf8)
+val StringDeliveryConverter: CheckedDeliveryConverter[String] = new CheckedDeliveryConverter[String] {
+  override def canConvert(d: Delivery[Bytes]): Boolean = d.properties.contentType.contains("text/plain")
+  override def convert(b: Bytes): Either[ConversionException, String] = Right(b.toStringUtf8)
 }
 ```

@@ -19,7 +19,7 @@ import scala.concurrent.Future
 
 class MultiFormatConsumerTest extends FunSuite with ScalaFutures {
 
-  val StringFormatConverter: CheckedDeliveryConverter[String] = new CheckedDeliveryConverter[String] {
+  val StringDeliveryConverter: CheckedDeliveryConverter[String] = new CheckedDeliveryConverter[String] {
     override def canConvert(d: Delivery[Bytes]): Boolean = d.properties.contentType.contains("text/plain")
 
     override def convert(b: Bytes): Either[ConversionException, String] = Right(b.toStringUtf8)
@@ -33,7 +33,7 @@ class MultiFormatConsumerTest extends FunSuite with ScalaFutures {
   case class NewFileSourceAdded(fileSources: Seq[FileSource])
 
   test("basic") {
-    val consumer = MultiFormatConsumer.forType[Future, String](StringFormatConverter)(
+    val consumer = MultiFormatConsumer.forType[Future, String](StringDeliveryConverter)(
       d => {
         assertResult("abc321")(d.body)
         Future.successful(DeliveryResult.Ack)
@@ -53,7 +53,7 @@ class MultiFormatConsumerTest extends FunSuite with ScalaFutures {
   }
 
   test("non-supported content-type") {
-    val consumer = MultiFormatConsumer.forType[Future, String](StringFormatConverter)(
+    val consumer = MultiFormatConsumer.forType[Future, String](StringDeliveryConverter)(
       _ => Future.successful(DeliveryResult.Ack),
       (_, _) => Future.successful(DeliveryResult.Reject)
     )
