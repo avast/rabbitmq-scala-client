@@ -23,7 +23,7 @@ class DefaultRabbitMQProducerTest extends FunSuite with MockitoSugar with Eventu
 
     val channel = mock[AutorecoveringChannel]
 
-    val producer = new DefaultRabbitMQProducer[Future](
+    val producer = new DefaultRabbitMQProducer[Future, Bytes](
       name = "test",
       exchangeName = exchangeName,
       channel = channel,

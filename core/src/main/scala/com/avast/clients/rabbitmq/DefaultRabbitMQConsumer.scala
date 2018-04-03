@@ -17,14 +17,15 @@ import monix.execution.Scheduler
 import scala.collection.JavaConverters._
 import scala.util.control.NonFatal
 
-class DefaultRabbitMQConsumer(val name: String,
-                              channel: ServerChannel,
-                              queueName: String,
-                              useKluzo: Boolean,
-                              monitor: Monitor,
-                              failureAction: DeliveryResult,
-                              consumerListener: ConsumerListener,
-                              blockingScheduler: Scheduler)(readAction: DeliveryReadAction[Task])(implicit callbackScheduler: Scheduler)
+class DefaultRabbitMQConsumer(
+    val name: String,
+    channel: ServerChannel,
+    queueName: String,
+    useKluzo: Boolean,
+    monitor: Monitor,
+    failureAction: DeliveryResult,
+    consumerListener: ConsumerListener,
+    blockingScheduler: Scheduler)(readAction: DeliveryReadAction[Task, Bytes])(implicit callbackScheduler: Scheduler)
     extends DefaultConsumer(channel)
     with RabbitMQConsumer
     with AutoCloseable

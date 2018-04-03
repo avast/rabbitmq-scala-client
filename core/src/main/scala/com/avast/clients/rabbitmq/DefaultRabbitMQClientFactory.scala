@@ -3,6 +3,7 @@ package com.avast.clients.rabbitmq
 import java.time.Duration
 import java.util.concurrent.{TimeUnit, TimeoutException}
 
+import com.avast.bytes.Bytes
 import com.avast.clients.rabbitmq.api.DeliveryResult.{Ack, Reject, Republish, Retry}
 import com.avast.clients.rabbitmq.api._
 import com.avast.continuity.monix.Monix
@@ -28,7 +29,7 @@ private[rabbitmq] object DefaultRabbitMQClientFactory extends LazyLogging {
 
   private type ArgumentsMap = Map[String, Any]
 
-  private type DefaultDeliveryReadAction = DeliveryReadAction[Task]
+  private type DefaultDeliveryReadAction = DeliveryReadAction[Task, Bytes]
 
   private[rabbitmq] final val DeclareQueueRootConfigKey = "ffRabbitMQDeclareQueueDefaults"
   private[rabbitmq] final val DeclareQueueDefaultConfig = ConfigFactory.defaultReference().getConfig(DeclareQueueRootConfigKey)
@@ -88,35 +89,35 @@ private[rabbitmq] object DefaultRabbitMQClientFactory extends LazyLogging {
 
   object Producer {
 
-    def fromConfig[F[_]: FromTask](providedConfig: Config,
-                                   channel: ServerChannel,
-                                   factoryInfo: RabbitMqFactoryInfo,
-                                   blockingScheduler: Scheduler,
-                                   monitor: Monitor): DefaultRabbitMQProducer[F] = {
+    def fromConfig[F[_]: FromTask, A: ProductConverter](providedConfig: Config,
+                                                        channel: ServerChannel,
+                                                        factoryInfo: RabbitMQConnectionInfo,
+                                                        blockingScheduler: Scheduler,
+                                                        monitor: Monitor): DefaultRabbitMQProducer[F, A] = {
       val producerConfig = providedConfig.wrapped.as[ProducerConfig]("root")
 
-      create[F](producerConfig, channel, factoryInfo, blockingScheduler, monitor)
+      create[F, A](producerConfig, channel, factoryInfo, blockingScheduler, monitor)
     }
 
-    def create[F[_]: FromTask](producerConfig: ProducerConfig,
-                               channel: ServerChannel,
-                               factoryInfo: RabbitMqFactoryInfo,
-                               blockingScheduler: Scheduler,
-                               monitor: Monitor): DefaultRabbitMQProducer[F] = {
+    def create[F[_]: FromTask, A: ProductConverter](producerConfig: ProducerConfig,
+                                                    channel: ServerChannel,
+                                                    factoryInfo: RabbitMQConnectionInfo,
+                                                    blockingScheduler: Scheduler,
+                                                    monitor: Monitor): DefaultRabbitMQProducer[F, A] = {
 
-      prepareProducer[F](producerConfig, channel, factoryInfo, blockingScheduler, monitor)
+      prepareProducer[F, A](producerConfig, channel, factoryInfo, blockingScheduler, monitor)
     }
   }
 
   object Consumer {
 
-    def fromConfig[F[_]: ToTask](
-        providedConfig: Config,
-        channel: ServerChannel,
-        channelFactoryInfo: RabbitMqFactoryInfo,
-        blockingScheduler: Scheduler,
-        monitor: Monitor,
-        consumerListener: ConsumerListener)(readAction: DeliveryReadAction[F])(implicit scheduler: Scheduler): DefaultRabbitMQConsumer = {
+    def fromConfig[F[_]: ToTask, A: DeliveryConverter](providedConfig: Config,
+                                                       channel: ServerChannel,
+                                                       channelFactoryInfo: RabbitMQConnectionInfo,
+                                                       blockingScheduler: Scheduler,
+                                                       monitor: Monitor,
+                                                       consumerListener: ConsumerListener)(readAction: DeliveryReadAction[F, A])(
+        implicit scheduler: Scheduler): DefaultRabbitMQConsumer = {
 
       val mergedConfig = providedConfig.withFallback(ConsumerDefaultConfig)
 
@@ -133,53 +134,53 @@ private[rabbitmq] object DefaultRabbitMQClientFactory extends LazyLogging {
 
       val consumerConfig = updatedConfig.wrapped.as[ConsumerConfig]("root")
 
-      create[F](consumerConfig, channel, channelFactoryInfo, blockingScheduler, monitor, consumerListener)(readAction)
+      create[F, A](consumerConfig, channel, channelFactoryInfo, blockingScheduler, monitor, consumerListener)(readAction)
     }
 
-    def create[F[_]: ToTask](
-        consumerConfig: ConsumerConfig,
-        channel: ServerChannel,
-        channelFactoryInfo: RabbitMqFactoryInfo,
-        blockingScheduler: Scheduler,
-        monitor: Monitor,
-        consumerListener: ConsumerListener)(readAction: DeliveryReadAction[F])(implicit scheduler: Scheduler): DefaultRabbitMQConsumer = {
+    def create[F[_]: ToTask, A: DeliveryConverter](consumerConfig: ConsumerConfig,
+                                                   channel: ServerChannel,
+                                                   channelFactoryInfo: RabbitMQConnectionInfo,
+                                                   blockingScheduler: Scheduler,
+                                                   monitor: Monitor,
+                                                   consumerListener: ConsumerListener)(readAction: DeliveryReadAction[F, A])(
+        implicit scheduler: Scheduler): DefaultRabbitMQConsumer = {
 
       prepareConsumer(consumerConfig, readAction, channelFactoryInfo, channel, consumerListener, blockingScheduler, monitor)
     }
   }
 
   object Declarations {
-    def declareExchange(config: Config, channel: ServerChannel, channelFactoryInfo: RabbitMqFactoryInfo): Task[Unit] = {
+    def declareExchange(config: Config, channel: ServerChannel, channelFactoryInfo: RabbitMQConnectionInfo): Task[Unit] = {
       declareExchange(config.withFallback(DeclareExchangeDefaultConfig).as[DeclareExchange], channel, channelFactoryInfo)
     }
 
-    def declareQueue(config: Config, channel: ServerChannel, channelFactoryInfo: RabbitMqFactoryInfo): Task[Unit] = {
+    def declareQueue(config: Config, channel: ServerChannel, channelFactoryInfo: RabbitMQConnectionInfo): Task[Unit] = {
       declareQueue(config.withFallback(DeclareQueueDefaultConfig).as[DeclareQueue], channel, channelFactoryInfo)
     }
 
-    def bindQueue(config: Config, channel: ServerChannel, channelFactoryInfo: RabbitMqFactoryInfo): Task[Unit] = {
+    def bindQueue(config: Config, channel: ServerChannel, channelFactoryInfo: RabbitMQConnectionInfo): Task[Unit] = {
       bindQueue(config.withFallback(ConsumerBindingDefaultConfig).as[BindQueue], channel, channelFactoryInfo)
     }
 
-    def bindExchange(config: Config, channel: ServerChannel, channelFactoryInfo: RabbitMqFactoryInfo): Task[Unit] = {
+    def bindExchange(config: Config, channel: ServerChannel, channelFactoryInfo: RabbitMQConnectionInfo): Task[Unit] = {
       bindExchange(config.withFallback(BindExchangeDefaultConfig).as[BindExchange], channel, channelFactoryInfo)
     }
 
-    private def declareExchange(config: DeclareExchange, channel: ServerChannel, channelFactoryInfo: RabbitMqFactoryInfo): Task[Unit] =
+    private def declareExchange(config: DeclareExchange, channel: ServerChannel, channelFactoryInfo: RabbitMQConnectionInfo): Task[Unit] =
       Task {
         import config._
 
         DefaultRabbitMQClientFactory.this.declareExchange(name, `type`, durable, autoDelete, arguments, channel, channelFactoryInfo)
       }
 
-    private def declareQueue(config: DeclareQueue, channel: ServerChannel, channelFactoryInfo: RabbitMqFactoryInfo): Task[Unit] = Task {
+    private def declareQueue(config: DeclareQueue, channel: ServerChannel, channelFactoryInfo: RabbitMQConnectionInfo): Task[Unit] = Task {
       import config._
 
       DefaultRabbitMQClientFactory.this.declareQueue(channel, name, durable, exclusive, autoDelete, arguments)
       ()
     }
 
-    private def bindQueue(config: BindQueue, channel: ServerChannel, channelFactoryInfo: RabbitMqFactoryInfo): Task[Unit] = Task {
+    private def bindQueue(config: BindQueue, channel: ServerChannel, channelFactoryInfo: RabbitMQConnectionInfo): Task[Unit] = Task {
       import config._
 
       routingKeys.foreach {
@@ -187,7 +188,7 @@ private[rabbitmq] object DefaultRabbitMQClientFactory extends LazyLogging {
       }
     }
 
-    private def bindExchange(config: BindExchange, channel: ServerChannel, channelFactoryInfo: RabbitMqFactoryInfo): Task[Unit] = Task {
+    private def bindExchange(config: BindExchange, channel: ServerChannel, channelFactoryInfo: RabbitMQConnectionInfo): Task[Unit] = Task {
       import config._
 
       routingKeys.foreach {
@@ -197,11 +198,11 @@ private[rabbitmq] object DefaultRabbitMQClientFactory extends LazyLogging {
     }
   }
 
-  private def prepareProducer[F[_]: FromTask](producerConfig: ProducerConfig,
-                                              channel: ServerChannel,
-                                              channelFactoryInfo: RabbitMqFactoryInfo,
-                                              blockingScheduler: Scheduler,
-                                              monitor: Monitor): DefaultRabbitMQProducer[F] = {
+  private def prepareProducer[F[_]: FromTask, A: ProductConverter](producerConfig: ProducerConfig,
+                                                                   channel: ServerChannel,
+                                                                   channelFactoryInfo: RabbitMQConnectionInfo,
+                                                                   blockingScheduler: Scheduler,
+                                                                   monitor: Monitor): DefaultRabbitMQProducer[F, A] = {
     import producerConfig._
 
     val finalBlockingScheduler = if (useKluzo) Monix.wrapScheduler(blockingScheduler) else blockingScheduler
@@ -213,11 +214,11 @@ private[rabbitmq] object DefaultRabbitMQClientFactory extends LazyLogging {
       val d = declare.wrapped.as[AutoDeclareExchange]("root")
       declareExchange(exchange, channelFactoryInfo, channel, d)
     }
-    new DefaultRabbitMQProducer[F](producerConfig.name, exchange, channel, useKluzo, reportUnroutable, finalBlockingScheduler, monitor)
+    new DefaultRabbitMQProducer[F, A](producerConfig.name, exchange, channel, useKluzo, reportUnroutable, finalBlockingScheduler, monitor)
   }
 
   private[rabbitmq] def declareExchange(name: String,
-                                        channelFactoryInfo: RabbitMqFactoryInfo,
+                                        channelFactoryInfo: RabbitMQConnectionInfo,
                                         channel: ServerChannel,
                                         autoDeclareExchange: AutoDeclareExchange): Unit = {
     import autoDeclareExchange._
@@ -234,20 +235,21 @@ private[rabbitmq] object DefaultRabbitMQClientFactory extends LazyLogging {
                               autoDelete: Boolean,
                               arguments: DeclareArguments,
                               channel: ServerChannel,
-                              channelFactoryInfo: RabbitMqFactoryInfo): Unit = {
+                              channelFactoryInfo: RabbitMQConnectionInfo): Unit = {
     logger.info(s"Declaring exchange '$name' of type ${`type`} in virtual host '${channelFactoryInfo.virtualHost}'")
     val javaArguments = argsAsJava(arguments.value)
     channel.exchangeDeclare(name, `type`, durable, autoDelete, javaArguments)
     ()
   }
 
-  private def prepareConsumer[F[_]: ToTask](consumerConfig: ConsumerConfig,
-                                            readAction: DeliveryReadAction[F],
-                                            channelFactoryInfo: RabbitMqFactoryInfo,
-                                            channel: ServerChannel,
-                                            consumerListener: ConsumerListener,
-                                            blockingScheduler: Scheduler,
-                                            monitor: Monitor)(implicit scheduler: Scheduler): DefaultRabbitMQConsumer = {
+  private def prepareConsumer[F[_]: ToTask, A: DeliveryConverter](
+      consumerConfig: ConsumerConfig,
+      readAction: DeliveryReadAction[F, A],
+      channelFactoryInfo: RabbitMQConnectionInfo,
+      channel: ServerChannel,
+      consumerListener: ConsumerListener,
+      blockingScheduler: Scheduler,
+      monitor: Monitor)(implicit scheduler: Scheduler): DefaultRabbitMQConsumer = {
 
     // auto declare exchanges
     consumerConfig.bindings.foreach { bind =>
@@ -290,7 +292,7 @@ private[rabbitmq] object DefaultRabbitMQClientFactory extends LazyLogging {
     channel.queueDeclare(queueName, durable, exclusive, autoDelete, arguments.value)
   }
 
-  private def bindQueues(channelFactoryInfo: RabbitMqFactoryInfo, channel: ServerChannel, consumerConfig: ConsumerConfig): Unit = {
+  private def bindQueues(channelFactoryInfo: RabbitMQConnectionInfo, channel: ServerChannel, consumerConfig: ConsumerConfig): Unit = {
     import consumerConfig.queueName
 
     consumerConfig.bindings.foreach { bind =>
@@ -309,7 +311,7 @@ private[rabbitmq] object DefaultRabbitMQClientFactory extends LazyLogging {
     }
   }
 
-  private[rabbitmq] def bindQueue(channelFactoryInfo: RabbitMqFactoryInfo)(
+  private[rabbitmq] def bindQueue(channelFactoryInfo: RabbitMQConnectionInfo)(
       channel: ServerChannel,
       queueName: String)(exchangeName: String, routingKey: String, arguments: ArgumentsMap): AMQP.Queue.BindOk = {
     logger.info(s"Binding exchange $exchangeName($routingKey) -> queue '$queueName' in virtual host '${channelFactoryInfo.virtualHost}'")
@@ -317,7 +319,7 @@ private[rabbitmq] object DefaultRabbitMQClientFactory extends LazyLogging {
     channel.queueBind(queueName, exchangeName, routingKey, arguments)
   }
 
-  private[rabbitmq] def bindExchange(channelFactoryInfo: RabbitMqFactoryInfo)(
+  private[rabbitmq] def bindExchange(channelFactoryInfo: RabbitMQConnectionInfo)(
       channel: ServerChannel,
       sourceExchangeName: String,
       destExchangeName: String,
@@ -329,13 +331,14 @@ private[rabbitmq] object DefaultRabbitMQClientFactory extends LazyLogging {
     channel.exchangeBind(destExchangeName, sourceExchangeName, routingKey, arguments)
   }
 
-  private def prepareConsumer[F[_]: ToTask](consumerConfig: ConsumerConfig,
-                                            channelFactoryInfo: RabbitMqFactoryInfo,
-                                            channel: ServerChannel,
-                                            userReadAction: DeliveryReadAction[F],
-                                            consumerListener: ConsumerListener,
-                                            blockingScheduler: Scheduler,
-                                            monitor: Monitor)(implicit scheduler: Scheduler): DefaultRabbitMQConsumer = {
+  private def prepareConsumer[F[_]: ToTask, A: DeliveryConverter](
+      consumerConfig: ConsumerConfig,
+      channelFactoryInfo: RabbitMQConnectionInfo,
+      channel: ServerChannel,
+      userReadAction: DeliveryReadAction[F, A],
+      consumerListener: ConsumerListener,
+      blockingScheduler: Scheduler,
+      monitor: Monitor)(implicit scheduler: Scheduler): DefaultRabbitMQConsumer = {
     import consumerConfig._
 
     val finalBlockingScheduler: Scheduler = if (useKluzo) {
@@ -345,7 +348,20 @@ private[rabbitmq] object DefaultRabbitMQClientFactory extends LazyLogging {
     }
 
     val readAction: DefaultDeliveryReadAction = {
-      val convAction = (d: Delivery) => implicitly[ToTask[F]].apply(userReadAction(d))
+      val convAction: DefaultDeliveryReadAction = { (d: Delivery[Bytes]) =>
+        try {
+          implicitly[DeliveryConverter[A]].convert(d.body) match {
+            case Right(a) =>
+              val devA = d.copy(body = a)
+              implicitly[ToTask[F]].apply(userReadAction(devA))
+
+            case Left(ce) => Task.raiseError(ce)
+          }
+        } catch {
+          case NonFatal(e) =>
+            Task.raiseError(e)
+        }
+      }
 
       wrapReadAction(consumerConfig, convAction, blockingScheduler)
     }
@@ -361,11 +377,11 @@ private[rabbitmq] object DefaultRabbitMQClientFactory extends LazyLogging {
     consumer
   }
 
-  private def wrapReadAction(consumerConfig: ConsumerConfig, userReadAction: DefaultDeliveryReadAction, blockingScheduler: Scheduler)(
+  private def wrapReadAction[A](consumerConfig: ConsumerConfig, userReadAction: DefaultDeliveryReadAction, blockingScheduler: Scheduler)(
       implicit callbackScheduler: Scheduler): DefaultDeliveryReadAction = {
     import consumerConfig._
 
-    (delivery: Delivery) =>
+    (delivery: Delivery[Bytes]) =>
       try {
         // we try to catch also long-lasting synchronous work on the thread
         val action = Task.deferFuture {

@@ -15,7 +15,7 @@ package object rabbitmq {
   private[rabbitmq] type ServerConnection = RecoverableConnection
   private[rabbitmq] type ServerChannel = RecoverableChannel
 
-  type DeliveryReadAction[F[_]] = Delivery => F[DeliveryResult]
+  type DeliveryReadAction[F[_], A] = Delivery[A] => F[DeliveryResult]
 
   type FromTask[A[_]] = FunctionK[Task, A]
   type ToTask[A[_]] = FunctionK[A, Task]
