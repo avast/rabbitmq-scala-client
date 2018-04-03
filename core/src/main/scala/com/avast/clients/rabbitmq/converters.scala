@@ -12,18 +12,12 @@ trait DeliveryConverter[A] {
   def convert(d: Bytes): Either[ConversionException, A]
 }
 
-/** Checks whether the mixed `DeliveryConverter[A]` is able to convert specified `Delivery[Bytes]` to `Delivery[A]`.
-  */
-trait DeliveryConverterCheck {
-  self: DeliveryConverter[_] =>
-
-  def canConvert(d: Delivery[Bytes]): Boolean
-}
-
 /** Tries to convert `Delivery[Bytes]` to `Delivery[A]`. Contains check whether the `Delivery[Bytes]` fits for the conversion.
   */
 @implicitNotFound("Could not find CheckedDeliveryConverter for ${A}, try to import or define some")
-trait CheckedDeliveryConverter[A] extends DeliveryConverter[A] with DeliveryConverterCheck
+trait CheckedDeliveryConverter[A] extends DeliveryConverter[A] {
+  def canConvert(d: Delivery[Bytes]): Boolean
+}
 
 object DeliveryConverter {
   implicit val identity: DeliveryConverter[Bytes] = (b: Bytes) => Right(b)
