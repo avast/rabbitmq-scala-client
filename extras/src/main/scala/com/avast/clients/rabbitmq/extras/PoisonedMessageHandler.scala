@@ -60,11 +60,11 @@ class PoisonedMessageHandler[F[_]: FromTask: ToTask, A](maxAttempts: Int)(wrappe
     Task.now(())
   }
 
-  private def convertFromF[A2](task: F[A2]): Task[A2] = {
+  private def convertFromF[B](task: F[B]): Task[B] = {
     implicitly[ToTask[F]].apply(task)
   }
 
-  private def convertToF[A2](task: Task[A2]): F[A2] = {
+  private def convertToF[B](task: Task[B]): F[B] = {
     implicitly[FromTask[F]].apply(task)
   }
 }
