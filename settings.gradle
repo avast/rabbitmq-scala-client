@@ -1,4 +1,4 @@
-rootProject.name="rabbitmqclient"
+rootProject.name="rabbitmq-scala-client"
 
 include 'api'
 include 'core'
