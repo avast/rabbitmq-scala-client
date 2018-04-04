@@ -18,6 +18,7 @@ buildscript {
 apply plugin: 'idea'
 apply plugin: 'docker-compose'
 
+group = "com.avast.clients.rabbitmq"
 version = version == 'unspecified' ? 'DEVELOPER-SNAPSHOT' : version
 
 subprojects {
@@ -33,6 +34,8 @@ subprojects {
         from sourceSets.main.allSource
         classifier "sources"
     }
+
+    group = "com.avast.clients.rabbitmq"
 
     publishing {
         publications {
@@ -63,6 +66,7 @@ subprojects {
             desc = 'Scala wrapper over standard RabbitMQ Java client library'
             licenses = ['Apache-2.0']
             vcsUrl = 'https://github.com/avast/rabbitmq-scala-client.git'
+            githubRepo = 'avast/rabbitmq-scala-plugin'
             websiteUrl = 'https://github.com/avast/rabbitmq-scala-client'
             issueTrackerUrl = 'https://github.com/avast/rabbitmq-scala-client/issues'
             labels = ['rabbitmq', 'client', 'amqp', 'scala']

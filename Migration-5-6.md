@@ -1,6 +1,7 @@
 ## Migration from 5.x to 6.x
 
 Common changes:
+1. GroupId of all artifacts has changed from `com.avast.clients` to `com.avast.clients.rabbitmq`.
 1. The library doesn't use [Lyra library](https://github.com/jhalterman/lyra) anymore. Removing the Lyra resulted into change of listeners.
 
 Changes in Scala API:

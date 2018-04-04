@@ -16,7 +16,7 @@ concept of AMQP connection and derived channels - it handles channels automatica
 can be closed separately while closing _connection_ causes closing all derived channels and all _producers_ and _consumers_.
 
 ## Dependency
-`compile 'com.avast.clients:rabbitmq-client-core_$scalaVersion:x.x.x'`
+`compile 'com.avast.clients.rabbitmq:rabbitmq-client-core_$scalaVersion:x.x.x'`
 
 ## Modules
 
