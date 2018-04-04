@@ -1,0 +1,11 @@
+language: java
+jdk:
+  - oraclejdk8
+sudo: required
+services:
+  - docker
+cache:
+  directories:
+    - $HOME/.gradle/wrapper/
+after_success:
+  - test $TRAVIS_PULL_REQUEST == "false" && test "$TRAVIS_TAG" != "" && test $TRAVIS_REPO_SLUG == "avast/rabbitmqclient" && sudo ./gradlew bintrayUpload -Pversion="$TRAVIS_TAG" --info
