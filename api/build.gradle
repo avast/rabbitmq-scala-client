@@ -1,4 +1,4 @@
-archivesBaseName = 'rabbitmq-client-api'
+archivesBaseName = "rabbitmq-client-api_$scalaVersion"
 
 dependencies {
     compile "com.avast.bytes:bytes-core:${bytesVersion}"

@@ -11,17 +11,66 @@ buildscript {
         classpath 'com.avast.gradle:gradle-docker-compose-plugin:0.6.13'
         classpath 'com.github.maiflai:gradle-scalatest:0.19'
         classpath 'com.github.ben-manes:gradle-versions-plugin:0.17.0'
+        classpath 'com.jfrog.bintray.gradle:gradle-bintray-plugin:1.7.3'
     }
 }
 
 apply plugin: 'idea'
 apply plugin: 'docker-compose'
 
+version = version == 'unspecified' ? 'DEVELOPER-SNAPSHOT' : version
+
 subprojects {
     apply plugin: 'java'
     apply plugin: 'scala'
     apply plugin: 'com.github.maiflai.scalatest'
     apply plugin: 'com.github.ben-manes.versions'
+    apply plugin: 'com.jfrog.bintray'
+    apply plugin: 'maven'
+    apply plugin: 'maven-publish'
+
+    task sourceJar(type: Jar) {
+        from sourceSets.main.allSource
+        classifier "sources"
+    }
+
+    publishing {
+        publications {
+            MyPublication(MavenPublication) {
+                from components.java
+                groupId project.group
+                version project.version
+                artifact sourceJar
+            }
+        }
+    }
+
+    artifacts {
+        archives jar
+        archives sourceJar
+    }
+
+    bintray {
+        user = System.getenv('BINTRAY_USER')
+        key = System.getenv('BINTRAY_KEY')
+        configurations = ['archives']
+
+        pkg {
+            repo = 'maven'
+            name = 'rabbitmqclient'
+            userOrg = 'avast'
+            desc = 'Scala wrapper over standard RabbitMQ Java client library'
+            licenses = ['Apache-2.0']
+            vcsUrl = 'https://github.com/avast/rabbitmqclient.git'
+            websiteUrl = 'https://github.com/avast/rabbitmqclient'
+            issueTrackerUrl = 'https://github.com/avast/rabbitmqclient/issues'
+            labels = ['rabbitmq', 'client', 'amqp', 'scala']
+            version {
+                name = project.version
+                vcsTag = project.version
+            }
+        }
+    }
 
     configurations {
         scalaCompilerPlugin

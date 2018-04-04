@@ -1,4 +1,4 @@
-archivesBaseName = 'rabbitmq-client-extras-circe'
+archivesBaseName = "rabbitmq-client-extras-circe_$scalaVersion"
 
 dependencies {
     compile project(":core")

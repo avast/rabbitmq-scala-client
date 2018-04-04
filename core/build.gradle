@@ -1,7 +1,7 @@
 apply plugin: 'com.google.protobuf'
 apply plugin: 'idea'
 
-archivesBaseName = 'rabbitmq-client-core'
+archivesBaseName = "rabbitmq-client-core_$scalaVersion"
 
 protobuf {
     protoc {
