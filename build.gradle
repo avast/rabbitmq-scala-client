@@ -57,13 +57,13 @@ subprojects {
 
         pkg {
             repo = 'maven'
-            name = 'rabbitmqclient'
+            name = 'rabbitmq-scala-client'
             userOrg = 'avast'
             desc = 'Scala wrapper over standard RabbitMQ Java client library'
             licenses = ['Apache-2.0']
-            vcsUrl = 'https://github.com/avast/rabbitmqclient.git'
-            websiteUrl = 'https://github.com/avast/rabbitmqclient'
-            issueTrackerUrl = 'https://github.com/avast/rabbitmqclient/issues'
+            vcsUrl = 'https://github.com/avast/rabbitmq-scala-client.git'
+            websiteUrl = 'https://github.com/avast/rabbitmq-scala-client'
+            issueTrackerUrl = 'https://github.com/avast/rabbitmq-scala-client/issues'
             labels = ['rabbitmq', 'client', 'amqp', 'scala']
             version {
                 name = project.version

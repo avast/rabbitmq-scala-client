@@ -1,7 +1,7 @@
 # RabbitMQ client
 
-[![Build Status](https://travis-ci.org/avast/rabbitmqclient.svg?branch=master)](https://travis-ci.org/avast/rabbitmqclient)
-[![Download](https://api.bintray.com/packages/avast/maven/rabbitmqclient/images/download.svg) ](https://bintray.com/avast/maven/rabbitmqclient/_latestVersion)
+[![Build Status](https://travis-ci.org/avast/rabbitmq-scala-client.svg?branch=master)](https://travis-ci.org/avast/rabbitmq-scala-client)
+[![Download](https://api.bintray.com/packages/avast/maven/rabbitmq-scala-client/images/download.svg) ](https://bintray.com/avast/maven/rabbitmq-scala-client/_latestVersion)
 
 
 This client is lightweight wrapper over standard [RabbitMQ java client](https://www.rabbitmq.com/java-client.html).
