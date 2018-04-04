@@ -5,8 +5,8 @@ import java.time.Duration
 import java.util.concurrent.ExecutorService
 
 import com.avast.clients.rabbitmq.api._
+import com.avast.clients.rabbitmq.ssl.{KeyStoreTypes, SSLBuilder}
 import com.avast.metrics.scalaapi.Monitor
-import com.avast.utils2.ssl.{KeyStoreTypes, SSLBuilder}
 import com.rabbitmq.client._
 import com.typesafe.config.{Config, ConfigFactory}
 import com.typesafe.scalalogging.StrictLogging
@@ -181,10 +181,10 @@ object RabbitMQConnection extends StrictLogging {
       factory.setPassword(password)
     }
 
-    if (ssl.enabled) {
-      import ssl.trustStore._
+    if (connectionConfig.ssl.enabled) {
+      import connectionConfig.ssl.trustStore._
 
-      if (ssl.trustStore.path.toString.trim.nonEmpty) {
+      if (connectionConfig.ssl.trustStore.path.toString.trim.nonEmpty) {
         val sslContext = SSLBuilder
           .empty()
           .loadAllFromBundle(path, KeyStoreTypes.JKSTrustStore, password)

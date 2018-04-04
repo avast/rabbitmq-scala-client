@@ -1,12 +1,12 @@
+import java.util.function.Function
+
 buildscript {
     repositories {
-        maven { url 'https://artifactory.int.avast.com/artifactory/maven' }
+        mavenCentral()
+        jcenter()
     }
 
     dependencies {
-        classpath 'com.avast.gradle:gradle-publish:0.21.0'
-        classpath 'com.avast.gradle:gradle-release:0.21.0'
-        classpath 'com.avast.gradle:gradle-scala:0.21.0'
         classpath 'com.google.protobuf:protobuf-gradle-plugin:0.8.4'
         classpath 'com.avast.gradle:gradle-docker-compose-plugin:0.6.13'
         classpath 'com.github.maiflai:gradle-scalatest:0.19'
@@ -14,62 +14,72 @@ buildscript {
     }
 }
 
-apply plugin: 'avast-release'
 apply plugin: 'idea'
 apply plugin: 'docker-compose'
 
 subprojects {
     apply plugin: 'java'
-    apply plugin: 'avast-publish'
-    apply plugin: 'avast-scala'
+    apply plugin: 'scala'
     apply plugin: 'com.github.maiflai.scalatest'
     apply plugin: 'com.github.ben-manes.versions'
+
+    configurations {
+        scalaCompilerPlugin
+    }
+
+    compileScala {
+        scalaCompileOptions.additionalParameters = ['-target:jvm-1.8']
+    }
 
     sourceCompatibility = '1.8'
     targetCompatibility = '1.8'
 
     repositories {
-        maven { url 'https://artifactory.int.avast.com/artifactory/maven' }
+        mavenCentral()
+        jcenter()
     }
-
-    avast {
-        publish {
-            groupId = 'com.avast.clients'
-        }
-
-        scala {
-            version = '2.12'
-            additionalStrictCompilerProperties.addAll(['-Xlint:-unused', '-Ywarn-unused:imports'])
-            codeStyle.strictCompile = false
-        }
-    }
-
 
     ext {
-        utilsVersion = "6.4.78"
+        scalaVersion = "2.12"
+        scalaVersionFull = "2.12.4"
         metricsVersion = "2.3.3"
         bytesVersion = "2.0.3"
         circeVersion = "0.9.1"
-        cactusVersion = "0.9.4"
+        cactusVersion = "0.9.8"
     }
 
     dependencies {
+        scalaCompilerPlugin "org.scalameta:paradise_$scalaVersionFull:3.0.0-M11"
+        scalaCompilerPlugin "org.spire-math:kind-projector_$scalaVersion:0.9.4"
+
         testCompile "com.avast.metrics:metrics-jmx:${metricsVersion}"
 
-        testCompile "org.scalaj:scalaj-http_?:2.3.0"
-        testCompile "io.circe:circe-core_?:$circeVersion"
-        testCompile "io.circe:circe-generic_?:$circeVersion"
-        testCompile "io.circe:circe-parser_?:$circeVersion"
+        testCompile "org.scalaj:scalaj-http_$scalaVersion:2.3.0"
+        testCompile "io.circe:circe-core_$scalaVersion:$circeVersion"
+        testCompile "io.circe:circe-generic_$scalaVersion:$circeVersion"
+        testCompile "io.circe:circe-parser_$scalaVersion:$circeVersion"
 
         testCompile 'junit:junit:4.12'
-        testCompile 'org.scalatest:scalatest_?:3.0.1'
+        testCompile "org.scalatest:scalatest_$scalaVersion:3.0.1"
         testCompile 'org.mockito:mockito-all:1.10.19'
         testCompile 'ch.qos.logback:logback-classic:1.2.3'
 
         testRuntime 'org.pegdown:pegdown:1.6.0'
     }
 
+    tasks.withType(ScalaCompile) {
+        String[] plugins
+        plugins = configurations.scalaCompilerPlugin.files.stream().map(new Function() {
+            @Override
+            Object apply(final Object o) {
+                return "-Xplugin:" + ((File) o).getAbsolutePath()
+            }
+        }).toArray()
+
+        scalaCompileOptions.additionalParameters = plugins
+    }
 }
+
 
 allprojects {
     //noinspection UnnecessaryQualifiedReference

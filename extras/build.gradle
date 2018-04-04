@@ -1,10 +1,5 @@
-avast {
-    publish {
-        artifactId = 'rabbitmq-client-extras'
-    }
-}
+archivesBaseName = "rabbitmq-client-extras"
 
 dependencies {
     compile project(":core")
-
 }

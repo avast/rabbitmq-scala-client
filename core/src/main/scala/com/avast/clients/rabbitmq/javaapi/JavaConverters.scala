@@ -7,21 +7,43 @@ import com.avast.bytes.Bytes
 import com.avast.clients.rabbitmq.api
 import com.avast.clients.rabbitmq.api.{Delivery => ScalaDelivery, DeliveryResult => ScalaResult, MessageProperties => ScalaProperties}
 import com.avast.clients.rabbitmq.javaapi.{Delivery => JavaDelivery, DeliveryResult => JavaResult, MessageProperties => JavaProperties}
-import com.avast.utils2.JavaConversions
 import com.rabbitmq.client.AMQP
 import com.rabbitmq.client.AMQP.BasicProperties
 
 import scala.collection.JavaConverters._
-import scala.concurrent.{ExecutionContext, Future}
+import scala.concurrent.{ExecutionContext, Future, Promise}
+import scala.util.{Failure, Success}
 
 private[rabbitmq] object JavaConverters {
 
   implicit class ScalaFuture2JavaCompletableFuture[A](val f: Future[A]) extends AnyVal {
-    def asJava(implicit executor: ExecutionContext): CompletableFuture[A] = JavaConversions.scalaFuture2CompletableFuture(f)
+    def asJava(implicit executor: ExecutionContext): CompletableFuture[A] = {
+      val promise = new CompletableFuture[A]()
+
+      f onComplete {
+        case Success(result) => promise.complete(result)
+        case Failure(ex) => promise.completeExceptionally(ex)
+      }
+
+      promise
+    }
   }
 
   implicit class CompletableFuture2ScalaFuture[A](val f: CompletableFuture[A]) extends AnyVal {
-    def asScala(implicit executor: Executor): Future[A] = JavaConversions.javaCompletableFuture2ScalaFuture(f)
+    def asScala(implicit executor: Executor): Future[A] = {
+      val promise = Promise[A]()
+
+      f.whenCompleteAsync((result: A, ex: Throwable) => {
+        if (ex == null) {
+          promise.success(result)
+        } else {
+          promise.failure(ex)
+        }
+        ()
+      }, executor)
+
+      promise.future
+    }
   }
 
   implicit class ScalaPropertiesConversions(val messageProperties: ScalaProperties) extends AnyVal {

@@ -6,7 +6,6 @@ import com.avast.cactus.bytes._
 import com.avast.clients.rabbitmq.api.{Delivery, DeliveryResult, MessageProperties}
 import com.avast.clients.rabbitmq.extras.multiformat._
 import com.avast.clients.rabbitmq.test.ExampleEvents.{FileSource => FileSourceGpb, NewFileSourceAdded => NewFileSourceAddedGpb}
-import com.avast.utils2.ByteUtils
 import com.google.protobuf.ByteString
 import io.circe.Decoder
 import io.circe.generic.extras.Configuration

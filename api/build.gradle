@@ -1,14 +1,9 @@
-avast {
-    publish {
-        artifactId = 'rabbitmq-client-api'
-    }
-}
+archivesBaseName = 'rabbitmq-client-api'
 
 dependencies {
     compile "com.avast.bytes:bytes-core:${bytesVersion}"
-    compile "com.avast.utils2:utils-done_?:10.0.0"
+    compile "com.avast.utils2:utils-done_$scalaVersion:10.0.0"
 
-    compile "com.kailuowang:mainecoon-core_?:0.6.2"
-    compileOnly 'com.kailuowang:mainecoon-macros_?:0.6.2'
-    scalac "org.scalameta:paradise_??:3.0.0-M11"
+    compile "com.kailuowang:mainecoon-core_$scalaVersion:0.6.2"
+    compileOnly "com.kailuowang:mainecoon-macros_$scalaVersion:0.6.2"
 }

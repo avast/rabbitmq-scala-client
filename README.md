@@ -1,8 +1,8 @@
 # RabbitMQ client
 
-[![](https://teamcity.int.avast.com/app/rest/builds/buildType:(id:CloudSystems_RabbitMQClient_Build)/statusIcon)] (https://teamcity.int.avast.com/viewType.html?buildTypeId=CloudSystems_RabbitMQClient_Build)
+[![Build Status](https://travis-ci.org/avast/rabbitmqclient.svg?branch=master)](https://travis-ci.org/avast/rabbitmqclient)
+[![Download](https://api.bintray.com/packages/avast/maven/rabbitmqclient/images/download.svg) ](https://bintray.com/avast/maven/rabbitmqclient/_latestVersion)
 
-![](http://badges.ff.int.avast.com/image/maven-local/com.avast.clients/rabbitmq-client-core_2.12?title=RabbitMQClient)
 
 This client is lightweight wrapper over standard [RabbitMQ java client](https://www.rabbitmq.com/java-client.html).
 It's API may be difficult to use for inexperienced RabbitMQ users. Goal of this library is to simplify basic use cases and shadow the programmer
@@ -16,8 +16,7 @@ concept of AMQP connection and derived channels - it handles channels automatica
 can be closed separately while closing _connection_ causes closing all derived channels and all _producers_ and _consumers_.
 
 ## Dependency
-`compile 'com.avast.clients:rabbitmq-client-core_?:x.x.x'`
-For most current version see the [Teamcity](https://teamcity.int.avast.com/viewType.html?buildTypeId=CloudSystems_RabbitMQClient_ReleasePublish).
+`compile 'com.avast.clients:rabbitmq-client-core_$scalaVersion:x.x.x'`
 
 ## Modules
 
@@ -165,7 +164,7 @@ The library uses two types of executors - one is for blocking (IO) operations an
 
 ```scala
 import com.typesafe.config.ConfigFactory
-import com.avast.metrics.dropwizard.AvastJmxMetricsMonitor
+import com.avast.metrics.api.Monitor
 import com.avast.clients.rabbitmq._ // for generic types support
 import com.avast.bytes.Bytes
 import monix.execution._
@@ -176,7 +175,7 @@ val config = ConfigFactory.load().getConfig("myRabbitConfig")
 implicit val sch: Scheduler = ???
 val blockingExecutor: ExecutorService = Executors.newCachedThreadPool()
 
-val monitor = new AvastJmxMetricsMonitor("TestDomain")
+val monitor: Monitor = ???
 
 // here you create the connection; it's shared for all producers/consumers amongst one RabbitMQ server - they will share a single TCP connection
 // but have separated channels

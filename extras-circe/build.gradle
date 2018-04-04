@@ -1,13 +1,9 @@
-avast {
-    publish {
-        artifactId = 'rabbitmq-client-extras-circe'
-    }
-}
+archivesBaseName = 'rabbitmq-client-extras-circe'
 
 dependencies {
     compile project(":core")
     compile project(":extras")
 
-    compile "io.circe:circe-core_?:$circeVersion"
-    compile "io.circe:circe-parser_?:$circeVersion"
+    compile "io.circe:circe-core_$scalaVersion:$circeVersion"
+    compile "io.circe:circe-parser_$scalaVersion:$circeVersion"
 }
