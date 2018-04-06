@@ -103,7 +103,6 @@ subprojects {
     }
 
     dependencies {
-        scalaCompilerPlugin "org.scalameta:paradise_$scalaVersionFull:3.0.0-M11"
         scalaCompilerPlugin "org.spire-math:kind-projector_$scalaVersion:0.9.4"
 
         testCompile "com.avast.metrics:metrics-jmx:${metricsVersion}"

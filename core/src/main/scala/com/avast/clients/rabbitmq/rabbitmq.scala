@@ -1,8 +1,10 @@
 package com.avast.clients
 
 import cats.arrow.FunctionK
-import com.avast.clients.rabbitmq.api.{Delivery, DeliveryResult}
+import cats.~>
+import com.avast.clients.rabbitmq.api.{Delivery, DeliveryResult, MessageProperties, RabbitMQProducer}
 import com.rabbitmq.client.{RecoverableChannel, RecoverableConnection}
+import mainecoon.FunctorK
 import monix.eval.Task
 import monix.execution.{ExecutionModel, Scheduler}
 
@@ -41,6 +43,15 @@ package object rabbitmq {
 
   implicit val fkFromTry: ToTask[Try] = new FunctionK[Try, Task] {
     override def apply[A](fa: Try[A]): Task[A] = Task.fromTry(fa)
+  }
+
+  implicit def producerFunctorK[A]: FunctorK[RabbitMQProducer[?[_], A]] = new FunctorK[RabbitMQProducer[?[_], A]] {
+    override def mapK[F[_], G[_]](af: RabbitMQProducer[F, A])(fToG: ~>[F, G]): RabbitMQProducer[G, A] =
+      (routingKey: String, body: A, properties: Option[MessageProperties]) => {
+        fToG {
+          af.send(routingKey, body, properties)
+        }
+      }
   }
 
 }
