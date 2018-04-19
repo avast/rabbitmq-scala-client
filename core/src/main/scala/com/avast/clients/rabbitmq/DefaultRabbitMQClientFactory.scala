@@ -164,7 +164,7 @@ private[rabbitmq] object DefaultRabbitMQClientFactory extends LazyLogging {
         blockingScheduler: Scheduler,
         monitor: Monitor)(implicit scheduler: Scheduler): DefaultRabbitMQManualConsumer[F, A] = {
 
-      val mergedConfig = providedConfig.withFallback(ConsumerDefaultConfig)
+      val mergedConfig = providedConfig.withFallback(ManualConsumerDefaultConfig)
 
       // merge consumer binding defaults
       val updatedConfig = {

@@ -11,7 +11,7 @@ import monix.execution.Scheduler
 import scala.collection.JavaConverters._
 import scala.util.control.NonFatal
 
-trait ConsumerBase extends StrictLogging {
+private[rabbitmq] trait ConsumerBase extends StrictLogging {
   protected def name: String
   protected def queueName: String
   protected def channel: ServerChannel
