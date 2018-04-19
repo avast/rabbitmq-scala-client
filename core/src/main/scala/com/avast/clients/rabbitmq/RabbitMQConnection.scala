@@ -42,6 +42,15 @@ trait RabbitMQConnection[F[_]] extends AutoCloseable {
     */
   def newProducer[A: ProductConverter](configName: String, monitor: Monitor): RabbitMQProducer[F, A] with AutoCloseable
 
+  /** Creates new instance of manual consumer, using the TypeSafe configuration passed to the factory and consumer name.
+    *
+    * @param configName Name of configuration of the consumer.
+    * @param monitor    Monitor for metrics.
+    * @param scheduler  [[Scheduler]] used for callbacks.
+    */
+  def newManualConsumer[A: DeliveryConverter](configName: String, monitor: Monitor)(
+      implicit scheduler: Scheduler): RabbitMQManualConsumer[F, A] with AutoCloseable
+
   /**
     * Declares and additional exchange, using the TypeSafe configuration passed to the factory and config name.
     */

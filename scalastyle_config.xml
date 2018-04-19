@@ -29,12 +29,6 @@ it tries to lay a common ground using the official style guide: http://docs.scal
         </parameters>
         <customMessage>No println left behind</customMessage>
     </check>
-    <check class="org.scalastyle.file.RegexChecker" level="warning" enabled="true">
-        <parameters>
-            <parameter name="regex"><![CDATA[Future\[Unit\]]]></parameter>
-        </parameters>
-        <customMessage>Use Future[Done] from utils-done_? instead of Future[Unit]. Future[Unit] is dangerous as it can lead to hard-to-find bugs</customMessage>
-    </check>
     <check class="org.scalastyle.file.WhitespaceEndOfLineChecker" level="warning" enabled="true"/>
     <check class="org.scalastyle.scalariform.BlockImportChecker" level="warning" enabled="false"/>
     <check class="org.scalastyle.scalariform.ClassNamesChecker" level="error" enabled="true">

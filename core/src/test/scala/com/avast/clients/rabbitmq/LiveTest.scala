@@ -21,7 +21,7 @@ import org.scalatest.concurrent.{Eventually, ScalaFutures}
 import org.scalatest.time.{Milliseconds, Seconds, Span}
 
 import scala.collection.JavaConverters._
-import scala.concurrent.ExecutionContext
+import scala.concurrent.{ExecutionContext, Future}
 import scala.util.{Random, Success, Try}
 
 class LiveTest extends FunSuite with Eventually with ScalaFutures with StrictLogging {
@@ -349,6 +349,47 @@ class LiveTest extends FunSuite with Eventually with ScalaFutures with StrictLog
       assertResult(20)(processed.get())
       assertResult(0)(testHelper.getMessagesCount(queueName))
       assertResult(10)(poisoned.get())
+    }
+  }
+
+  test("manual consumer") {
+    val c = createConfig()
+    import c._
+
+    val rabbitConnection = RabbitMQConnection.fromConfig[Future](config, ex)
+
+    val consumer = rabbitConnection.newManualConsumer[Bytes]("consumer", Monitor.noOp())
+
+    val sender = rabbitConnection.newProducer("producer", Monitor.noOp())
+
+    for (_ <- 1 to 10) {
+      sender.send("test", Bytes.copyFromUtf8(Random.nextString(10))).futureValue
+    }
+
+    eventually(timeout = timeout(Span(5, Seconds))) {
+      assertResult(10)(testHelper.getMessagesCount(queueName))
+    }
+
+    for (_ <- 1 to 3) {
+      val Some(dwh) = consumer.get().futureValue
+      dwh.handle(DeliveryResult.Ack)
+    }
+
+    eventually(timeout = timeout(Span(5, Seconds))) {
+      assertResult(7)(testHelper.getMessagesCount(queueName))
+    }
+
+    for (_ <- 1 to 7) {
+      val Some(dwh) = consumer.get().futureValue
+      dwh.handle(DeliveryResult.Ack)
+    }
+
+    eventually(timeout = timeout(Span(5, Seconds))) {
+      assertResult(0)(testHelper.getMessagesCount(queueName))
+    }
+
+    for (_ <- 1 to 10) {
+      assertResult(None)(consumer.get().futureValue)
     }
   }
 }
