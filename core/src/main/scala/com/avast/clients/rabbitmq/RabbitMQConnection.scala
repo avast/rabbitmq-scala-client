@@ -89,7 +89,7 @@ object RabbitMQConnection extends StrictLogging {
     final val DefaultConsumerListener: ConsumerListener = ConsumerListener.Default
   }
 
-  private[rabbitmq] final val RootConfigKey = "ffRabbitMQConnectionDefaults"
+  private[rabbitmq] final val RootConfigKey = "avastRabbitMQConnectionDefaults"
 
   private[rabbitmq] final val DefaultConfig = ConfigFactory.defaultReference().getConfig(RootConfigKey)
 

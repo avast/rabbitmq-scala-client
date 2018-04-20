@@ -39,12 +39,12 @@ case class ConsumerConfig(queueName: String,
                           consumerTag: String,
                           name: String)
 
-case class ManualConsumerConfig(queueName: String,
-                                failureAction: DeliveryResult,
-                                useKluzo: Boolean,
-                                declare: AutoDeclareQueue,
-                                bindings: immutable.Seq[AutoBindQueue],
-                                name: String)
+case class PullConsumerConfig(queueName: String,
+                              failureAction: DeliveryResult,
+                              useKluzo: Boolean,
+                              declare: AutoDeclareQueue,
+                              bindings: immutable.Seq[AutoBindQueue],
+                              name: String)
 
 case class AutoDeclareQueue(enabled: Boolean, durable: Boolean, exclusive: Boolean, autoDelete: Boolean, arguments: DeclareArguments)
 
