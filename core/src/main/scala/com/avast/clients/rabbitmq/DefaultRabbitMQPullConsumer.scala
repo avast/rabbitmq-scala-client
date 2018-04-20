@@ -4,7 +4,7 @@ import java.util.concurrent.atomic.AtomicInteger
 
 import cats.data.OptionT
 import com.avast.bytes.Bytes
-import com.avast.clients.rabbitmq.api.{Delivery, DeliveryResult, DeliveryWithHandle, RabbitMQManualConsumer}
+import com.avast.clients.rabbitmq.api.{Delivery, DeliveryResult, DeliveryWithHandle, RabbitMQPullConsumer}
 import com.avast.clients.rabbitmq.javaapi.JavaConverters._
 import com.avast.metrics.scalaapi.Monitor
 import com.rabbitmq.client.GetResponse
@@ -15,14 +15,14 @@ import monix.execution.Scheduler
 import scala.language.higherKinds
 import scala.util.control.NonFatal
 
-class DefaultRabbitMQManualConsumer[F[_]: FromTask, A: DeliveryConverter](
+class DefaultRabbitMQPullConsumer[F[_]: FromTask, A: DeliveryConverter](
     override val name: String,
     protected override val channel: ServerChannel,
     protected override val queueName: String,
     failureAction: DeliveryResult,
     protected override val monitor: Monitor,
     protected override val blockingScheduler: Scheduler)(implicit callbackScheduler: Scheduler)
-    extends RabbitMQManualConsumer[F, A]
+    extends RabbitMQPullConsumer[F, A]
     with ConsumerBase
     with AutoCloseable
     with StrictLogging {
@@ -35,7 +35,7 @@ class DefaultRabbitMQManualConsumer[F[_]: FromTask, A: DeliveryConverter](
 
   private def convertMessage(b: Bytes): Either[ConversionException, A] = implicitly[DeliveryConverter[A]].convert(b)
 
-  override def get(): F[Option[DeliveryWithHandle[F, A]]] = implicitly[FromTask[F]].apply {
+  override def pull(): F[Option[DeliveryWithHandle[F, A]]] = implicitly[FromTask[F]].apply {
     OptionT[Task, GetResponse] {
       Task {
         Option(channel.basicGet(queueName, false))

@@ -352,13 +352,13 @@ class LiveTest extends FunSuite with Eventually with ScalaFutures with StrictLog
     }
   }
 
-  test("manual consumer") {
+  test("pull consumer") {
     val c = createConfig()
     import c._
 
     val rabbitConnection = RabbitMQConnection.fromConfig[Future](config, ex)
 
-    val consumer = rabbitConnection.newManualConsumer[Bytes]("consumer", Monitor.noOp())
+    val consumer = rabbitConnection.newPullConsumer[Bytes]("consumer", Monitor.noOp())
 
     val sender = rabbitConnection.newProducer("producer", Monitor.noOp())
 
@@ -371,7 +371,7 @@ class LiveTest extends FunSuite with Eventually with ScalaFutures with StrictLog
     }
 
     for (_ <- 1 to 3) {
-      val Some(dwh) = consumer.get().futureValue
+      val Some(dwh) = consumer.pull().futureValue
       dwh.handle(DeliveryResult.Ack)
     }
 
@@ -380,7 +380,7 @@ class LiveTest extends FunSuite with Eventually with ScalaFutures with StrictLog
     }
 
     for (_ <- 1 to 7) {
-      val Some(dwh) = consumer.get().futureValue
+      val Some(dwh) = consumer.pull().futureValue
       dwh.handle(DeliveryResult.Ack)
     }
 
@@ -389,7 +389,7 @@ class LiveTest extends FunSuite with Eventually with ScalaFutures with StrictLog
     }
 
     for (_ <- 1 to 10) {
-      assertResult(None)(consumer.get().futureValue)
+      assertResult(None)(consumer.pull().futureValue)
     }
   }
 }

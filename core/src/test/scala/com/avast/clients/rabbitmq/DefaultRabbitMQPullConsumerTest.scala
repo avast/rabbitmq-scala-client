@@ -22,7 +22,7 @@ import org.scalatest.time.{Seconds, Span}
 import scala.concurrent.Future
 import scala.util.Random
 
-class DefaultRabbitMQManualConsumerTest extends FunSuite with MockitoSugar with ScalaFutures with Eventually {
+class DefaultRabbitMQPullConsumerTest extends FunSuite with MockitoSugar with ScalaFutures with Eventually {
   test("should ACK") {
     val messageId = UUID.randomUUID().toString
 
@@ -42,7 +42,7 @@ class DefaultRabbitMQManualConsumerTest extends FunSuite with MockitoSugar with 
       new GetResponse(envelope, properties, body, 1)
     )
 
-    val consumer = new DefaultRabbitMQManualConsumer[Future, Bytes](
+    val consumer = new DefaultRabbitMQPullConsumer[Future, Bytes](
       "test",
       channel,
       "queueName",
@@ -51,7 +51,7 @@ class DefaultRabbitMQManualConsumerTest extends FunSuite with MockitoSugar with 
       Scheduler.global
     )
 
-    val Some(dwh) = consumer.get().futureValue
+    val Some(dwh) = consumer.pull().futureValue
 
     assertResult(Some(messageId))(dwh.delivery.properties.messageId)
 
@@ -84,7 +84,7 @@ class DefaultRabbitMQManualConsumerTest extends FunSuite with MockitoSugar with 
       new GetResponse(envelope, properties, body, 1)
     )
 
-    val consumer = new DefaultRabbitMQManualConsumer[Future, Bytes](
+    val consumer = new DefaultRabbitMQPullConsumer[Future, Bytes](
       "test",
       channel,
       "queueName",
@@ -93,7 +93,7 @@ class DefaultRabbitMQManualConsumerTest extends FunSuite with MockitoSugar with 
       Scheduler.global
     )
 
-    val Some(dwh) = consumer.get().futureValue
+    val Some(dwh) = consumer.pull().futureValue
 
     assertResult(Some(messageId))(dwh.delivery.properties.messageId)
 
@@ -126,7 +126,7 @@ class DefaultRabbitMQManualConsumerTest extends FunSuite with MockitoSugar with 
       new GetResponse(envelope, properties, body, 1)
     )
 
-    val consumer = new DefaultRabbitMQManualConsumer[Future, Bytes](
+    val consumer = new DefaultRabbitMQPullConsumer[Future, Bytes](
       "test",
       channel,
       "queueName",
@@ -135,7 +135,7 @@ class DefaultRabbitMQManualConsumerTest extends FunSuite with MockitoSugar with 
       Scheduler.global
     )
 
-    val Some(dwh) = consumer.get().futureValue
+    val Some(dwh) = consumer.pull().futureValue
 
     assertResult(Some(messageId))(dwh.delivery.properties.messageId)
 
@@ -167,7 +167,7 @@ class DefaultRabbitMQManualConsumerTest extends FunSuite with MockitoSugar with 
       new GetResponse(envelope, properties, body, 1)
     )
 
-    val consumer = new DefaultRabbitMQManualConsumer[Future, Bytes](
+    val consumer = new DefaultRabbitMQPullConsumer[Future, Bytes](
       "test",
       channel,
       "queueName",
@@ -176,7 +176,7 @@ class DefaultRabbitMQManualConsumerTest extends FunSuite with MockitoSugar with 
       Scheduler.global
     )
 
-    val Some(dwh) = consumer.get().futureValue
+    val Some(dwh) = consumer.pull().futureValue
 
     assertResult(Some(messageId))(dwh.delivery.properties.messageId)
 
@@ -215,7 +215,7 @@ class DefaultRabbitMQManualConsumerTest extends FunSuite with MockitoSugar with 
       throw new IllegalArgumentException
     }
 
-    val consumer = new DefaultRabbitMQManualConsumer[Future, Abc](
+    val consumer = new DefaultRabbitMQPullConsumer[Future, Abc](
       "test",
       channel,
       "queueName",
@@ -225,7 +225,7 @@ class DefaultRabbitMQManualConsumerTest extends FunSuite with MockitoSugar with 
     )
 
     try {
-      consumer.get().futureValue
+      consumer.pull().futureValue
     } catch {
       case e: TestFailedException if e.getCause.isInstanceOf[IllegalArgumentException] => // ok
     }
@@ -261,7 +261,7 @@ class DefaultRabbitMQManualConsumerTest extends FunSuite with MockitoSugar with 
       Left(ConversionException(""))
     }
 
-    val consumer = new DefaultRabbitMQManualConsumer[Future, Abc](
+    val consumer = new DefaultRabbitMQPullConsumer[Future, Abc](
       "test",
       channel,
       "queueName",
@@ -271,7 +271,7 @@ class DefaultRabbitMQManualConsumerTest extends FunSuite with MockitoSugar with 
     )
 
     try {
-      consumer.get().futureValue
+      consumer.pull().futureValue
     } catch {
       case e: TestFailedException if e.getCause.isInstanceOf[ConversionException] => // ok
     }

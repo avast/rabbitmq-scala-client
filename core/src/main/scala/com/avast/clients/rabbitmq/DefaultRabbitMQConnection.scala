@@ -54,9 +54,9 @@ class DefaultRabbitMQConnection[F[_]: FromTask: ToTask](connection: ServerConnec
     }
   }
 
-  def newManualConsumer[A: DeliveryConverter](configName: String, monitor: Monitor)(
-      implicit scheduler: Scheduler): DefaultRabbitMQManualConsumer[F, A] = addAutoCloseable {
-    DefaultRabbitMQClientFactory.ManualConsumer
+  def newPullConsumer[A: DeliveryConverter](configName: String, monitor: Monitor)(
+      implicit scheduler: Scheduler): DefaultRabbitMQPullConsumer[F, A] = addAutoCloseable {
+    DefaultRabbitMQClientFactory.PullConsumer
       .fromConfig[F, A](config.getConfig(configName), createChannel(), info, blockingScheduler, monitor)
   }
 

@@ -155,14 +155,14 @@ private[rabbitmq] object DefaultRabbitMQClientFactory extends LazyLogging {
     }
   }
 
-  object ManualConsumer {
+  object PullConsumer {
 
     def fromConfig[F[_]: FromTask, A: DeliveryConverter](
         providedConfig: Config,
         channel: ServerChannel,
         channelFactoryInfo: RabbitMQConnectionInfo,
         blockingScheduler: Scheduler,
-        monitor: Monitor)(implicit scheduler: Scheduler): DefaultRabbitMQManualConsumer[F, A] = {
+        monitor: Monitor)(implicit scheduler: Scheduler): DefaultRabbitMQPullConsumer[F, A] = {
 
       val mergedConfig = providedConfig.withFallback(ManualConsumerDefaultConfig)
 
@@ -182,14 +182,13 @@ private[rabbitmq] object DefaultRabbitMQClientFactory extends LazyLogging {
       create[F, A](consumerConfig, channel, channelFactoryInfo, blockingScheduler, monitor)
     }
 
-    def create[F[_]: FromTask, A: DeliveryConverter](
-        consumerConfig: ManualConsumerConfig,
-        channel: ServerChannel,
-        channelFactoryInfo: RabbitMQConnectionInfo,
-        blockingScheduler: Scheduler,
-        monitor: Monitor)(implicit scheduler: Scheduler): DefaultRabbitMQManualConsumer[F, A] = {
+    def create[F[_]: FromTask, A: DeliveryConverter](consumerConfig: ManualConsumerConfig,
+                                                     channel: ServerChannel,
+                                                     channelFactoryInfo: RabbitMQConnectionInfo,
+                                                     blockingScheduler: Scheduler,
+                                                     monitor: Monitor)(implicit scheduler: Scheduler): DefaultRabbitMQPullConsumer[F, A] = {
 
-      prepareManualConsumer(consumerConfig, channelFactoryInfo, channel, blockingScheduler, monitor)
+      preparePullConsumer(consumerConfig, channelFactoryInfo, channel, blockingScheduler, monitor)
     }
   }
 
@@ -327,12 +326,12 @@ private[rabbitmq] object DefaultRabbitMQClientFactory extends LazyLogging {
     prepareConsumer(consumerConfig, channelFactoryInfo, channel, readAction, consumerListener, blockingScheduler, monitor)
   }
 
-  private def prepareManualConsumer[F[_]: FromTask, A: DeliveryConverter](
+  private def preparePullConsumer[F[_]: FromTask, A: DeliveryConverter](
       consumerConfig: ManualConsumerConfig,
       channelFactoryInfo: RabbitMQConnectionInfo,
       channel: ServerChannel,
       blockingScheduler: Scheduler,
-      monitor: Monitor)(implicit scheduler: Scheduler): DefaultRabbitMQManualConsumer[F, A] = {
+      monitor: Monitor)(implicit scheduler: Scheduler): DefaultRabbitMQPullConsumer[F, A] = {
 
     import consumerConfig._
 
@@ -367,7 +366,7 @@ private[rabbitmq] object DefaultRabbitMQClientFactory extends LazyLogging {
       scheduler
     }
 
-    new DefaultRabbitMQManualConsumer[F, A](name, channel, queueName, failureAction, monitor, finalBlockingScheduler)
+    new DefaultRabbitMQPullConsumer[F, A](name, channel, queueName, failureAction, monitor, finalBlockingScheduler)
   }
 
   private[rabbitmq] def declareQueue(channel: ServerChannel,
