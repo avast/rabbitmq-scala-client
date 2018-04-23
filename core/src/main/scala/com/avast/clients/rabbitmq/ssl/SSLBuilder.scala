@@ -62,7 +62,7 @@ private[rabbitmq] object SSLBuilder {
 
   final val DefaultAvastJksPassword = "CanNotMakeJKSWithoutPass"
 
-  private final val RootConfigKey = "ffSslBuilderDefaults"
+  private final val RootConfigKey = "avastRabbitMQSslBuilderDefaults"
 
   private lazy val DefaultConfig = ConfigFactory.defaultReference().getConfig(RootConfigKey)
 

@@ -13,10 +13,6 @@
         <appender-ref ref="STDOUT"/>
     </root>
 
-
-    <logger name="com.avast.boominder.rabbitmq" level="INFO"/>
-
-
     <logger name="ch.qos.logback" level="OFF" additivity="false"/>
 
     <statusListener class="ch.qos.logback.core.status.NopStatusListener"/>

@@ -306,6 +306,41 @@ where the "backupExchangeBinding" is link to the configuration (use relative pat
 ```
 Check [reference.conf](core/src/main/resources/reference.conf) for all options or see [application.conf in tests](core/src/test/resources/application.conf).
 
+### Pull consumer
+Sometimes your use-case just doesn't fit the _normal_ consumer scenario. Here you can use the _pull consumer_ which gives you much more
+control over the received messages. You _pull_ new message from the queue and acknowledge (reject, ...) it somewhere in the future.
+
+The pull consumer operates with `Option` which is used for expressing either getting the delivery _or_ detecting an empty queue.
+
+A simplified example:
+```scala
+import com.avast.bytes.Bytes
+import scala.concurrent.Future
+import com.avast.clients.rabbitmq._
+import com.avast.clients.rabbitmq.api._
+
+implicit val sch: Scheduler = ???
+
+val connection: RabbitMQConnection[Future] = ???
+
+val consumer = connection.newPullConsumer[Bytes](???, ???)
+
+
+// receive "up to" 100 deliveries
+val deliveries: Future[Seq[Option[DeliveryWithHandle[Future, Bytes]]]] = Future.sequence { (1 to 100).map(_ => consumer.pull()) }
+
+// do your stuff!
+
+???
+
+// "handle" all deliveries
+val handleResult: Future[Unit] = deliveries.flatMap(s => Future.sequence(s.flatten.map(_.handle(DeliveryResult.Ack))).map(_ => Unit))
+
+consumer.close()
+connection.close()
+
+```
+
 ### MultiFormatConsumer
 
 Quite often you receive a single type of message but you want to support multiple formats of encoding (Protobuf, Json, ...).

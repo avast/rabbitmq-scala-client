@@ -1,7 +1,7 @@
 package com.avast.clients
 
 import cats.arrow.FunctionK
-import cats.~>
+import cats.{~>, Monad}
 import com.avast.clients.rabbitmq.api.{Delivery, DeliveryResult, MessageProperties, RabbitMQProducer}
 import com.rabbitmq.client.{RecoverableChannel, RecoverableConnection}
 import mainecoon.FunctorK
@@ -52,6 +52,18 @@ package object rabbitmq {
           af.send(routingKey, body, properties)
         }
       }
+  }
+
+  /*
+   * This is needed because last version of Monix depends on older cats than we have. It does not cause problems in general but we're unable
+   * to use `monix-cats` extension since it's missing some trait removed from Cats.
+   */
+  private[rabbitmq] implicit val taskMonad: Monad[Task] = new Monad[Task] {
+    override def pure[A](x: A): Task[A] = Task.now(x)
+
+    override def flatMap[A, B](fa: Task[A])(f: A => Task[B]): Task[B] = fa.flatMap(f)
+
+    override def tailRecM[A, B](a: A)(f: A => Task[Either[A, B]]): Task[B] = Task.tailRecM(a)(f)
   }
 
 }
