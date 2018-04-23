@@ -1,12 +1,21 @@
 package com.avast.clients.rabbitmq.javaapi
 
 import java.util.concurrent.{CompletableFuture, Executor}
-import java.util.{function, Date}
+import java.util.{function, Date, Optional}
 
 import com.avast.bytes.Bytes
-import com.avast.clients.rabbitmq.api
-import com.avast.clients.rabbitmq.api.{Delivery => ScalaDelivery, DeliveryResult => ScalaResult, MessageProperties => ScalaProperties}
-import com.avast.clients.rabbitmq.javaapi.{Delivery => JavaDelivery, DeliveryResult => JavaResult, MessageProperties => JavaProperties}
+import com.avast.clients.rabbitmq.api.{
+  Delivery => ScalaDelivery,
+  DeliveryResult => ScalaResult,
+  DeliveryWithHandle => ScalaDeliveryWithHandle,
+  MessageProperties => ScalaProperties
+}
+import com.avast.clients.rabbitmq.javaapi.{
+  Delivery => JavaDelivery,
+  DeliveryResult => JavaResult,
+  DeliveryWithHandle => JavaDeliveryWithHandle,
+  MessageProperties => JavaProperties
+}
 import com.rabbitmq.client.AMQP
 import com.rabbitmq.client.AMQP.BasicProperties
 
@@ -43,6 +52,13 @@ private[rabbitmq] object JavaConverters {
       }, executor)
 
       promise.future
+    }
+  }
+
+  implicit class ScalaOption2JavaOptional[T](val o: Option[T]) extends AnyVal {
+    def asJava: Optional[T] = o match {
+      case Some(value) => Optional.of(value)
+      case None => Optional.empty()
     }
   }
 
@@ -175,8 +191,20 @@ private[rabbitmq] object JavaConverters {
   }
 
   implicit class JavaActionConversion(val readAction: function.Function[JavaDelivery, CompletableFuture[DeliveryResult]]) extends AnyVal {
-    def asScala(implicit ex: Executor, ec: ExecutionContext): ScalaDelivery[Bytes] => Future[api.DeliveryResult] =
+    def asScala(implicit ex: Executor, ec: ExecutionContext): ScalaDelivery[Bytes] => Future[ScalaResult] =
       d => readAction(d.asJava).asScala.map(_.asScala)
+  }
+
+  implicit class ScalaDeliveryWithHandleConversion(val deliveryWithHandle: ScalaDeliveryWithHandle[Future, Bytes]) extends AnyVal {
+    def asJava(implicit ec: ExecutionContext): JavaDeliveryWithHandle = {
+      new JavaDeliveryWithHandle {
+        override def delivery: JavaDelivery = deliveryWithHandle.delivery.asJava
+
+        override def handle(result: JavaResult): CompletableFuture[Void] = {
+          deliveryWithHandle.handle(result.asScala).map(_ => null: Void).asJava
+        }
+      }
+    }
   }
 
 }

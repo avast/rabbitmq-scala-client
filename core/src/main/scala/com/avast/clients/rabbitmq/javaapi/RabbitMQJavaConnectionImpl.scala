@@ -25,6 +25,12 @@ private class RabbitMQJavaConnectionImpl(scalaConnection: ScalaConnection[Future
     new DefaultRabbitMQConsumer(scalaConnection.newConsumer(configName, ScalaMonitor(monitor))(readAction.asScala))
   }
 
+  override def newPullConsumer(configName: String, monitor: Monitor, executor: ExecutorService): RabbitMQPullConsumer = {
+    implicit val sch: SchedulerService = Scheduler(executor)
+
+    new DefaultRabbitMQPullConsumer(scalaConnection.newPullConsumer(configName, ScalaMonitor(monitor)))
+  }
+
   override def newProducer(configName: String, monitor: Monitor, executor: ExecutorService): RabbitMQProducer = {
     implicit val sch: SchedulerService = Scheduler(executor)
 

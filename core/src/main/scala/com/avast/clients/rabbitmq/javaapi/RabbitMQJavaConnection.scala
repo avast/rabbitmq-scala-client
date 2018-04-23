@@ -24,6 +24,14 @@ trait RabbitMQJavaConnection extends AutoCloseable {
                   ec: ExecutorService,
                   readAction: java.util.function.Function[Delivery, CompletableFuture[DeliveryResult]]): RabbitMQConsumer
 
+  /** Creates new instance of pull consumer, using the TypeSafe configuration passed to the factory and consumer name.
+    *
+    * @param configName Name of configuration of the consumer.
+    * @param monitor    Monitor for metrics.
+    * @param ec         [[ExecutorService]] used for callbacks.
+    */
+  def newPullConsumer(configName: String, monitor: Monitor, ec: ExecutorService): RabbitMQPullConsumer
+
   /** Creates new instance of producer, using the TypeSafe configuration passed to the factory and producer name.
     *
     * @param configName Name of configuration of the producer.
