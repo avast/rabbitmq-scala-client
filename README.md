@@ -192,6 +192,26 @@ val sender = rabbitConnection.newProducer("producer", monitor) // DefaultRabbitM
 sender.send(...).runAsync // because it's Task, don't forget to run it ;-)
 ```
 
+#### Caveats
+It may happen you have everything configured "correctly" and the compiler still reports an error, for example
+```scala
+def rabbitConnection(): RabbitMQConnection[Future] = RabbitMQConnection.fromConfig[Future](rabbitProperties, blocking)
+```
+can give you something like:
+```
+Error:(22, 99) could not find implicit value for evidence parameter of type com.avast.clients.rabbitmq.FromTask[scala.concurrent.Future]
+Error occurred in an application involving default arguments.
+  def rabbitConnection(): RabbitMQConnection[Future] = RabbitMQConnection.fromConfig[Future](rabbitProperties, blocking)
+Error:(22, 99) not enough arguments for method fromConfig: (implicit evidence$3: com.avast.clients.rabbitmq.FromTask[scala.concurrent.Future], implicit evidence$4: com.avast.clients.rabbitmq.ToTask[scala.concurrent.Future])com.avast.clients.rabbitmq.DefaultRabbitMQConnection[scala.concurrent.Future].
+Unspecified value parameters evidence$3, evidence$4.
+Error occurred in an application involving default arguments.
+  def rabbitConnection(): RabbitMQConnection[Future] = RabbitMQConnection.fromConfig[Future](rabbitProperties, blocking)
+```
+This is caused by absence of `ExecutionContext` which makes `def fkToFuture(implicit ec: ExecutionContext): FromTask[Future]` impossible to
+use (unfortunately compiler won't say that).  
+Please bear in mind there is nothing this library could do to help you in this case - there is no way to provide any hint. However there are
+some compiler plugins available which may help you to prevent such situations, e.g. [Splain](https://github.com/tek/splain).
+
 #### Providing converters for producer/consumer
 
 Both the producer and consumer require type argument when creating from _connection_:
