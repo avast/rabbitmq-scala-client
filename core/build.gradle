@@ -23,7 +23,7 @@ dependencies {
     compile project(":api")
 
     compile "com.avast.metrics:metrics-scala_$scalaVersion:${metricsVersion}"
-    compile "com.typesafe.scala-logging:scala-logging_$scalaVersion:3.7.2"
+    compile "com.typesafe.scala-logging:scala-logging_$scalaVersion:3.9.0"
 
     compile "com.avast.bytes:bytes-core:${bytesVersion}"
 
