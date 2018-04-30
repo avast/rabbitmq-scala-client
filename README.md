@@ -193,24 +193,54 @@ sender.send(...).runAsync // because it's Task, don't forget to run it ;-)
 ```
 
 #### Caveats
-It may happen you have everything configured "correctly" and the compiler still reports an error, for example
-```scala
-def rabbitConnection(): RabbitMQConnection[Future] = RabbitMQConnection.fromConfig[Future](rabbitProperties, blocking)
-```
-can give you something like:
-```
-Error:(22, 99) could not find implicit value for evidence parameter of type com.avast.clients.rabbitmq.FromTask[scala.concurrent.Future]
-Error occurred in an application involving default arguments.
-  def rabbitConnection(): RabbitMQConnection[Future] = RabbitMQConnection.fromConfig[Future](rabbitProperties, blocking)
-Error:(22, 99) not enough arguments for method fromConfig: (implicit evidence$3: com.avast.clients.rabbitmq.FromTask[scala.concurrent.Future], implicit evidence$4: com.avast.clients.rabbitmq.ToTask[scala.concurrent.Future])com.avast.clients.rabbitmq.DefaultRabbitMQConnection[scala.concurrent.Future].
-Unspecified value parameters evidence$3, evidence$4.
-Error occurred in an application involving default arguments.
-  def rabbitConnection(): RabbitMQConnection[Future] = RabbitMQConnection.fromConfig[Future](rabbitProperties, blocking)
-```
-This is caused by absence of `ExecutionContext` which makes `def fkToFuture(implicit ec: ExecutionContext): FromTask[Future]` impossible to
-use (unfortunately compiler won't say that).  
-Please bear in mind there is nothing this library could do to help you in this case - there is no way to provide any hint. However there are
-some compiler plugins available which may help you to prevent such situations, e.g. [Splain](https://github.com/tek/splain).
+1. `null` instead of converter instance  
+    It may happen you run in this problem:
+    ```scala
+    scala> import io.circe.generic.auto._
+    import io.circe.generic.auto._
+    
+    scala> import com.avast.clients.rabbitmq.extras.multiformat.JsonDeliveryConverter
+    import com.avast.clients.rabbitmq.extras.multiformat.JsonDeliveryConverter
+    
+    scala> import com.avast.clients.rabbitmq.DeliveryConverter
+    import com.avast.clients.rabbitmq.DeliveryConverter
+    
+    scala> case class Event(name: String)
+    defined class Event
+    
+    scala> implicit val deliveryConverter: JsonDeliveryConverter[Event] = JsonDeliveryConverter.derive[Event]()
+    deliveryConverter: com.avast.clients.rabbitmq.extras.multiformat.JsonDeliveryConverter[Event] = null
+    
+    scala> implicit val deliveryConverter: DeliveryConverter[Event] = JsonDeliveryConverter.derive[Event]()
+    deliveryConverter: com.avast.clients.rabbitmq.DeliveryConverter[Event] = com.avast.clients.rabbitmq.extras.multiformat.JsonDeliveryConverter$$anon$1@5b977aaa
+    
+    scala> implicit val deliveryConverter = JsonDeliveryConverter.derive[Event]()
+    deliveryConverter: com.avast.clients.rabbitmq.extras.multiformat.JsonDeliveryConverter[Event] = com.avast.clients.rabbitmq.extras.multiformat.JsonDeliveryConverter$$anon$1@4b024fb2
+    ```
+    Notice the results of last three calls **differ** even though they are supposed to be the same (non-null respectively)! A very similar issue
+    is discussed on the [StackOverflow](https://github.com/circe/circe/issues/380) and so is similar the solution:
+    1. Remove explicit type completely (not recommended)
+    1. Make the explicit type more general (`DeliveryConverter` instead of `JsonDeliveryConverter` in this case)
+
+1. Cryptic errors  
+    It may happen you have everything configured "correctly" and the compiler still reports an error, for example
+    ```scala
+    def rabbitConnection(): RabbitMQConnection[Future] = RabbitMQConnection.fromConfig[Future](rabbitProperties, blocking)
+    ```
+    can give you something like:
+    ```
+    Error:(22, 99) could not find implicit value for evidence parameter of type com.avast.clients.rabbitmq.FromTask[scala.concurrent.Future]
+    Error occurred in an application involving default arguments.
+      def rabbitConnection(): RabbitMQConnection[Future] = RabbitMQConnection.fromConfig[Future](rabbitProperties, blocking)
+    Error:(22, 99) not enough arguments for method fromConfig: (implicit evidence$3: com.avast.clients.rabbitmq.FromTask[scala.concurrent.Future], implicit evidence$4: com.avast.clients.rabbitmq.ToTask[scala.concurrent.Future])com.avast.clients.rabbitmq.DefaultRabbitMQConnection[scala.concurrent.Future].
+    Unspecified value parameters evidence$3, evidence$4.
+    Error occurred in an application involving default arguments.
+      def rabbitConnection(): RabbitMQConnection[Future] = RabbitMQConnection.fromConfig[Future](rabbitProperties, blocking)
+    ```
+    This is caused by absence of `ExecutionContext` which makes `def fkToFuture(implicit ec: ExecutionContext): FromTask[Future]` impossible to
+    use (unfortunately compiler won't say that).  
+    Please bear in mind there is nothing this library could do to help you in this case - there is no way to provide any hint. However there are
+    some compiler plugins available which may help you to prevent such situations, e.g. [Splain](https://github.com/tek/splain).
 
 #### Providing converters for producer/consumer
 
