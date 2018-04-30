@@ -6,11 +6,12 @@ Scala case classes).
 compile 'com.avast.clients:rabbitmq-client-extras-circe_$scalaVersion:x.x.x'
 ```
 
-## JsonFormatConverter
+## JsonDeliveryConverter
 
-This is an implementation of [FormatConverter](../core/src/main/scala/com/avast/clients/rabbitmq/FormatConverter.scala) which adds support
+This is an implementation of [DeliveryConverter](../core/src/main/scala/com/avast/clients/rabbitmq/DeliveryConverter.scala) which adds support
 for JSON decoding done by [Circe](https://github.com/circe/circe).
 
 The suitability of the converter for concrete message is decided based on Content-Type property - `application/json` is supported.
 
-See [MultiTypeConsumer](../README.md#multitypeconsumer) description for usage.
+See [Providing converters](../README.md#providing-converters-for-producer/consumer) and [MultiFormatConsumer](../README.md#multiformatconsumer)
+description for usage.

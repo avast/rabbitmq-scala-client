@@ -1,4 +1,4 @@
-package com.avast.clients.rabbitmq.extras.multiformat
+package com.avast.clients.rabbitmq.extras.format
 
 import com.avast.bytes.Bytes
 import com.google.protobuf.{MessageLite, Parser}
