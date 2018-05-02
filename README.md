@@ -192,6 +192,17 @@ val sender = rabbitConnection.newProducer("producer", monitor) // DefaultRabbitM
 sender.send(...).runAsync // because it's Task, don't forget to run it ;-)
 ```
 
+#### Providing converters for producer/consumer
+
+Both the producer and consumer require type argument when creating from _connection_:
+1. `connection.newConsumer[MyClass]` which requires implicit `DeliveryConverter[MyClass]`
+1. `connection.newProducer[MyClass]` which requires implicit `ProductConverter[MyClass]`
+
+There are multiple options where to get the _converter_ (it's the same case for `DeliveryConverter` as for `ProductConverter`):
+1. Implement your own implicit _converter_ for the type
+1. Modules [extras-circe](extras-circe/README.md) and [extras-cactus](extras-cactus/README.md) provide support for JSON and GPB conversion. 
+1. Use `identity` converter by specifying `Bytes` type argument. No further action needed in that case.
+
 #### Caveats
 1. `null` instead of converter instance  
     It may happen you run in this problem:
@@ -199,8 +210,8 @@ sender.send(...).runAsync // because it's Task, don't forget to run it ;-)
     scala> import io.circe.generic.auto._
     import io.circe.generic.auto._
     
-    scala> import com.avast.clients.rabbitmq.extras.multiformat.JsonDeliveryConverter
-    import com.avast.clients.rabbitmq.extras.multiformat.JsonDeliveryConverter
+    scala> import com.avast.clients.rabbitmq.extras.format.JsonDeliveryConverter
+    import com.avast.clients.rabbitmq.extras.format.JsonDeliveryConverter
     
     scala> import com.avast.clients.rabbitmq.DeliveryConverter
     import com.avast.clients.rabbitmq.DeliveryConverter
@@ -209,13 +220,13 @@ sender.send(...).runAsync // because it's Task, don't forget to run it ;-)
     defined class Event
     
     scala> implicit val deliveryConverter: JsonDeliveryConverter[Event] = JsonDeliveryConverter.derive[Event]()
-    deliveryConverter: com.avast.clients.rabbitmq.extras.multiformat.JsonDeliveryConverter[Event] = null
+    deliveryConverter: com.avast.clients.rabbitmq.extras.format.JsonDeliveryConverter[Event] = null
     
     scala> implicit val deliveryConverter: DeliveryConverter[Event] = JsonDeliveryConverter.derive[Event]()
-    deliveryConverter: com.avast.clients.rabbitmq.DeliveryConverter[Event] = com.avast.clients.rabbitmq.extras.multiformat.JsonDeliveryConverter$$anon$1@5b977aaa
+    deliveryConverter: com.avast.clients.rabbitmq.DeliveryConverter[Event] = com.avast.clients.rabbitmq.extras.format.JsonDeliveryConverter$$anon$1@5b977aaa
     
     scala> implicit val deliveryConverter = JsonDeliveryConverter.derive[Event]()
-    deliveryConverter: com.avast.clients.rabbitmq.extras.multiformat.JsonDeliveryConverter[Event] = com.avast.clients.rabbitmq.extras.multiformat.JsonDeliveryConverter$$anon$1@4b024fb2
+    deliveryConverter: com.avast.clients.rabbitmq.extras.format.JsonDeliveryConverter[Event] = com.avast.clients.rabbitmq.extras.format.JsonDeliveryConverter$$anon$1@4b024fb2
     ```
     Notice the results of last three calls **differ** even though they are supposed to be the same (non-null respectively)! A very similar issue
     is discussed on the [StackOverflow](https://github.com/circe/circe/issues/380) and so is similar the solution:
@@ -241,17 +252,6 @@ sender.send(...).runAsync // because it's Task, don't forget to run it ;-)
     use (unfortunately compiler won't say that).  
     Please bear in mind there is nothing this library could do to help you in this case - there is no way to provide any hint. However there are
     some compiler plugins available which may help you to prevent such situations, e.g. [Splain](https://github.com/tek/splain).
-
-#### Providing converters for producer/consumer
-
-Both the producer and consumer require type argument when creating from _connection_:
-1. `connection.newConsumer[MyClass]` which requires implicit `DeliveryConverter[MyClass]`
-1. `connection.newProducer[MyClass]` which requires implicit `ProductConverter[MyClass]`
-
-There are multiple options where to get the _converter_ (it's the same case for `DeliveryConverter` as for `ProductConverter`):
-1. Implement your own implicit _converter_ for the type
-1. Modules [extras-circe](extras-circe/README.md) and [extras-cactus](extras-cactus/README.md) provide support for JSON and GPB conversion. 
-1. Use `identity` converter by specifying `Bytes` type argument. No further action needed in that case.
 
 ### Java usage
 
@@ -394,7 +394,7 @@ connection.close()
 ### MultiFormatConsumer
 
 Quite often you receive a single type of message but you want to support multiple formats of encoding (Protobuf, Json, ...).
-This is where `MultiTypeConsumer` could be used.  
+This is where `MultiFormatConsumer` could be used.  
 
 Modules [extras-circe](extras-circe/README.md) and [extras-cactus](extras-cactus/README.md) provide support for JSON and GPB conversion. They
 are both used in the example below.
@@ -410,7 +410,7 @@ import com.avast.bytes.Bytes
 import com.avast.cactus.bytes._ // Cactus support for Bytes, see https://github.com/avast/cactus#bytes
 import com.avast.clients.rabbitmq.test.ExampleEvents.{NewFileSourceAdded => NewFileSourceAddedGpb}
 import com.avast.clients.rabbitmq._
-import com.avast.clients.rabbitmq.extras.multiformat._
+import com.avast.clients.rabbitmq.extras.format._
 import io.circe.Decoder
 import io.circe.generic.auto._ // to auto derive `io.circe.Decoder[A]` with https://circe.github.io/circe/codec.html#fully-automatic-derivation
 import scala.concurrent.Future
@@ -423,8 +423,8 @@ case class FileSource(fileId: Bytes, source: String)
 case class NewFileSourceAdded(fileSources: Seq[FileSource])
 
 val consumer = MultiFormatConsumer.forType[Future, NewFileSourceAdded](
-  JsonFormatConverter.derive(), // requires implicit `io.circe.Decoder[NewFileSourceAdded]`
-  GpbFormatConverter[NewFileSourceAddedGpb].derive() // requires implicit `com.avast.cactus.Converter[NewFileSourceAddedGpb, NewFileSourceAdded]`
+  JsonDeliveryConverter.derive(), // requires implicit `io.circe.Decoder[NewFileSourceAdded]`
+  GpbDeliveryConverter[NewFileSourceAddedGpb].derive() // requires implicit `com.avast.cactus.Converter[NewFileSourceAddedGpb, NewFileSourceAdded]`
 )(
   businessLogic.processMessage,
   failureHandler

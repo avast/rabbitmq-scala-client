@@ -1,4 +1,4 @@
-package com.avast.clients.rabbitmq.extras.multiformat
+package com.avast.clients.rabbitmq.extras.format
 
 import cats.syntax.either._
 import com.avast.bytes.Bytes
