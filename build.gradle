@@ -131,6 +131,13 @@ subprojects {
 
         scalaCompileOptions.additionalParameters = plugins
     }
+
+    test {
+        testLogging {
+            events 'failed'
+            exceptionFormat 'full'
+        }
+    }
 }
 
 
