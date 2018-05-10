@@ -345,7 +345,7 @@ class LiveTest extends FunSuite with Eventually with ScalaFutures with StrictLog
       sender.send("test", Bytes.copyFromUtf8(Random.nextString(10))).runAsync.futureValue
     }
 
-    eventually {
+    eventually(timeout = timeout(Span(5, Seconds))) {
       assertResult(20)(processed.get())
       assertResult(0)(testHelper.getMessagesCount(queueName))
       assertResult(10)(poisoned.get())
