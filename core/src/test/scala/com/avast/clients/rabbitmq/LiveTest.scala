@@ -28,6 +28,8 @@ class LiveTest extends FunSuite with Eventually with ScalaFutures with StrictLog
 
   import com.avast.clients.rabbitmq.api.DeliveryResult._
 
+  private implicit val p: PatienceConfig = PatienceConfig(timeout = Span(5, Seconds))
+
   private def createConfig() = new {
 
     val queueName = randomString(10)
@@ -345,7 +347,7 @@ class LiveTest extends FunSuite with Eventually with ScalaFutures with StrictLog
       sender.send("test", Bytes.copyFromUtf8(Random.nextString(10))).runAsync.futureValue
     }
 
-    eventually(timeout = timeout(Span(5, Seconds))) {
+    eventually {
       assertResult(20)(processed.get())
       assertResult(0)(testHelper.getMessagesCount(queueName))
       assertResult(10)(poisoned.get())
