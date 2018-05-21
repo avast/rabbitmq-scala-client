@@ -203,6 +203,25 @@ There are multiple options where to get the _converter_ (it's the same case for 
 1. Modules [extras-circe](extras-circe/README.md) and [extras-cactus](extras-cactus/README.md) provide support for JSON and GPB conversion. 
 1. Use `identity` converter by specifying `Bytes` type argument. No further action needed in that case.
 
+#### Consumer parsing failure
+
+It may happen the delivery is not parsable as your `MyClass`. It won't be passed into the consumer and `ParsingFailureAction` will be used
+instead. You can provide your own `ParsingFailureAction` instance by using:
+
+```scala
+val parsingFailureAction: ParsingFailureAction[Task] = (consumerName: String, delivery: Delivery[Bytes], ce: ConversionException) => {
+  // do your stuff, probably some logging?
+  Task.now(DeliveryResult.Reject)
+}
+
+val consumer = rabbitConnection.newConsumer[MyClass]("consumer", parsingFailureAction, monitor) { (delivery: Delivery[MyClass]) =>
+  println(delivery)
+  Task.now(DeliveryResult.Ack)
+}
+```
+
+By default, [`DefaultRabbitMQConnection.defaultParsingFailureAction`](core/src/main/scala/com/avast/clients/rabbitmq/DefaultRabbitMQConnection.scala) will be used.
+
 #### Caveats
 1. `null` instead of converter instance  
     It may happen you run in this problem:
@@ -295,6 +314,9 @@ public class ExampleJava {
 }
 ```
 
+The Java API has some limitations compared to the Scala one - mainly it does not support [types conversions](#providing-converters-for-producer/consumer)
+and it offers only asynchronous version with `CompletableFuture` as result of all operations. 
+
 See [full example](core/src/test/java/ExampleJava.java)
 
 ## Notes
@@ -360,7 +382,13 @@ Check [reference.conf](core/src/main/resources/reference.conf) for all options o
 Sometimes your use-case just doesn't fit the _normal_ consumer scenario. Here you can use the _pull consumer_ which gives you much more
 control over the received messages. You _pull_ new message from the queue and acknowledge (reject, ...) it somewhere in the future.
 
-The pull consumer operates with `Option` which is used for expressing either getting the delivery _or_ detecting an empty queue.
+The pull consumer uses `PullResult` as return type:
+* Ok - contains `DeliveryWithHandle` instance
+* EmptyQueue - there was no message in the queue available
+* MalformedContent - there was `ConversionException` thrown during the conversion to your custom type
+
+It may be just too much for you to match these all options - you can call `.toOption` method then.
+
 
 A simplified example:
 ```scala
@@ -377,17 +405,43 @@ val consumer = connection.newPullConsumer[Bytes](???, ???)
 
 
 // receive "up to" 100 deliveries
-val deliveries: Future[Seq[Option[DeliveryWithHandle[Future, Bytes]]]] = Future.sequence { (1 to 100).map(_ => consumer.pull()) }
+val deliveries: Future[Seq[PullResult[Future, Bytes]]] = Future.sequence { (1 to 100).map(_ => consumer.pull()) }
 
 // do your stuff!
 
 ???
 
-// "handle" all deliveries
-val handleResult: Future[Unit] = deliveries.flatMap(s => Future.sequence(s.flatten.map(_.handle(DeliveryResult.Ack))).map(_ => Unit))
+// "handle" all deliveries, ignore failures and "empty queue" results
+val handleResult: Future[Unit] = deliveries.flatMap(s => Future.sequence(s.flatMap(_.toOption).map(_.handle(DeliveryResult.Ack))).map(_ => Unit))
 
 consumer.close()
 connection.close()
+
+```
+
+#### Pull-Consumer parsing failure
+
+It may happen the delivery is not parsable as your `MyClass`. `ParsingFailureAction` will be used for handling such message and you will get
+`PullResult.MalformedContent` as result of the `pull` method.  
+You can provide your own `ParsingFailureAction` instance by using:
+
+```scala
+val parsingFailureAction: ParsingFailureAction[Task] = (consumerName: String, delivery: Delivery[Bytes], ce: ConversionException) => {
+  // do your stuff, probably some logging?
+  Task.now(DeliveryResult.Reject)
+}
+
+val pullConsumer = rabbitConnection.newPullConsumer[MyClass]("consumer", parsingFailureAction, monitor)
+
+pullConsumer
+.pull()
+.map {
+  case PullResult.Ok(deliveryWithHandle) =>
+  case PullResult.EmptyQueue =>
+  case PullResult.MalformedContent(delivery, conversionException) => ???
+}
+
+By default, [`DefaultRabbitMQConnection.defaultParsingFailureAction`](core/src/main/scala/com/avast/clients/rabbitmq/DefaultRabbitMQConnection.scala) will be used.
 
 ```
 

@@ -1,7 +1,7 @@
 package com.avast.clients.rabbitmq
 
 import com.avast.bytes.Bytes
-import com.avast.clients.rabbitmq.api.{Delivery, MessageProperties}
+import com.avast.clients.rabbitmq.api.{ConversionException, Delivery, MessageProperties}
 
 import scala.annotation.implicitNotFound
 
@@ -39,5 +39,3 @@ object ProductConverter {
     override def fillProperties(properties: MessageProperties): MessageProperties = properties
   }
 }
-
-case class ConversionException(desc: String, cause: Throwable = null) extends RuntimeException(desc, cause)

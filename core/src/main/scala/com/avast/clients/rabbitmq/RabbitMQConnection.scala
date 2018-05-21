@@ -35,6 +35,17 @@ trait RabbitMQConnection[F[_]] extends AutoCloseable {
   def newConsumer[A: DeliveryConverter](configName: String, monitor: Monitor)(readAction: DeliveryReadAction[F, A])(
       implicit scheduler: Scheduler): RabbitMQConsumer with AutoCloseable
 
+  /** Creates new instance of consumer, using the TypeSafe configuration passed to the factory and consumer name.
+    *
+    * @param configName           Name of configuration of the consumer.
+    * @param parsingFailureAction Action executed when the delivered message could not be parsed as A.
+    * @param monitor              Monitor for metrics.
+    * @param readAction           Action executed for each delivered message. You should never return a failed future.
+    * @param scheduler            [[Scheduler]] used for callbacks.
+    */
+  def newConsumer[A: DeliveryConverter](configName: String, parsingFailureAction: ParsingFailureAction[F], monitor: Monitor)(
+      readAction: DeliveryReadAction[F, A])(implicit scheduler: Scheduler): RabbitMQConsumer with AutoCloseable
+
   /** Creates new instance of producer, using the TypeSafe configuration passed to the factory and producer name.
     *
     * @param configName Name of configuration of the producer.
@@ -49,6 +60,16 @@ trait RabbitMQConnection[F[_]] extends AutoCloseable {
     * @param scheduler  [[Scheduler]] used for callbacks.
     */
   def newPullConsumer[A: DeliveryConverter](configName: String, monitor: Monitor)(
+      implicit scheduler: Scheduler): RabbitMQPullConsumer[F, A] with AutoCloseable
+
+  /** Creates new instance of pull consumer, using the TypeSafe configuration passed to the factory and consumer name.
+    *
+    * @param configName           Name of configuration of the consumer.
+    * @param parsingFailureAction Action executed when the delivered message could not be parsed as A.
+    * @param monitor              Monitor for metrics.
+    * @param scheduler            [[Scheduler]] used for callbacks.
+    */
+  def newPullConsumer[A: DeliveryConverter](configName: String, parsingFailureAction: ParsingFailureAction[F], monitor: Monitor)(
       implicit scheduler: Scheduler): RabbitMQPullConsumer[F, A] with AutoCloseable
 
   /**

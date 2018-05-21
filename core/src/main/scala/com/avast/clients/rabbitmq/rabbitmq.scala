@@ -2,7 +2,8 @@ package com.avast.clients
 
 import cats.arrow.FunctionK
 import cats.{~>, Monad}
-import com.avast.clients.rabbitmq.api.{Delivery, DeliveryResult, MessageProperties, RabbitMQProducer}
+import com.avast.bytes.Bytes
+import com.avast.clients.rabbitmq.api._
 import com.rabbitmq.client.{RecoverableChannel, RecoverableConnection}
 import mainecoon.FunctorK
 import monix.eval.Task
@@ -17,7 +18,8 @@ package object rabbitmq {
   private[rabbitmq] type ServerConnection = RecoverableConnection
   private[rabbitmq] type ServerChannel = RecoverableChannel
 
-  type DeliveryReadAction[F[_], A] = Delivery[A] => F[DeliveryResult]
+  type DeliveryReadAction[F[_], -A] = Delivery[A] => F[DeliveryResult]
+  type ParsingFailureAction[F[_]] = (String, Delivery[Bytes], ConversionException) => F[DeliveryResult]
 
   type FromTask[A[_]] = FunctionK[Task, A]
   type ToTask[A[_]] = FunctionK[A, Task]

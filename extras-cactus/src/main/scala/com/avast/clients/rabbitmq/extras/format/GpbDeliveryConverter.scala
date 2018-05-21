@@ -4,8 +4,8 @@ import cats.syntax.either._
 import com.avast.bytes.Bytes
 import com.avast.cactus.CactusParser._
 import com.avast.cactus.Converter
-import com.avast.clients.rabbitmq.api.Delivery
-import com.avast.clients.rabbitmq.{CheckedDeliveryConverter, ConversionException}
+import com.avast.clients.rabbitmq.CheckedDeliveryConverter
+import com.avast.clients.rabbitmq.api.{ConversionException, Delivery}
 import com.google.protobuf.MessageLite
 
 import scala.annotation.implicitNotFound

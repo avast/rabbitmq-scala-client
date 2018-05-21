@@ -4,8 +4,9 @@ import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.{CountDownLatch, Executors, Semaphore, TimeUnit}
 
 import com.avast.bytes.Bytes
-import com.avast.clients.rabbitmq.api.{Delivery, DeliveryResult, MessageProperties}
+import com.avast.clients.rabbitmq.api._
 import com.avast.clients.rabbitmq.extras.PoisonedMessageHandler
+import com.avast.clients.rabbitmq.extras.format.JsonDeliveryConverter
 import com.avast.continuity.Continuity
 import com.avast.continuity.monix.Monix
 import com.avast.kluzo.{Kluzo, TraceId}
@@ -78,7 +79,7 @@ class LiveTest extends FunSuite with Eventually with ScalaFutures with StrictLog
 
     val rabbitConnection = RabbitMQConnection.fromConfig[Task](config, ex)
 
-    rabbitConnection.newConsumer("consumer", Monitor.noOp()) { (_: Delivery[Bytes]) =>
+    rabbitConnection.newConsumer("consumer", Monitor.noOp()) { _: Delivery[Bytes] =>
       counter.incrementAndGet()
       logger.debug(s"Kluzo: ${Kluzo.getTraceId}")
       assertResult(true)(Kluzo.getTraceId.nonEmpty)
@@ -114,7 +115,7 @@ class LiveTest extends FunSuite with Eventually with ScalaFutures with StrictLog
 
     val d = new AtomicInteger(0)
 
-    rabbitConnection.newConsumer("consumer", Monitor.noOp()) { (_: Delivery[Bytes]) =>
+    rabbitConnection.newConsumer("consumer", Monitor.noOp()) { _: Delivery[Bytes] =>
       Task {
         Thread.sleep(if (d.get() % 2 == 0) 300 else 0)
         latch.countDown()
@@ -146,7 +147,7 @@ class LiveTest extends FunSuite with Eventually with ScalaFutures with StrictLog
 
     val rabbitConnection = RabbitMQConnection.fromConfig[Task](config, ex)
 
-    rabbitConnection.newConsumer("consumer", Monitor.noOp()) { (_: Delivery[Bytes]) =>
+    rabbitConnection.newConsumer("consumer", Monitor.noOp()) { _: Delivery[Bytes] =>
       latch.countDown()
       Task.now(Ack)
     }
@@ -172,7 +173,7 @@ class LiveTest extends FunSuite with Eventually with ScalaFutures with StrictLog
 
     val cnt = new AtomicInteger(0)
 
-    rabbitConnection.newConsumer("consumer", Monitor.noOp()) { (_: Delivery[Bytes]) =>
+    rabbitConnection.newConsumer("consumer", Monitor.noOp()) { _: Delivery[Bytes] =>
       cnt.incrementAndGet()
       assertResult(true)(Kluzo.getTraceId.nonEmpty)
 
@@ -203,7 +204,7 @@ class LiveTest extends FunSuite with Eventually with ScalaFutures with StrictLog
 
     val cnt = new AtomicInteger(0)
 
-    rabbitConnection.newConsumer("consumer", Monitor.noOp()) { (_: Delivery[Bytes]) =>
+    rabbitConnection.newConsumer("consumer", Monitor.noOp()) { _: Delivery[Bytes] =>
       cnt.incrementAndGet()
 
       Thread.sleep(800) // timeout is set to 500 ms
@@ -232,7 +233,7 @@ class LiveTest extends FunSuite with Eventually with ScalaFutures with StrictLog
 
     val traceId = TraceId.generate
 
-    rabbitConnection.newConsumer("consumer", Monitor.noOp()) { (_: Delivery[Bytes]) =>
+    rabbitConnection.newConsumer("consumer", Monitor.noOp()) { _: Delivery[Bytes] =>
       cnt.incrementAndGet()
       assertResult(Some(traceId))(Kluzo.getTraceId)
       Success(Ack)
@@ -262,7 +263,7 @@ class LiveTest extends FunSuite with Eventually with ScalaFutures with StrictLog
 
     val traceId = "someTraceId"
 
-    rabbitConnection.newConsumer("consumer", Monitor.noOp()) { (_: Delivery[Bytes]) =>
+    rabbitConnection.newConsumer("consumer", Monitor.noOp()) { _: Delivery[Bytes] =>
       cnt.incrementAndGet()
       assertResult(Some(TraceId(traceId)))(Kluzo.getTraceId)
       Success(Ack)
@@ -301,7 +302,7 @@ class LiveTest extends FunSuite with Eventually with ScalaFutures with StrictLog
       _ <- rabbitConnection.bindQueue("additionalDeclarations.bindQueue")
     } yield Done
 
-    rabbitConnection.newConsumer("consumer", Monitor.noOp()) { (_: Delivery[Bytes]) =>
+    rabbitConnection.newConsumer("consumer", Monitor.noOp()) { _: Delivery[Bytes] =>
       latch.countDown()
       Success(DeliveryResult.Ack)
     }
@@ -327,12 +328,12 @@ class LiveTest extends FunSuite with Eventually with ScalaFutures with StrictLog
 
     val rabbitConnection = RabbitMQConnection.fromConfig[Task](config, ex)
 
-    val h = PoisonedMessageHandler.withCustomPoisonedAction[Task, Bytes](2) { (_: Delivery[Bytes]) =>
+    val h = PoisonedMessageHandler.withCustomPoisonedAction[Task, Bytes](2) { _: Delivery[Bytes] =>
       Task {
         processed.incrementAndGet()
         DeliveryResult.Republish()
       }
-    } { (_: Delivery[Bytes]) =>
+    } { _: Delivery[Bytes] =>
       Task {
         poisoned.incrementAndGet()
         ()
@@ -373,7 +374,7 @@ class LiveTest extends FunSuite with Eventually with ScalaFutures with StrictLog
     }
 
     for (_ <- 1 to 3) {
-      val Some(dwh) = consumer.pull().futureValue
+      val PullResult.Ok(dwh) = consumer.pull().futureValue
       dwh.handle(DeliveryResult.Ack)
     }
 
@@ -382,7 +383,7 @@ class LiveTest extends FunSuite with Eventually with ScalaFutures with StrictLog
     }
 
     for (_ <- 1 to 7) {
-      val Some(dwh) = consumer.pull().futureValue
+      val PullResult.Ok(dwh) = consumer.pull().futureValue
       dwh.handle(DeliveryResult.Ack)
     }
 
@@ -391,7 +392,51 @@ class LiveTest extends FunSuite with Eventually with ScalaFutures with StrictLog
     }
 
     for (_ <- 1 to 10) {
-      assertResult(None)(consumer.pull().futureValue)
+      assertResult(PullResult.EmptyQueue)(consumer.pull().futureValue)
     }
+  }
+
+  test("consumer parsing failure") {
+    val c = createConfig()
+    import c._
+    import io.circe.generic.auto._
+    case class Abc(str: String)
+
+    implicit val conv = JsonDeliveryConverter.derive[Abc]()
+
+    val rabbitConnection = RabbitMQConnection.fromConfig[Future](config, ex)
+
+    val parsingFailures = new AtomicInteger(0)
+    val processing = new AtomicInteger(0)
+
+    val parsingFailureAction: ParsingFailureAction[Future] = (_: String, d: Delivery[Bytes], ce: ConversionException) => {
+      assertResult(10)(d.body.size())
+
+      val i = parsingFailures.incrementAndGet()
+      Future.successful(
+        if (i > 3) DeliveryResult.Ack
+        else {
+          logger.info(s"Retrying $i", ce)
+          DeliveryResult.Retry
+        })
+    }
+
+    rabbitConnection.newConsumer[Abc]("consumer", parsingFailureAction, Monitor.noOp()) { _ =>
+      processing.incrementAndGet()
+      Future.successful(DeliveryResult.Ack)
+    }
+
+    val sender = rabbitConnection.newProducer("producer", Monitor.noOp())
+
+    sender.send("test", Bytes.copyFromUtf8(randomString(10))).futureValue
+
+    eventually(timeout = timeout(Span(5, Seconds))) {
+      assertResult(0)(testHelper.getMessagesCount(queueName))
+
+      assertResult(0)(processing.get())
+      assertResult(4)(parsingFailures.get())
+
+    }
+
   }
 }

@@ -1,7 +1,7 @@
 package com.avast.clients.rabbitmq
 
 import com.avast.bytes.Bytes
-import com.avast.clients.rabbitmq.api.{Delivery, DeliveryResult}
+import com.avast.clients.rabbitmq.api.{ConversionException, Delivery, DeliveryResult}
 import com.typesafe.scalalogging.StrictLogging
 
 import scala.collection.immutable

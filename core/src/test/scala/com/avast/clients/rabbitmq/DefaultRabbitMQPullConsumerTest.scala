@@ -3,7 +3,7 @@ package com.avast.clients.rabbitmq
 import java.util.UUID
 
 import com.avast.bytes.Bytes
-import com.avast.clients.rabbitmq.api.DeliveryResult
+import com.avast.clients.rabbitmq.api.{ConversionException, DeliveryResult, PullResult}
 import com.avast.metrics.scalaapi.Monitor
 import com.rabbitmq.client.AMQP.BasicProperties
 import com.rabbitmq.client.impl.recovery.AutorecoveringChannel
@@ -47,11 +47,12 @@ class DefaultRabbitMQPullConsumerTest extends FunSuite with MockitoSugar with Sc
       channel,
       "queueName",
       DeliveryResult.Reject,
+      (_, _, _) => fail(),
       Monitor.noOp,
       Scheduler.global
     )
 
-    val Some(dwh) = consumer.pull().futureValue
+    val PullResult.Ok(dwh) = consumer.pull().futureValue
 
     assertResult(Some(messageId))(dwh.delivery.properties.messageId)
 
@@ -89,11 +90,12 @@ class DefaultRabbitMQPullConsumerTest extends FunSuite with MockitoSugar with Sc
       channel,
       "queueName",
       DeliveryResult.Reject,
+      (_, _, _) => fail(),
       Monitor.noOp,
       Scheduler.global
     )
 
-    val Some(dwh) = consumer.pull().futureValue
+    val PullResult.Ok(dwh) = consumer.pull().futureValue
 
     assertResult(Some(messageId))(dwh.delivery.properties.messageId)
 
@@ -131,11 +133,12 @@ class DefaultRabbitMQPullConsumerTest extends FunSuite with MockitoSugar with Sc
       channel,
       "queueName",
       DeliveryResult.Ack,
+      (_, _, _) => fail(),
       Monitor.noOp,
       Scheduler.global
     )
 
-    val Some(dwh) = consumer.pull().futureValue
+    val PullResult.Ok(dwh) = consumer.pull().futureValue
 
     assertResult(Some(messageId))(dwh.delivery.properties.messageId)
 
@@ -172,11 +175,12 @@ class DefaultRabbitMQPullConsumerTest extends FunSuite with MockitoSugar with Sc
       channel,
       "queueName",
       DeliveryResult.Reject,
+      (_, _, _) => fail(),
       Monitor.noOp,
       Scheduler.global
     )
 
-    val Some(dwh) = consumer.pull().futureValue
+    val PullResult.Ok(dwh) = consumer.pull().futureValue
 
     assertResult(Some(messageId))(dwh.delivery.properties.messageId)
 
@@ -220,6 +224,7 @@ class DefaultRabbitMQPullConsumerTest extends FunSuite with MockitoSugar with Sc
       channel,
       "queueName",
       DeliveryResult.Retry,
+      (_, _, _) => fail(),
       Monitor.noOp,
       Scheduler.global
     )
@@ -265,7 +270,8 @@ class DefaultRabbitMQPullConsumerTest extends FunSuite with MockitoSugar with Sc
       "test",
       channel,
       "queueName",
-      DeliveryResult.Retry,
+      DeliveryResult.Ack,
+      (_, _, _) => Future.successful(DeliveryResult.Retry),
       Monitor.noOp,
       Scheduler.global
     )
