@@ -182,9 +182,13 @@ val monitor: Monitor = ???
 // if you expect very high load, you can use separate connections for each producer/consumer, but it's usually not needed
 val rabbitConnection = RabbitMQConnection.fromConfig[Task](config, blockingExecutor) // DefaultRabbitMQConnection[Task]
 
-val consumer = rabbitConnection.newConsumer[Bytes]("consumer", monitor) { (delivery: Delivery[Bytes]) =>
-  println(delivery)
-  Task.now(DeliveryResult.Ack)
+val consumer = rabbitConnection.newConsumer[Bytes]("consumer", monitor) { 
+  case delivery: Delivery.Ok[Bytes] =>
+    println(delivery)
+    Task.now(DeliveryResult.Ack)
+    
+  case _: Delivery.MalformedContent =>
+    Task.now(DeliveryResult.Reject)
 } // DefaultRabbitMQConsumer
 
 val sender = rabbitConnection.newProducer("producer", monitor) // DefaultRabbitMQProducer[Task]
@@ -202,25 +206,6 @@ There are multiple options where to get the _converter_ (it's the same case for 
 1. Implement your own implicit _converter_ for the type
 1. Modules [extras-circe](extras-circe/README.md) and [extras-cactus](extras-cactus/README.md) provide support for JSON and GPB conversion. 
 1. Use `identity` converter by specifying `Bytes` type argument. No further action needed in that case.
-
-#### Consumer parsing failure
-
-It may happen the delivery is not parsable as your `MyClass`. It won't be passed into the consumer and `ParsingFailureAction` will be used
-instead. You can provide your own `ParsingFailureAction` instance by using:
-
-```scala
-val parsingFailureAction: ParsingFailureAction[Task] = (consumerName: String, delivery: Delivery[Bytes], ce: ConversionException) => {
-  // do your stuff, probably some logging?
-  Task.now(DeliveryResult.Reject)
-}
-
-val consumer = rabbitConnection.newConsumer[MyClass]("consumer", parsingFailureAction, monitor) { (delivery: Delivery[MyClass]) =>
-  println(delivery)
-  Task.now(DeliveryResult.Ack)
-}
-```
-
-By default, [`DefaultRabbitMQConnection.defaultParsingFailureAction`](core/src/main/scala/com/avast/clients/rabbitmq/DefaultRabbitMQConnection.scala) will be used.
 
 #### Caveats
 1. `null` instead of converter instance  
@@ -385,9 +370,8 @@ control over the received messages. You _pull_ new message from the queue and ac
 The pull consumer uses `PullResult` as return type:
 * Ok - contains `DeliveryWithHandle` instance
 * EmptyQueue - there was no message in the queue available
-* MalformedContent - there was `ConversionException` thrown during the conversion to your custom type
 
-It may be just too much for you to match these all options - you can call `.toOption` method then.
+Additionally you can call `.toOption` method on the `PullResult`.
 
 
 A simplified example:
@@ -416,32 +400,6 @@ val handleResult: Future[Unit] = deliveries.flatMap(s => Future.sequence(s.flatM
 
 consumer.close()
 connection.close()
-
-```
-
-#### Pull-Consumer parsing failure
-
-It may happen the delivery is not parsable as your `MyClass`. `ParsingFailureAction` will be used for handling such message and you will get
-`PullResult.MalformedContent` as result of the `pull` method.  
-You can provide your own `ParsingFailureAction` instance by using:
-
-```scala
-val parsingFailureAction: ParsingFailureAction[Task] = (consumerName: String, delivery: Delivery[Bytes], ce: ConversionException) => {
-  // do your stuff, probably some logging?
-  Task.now(DeliveryResult.Reject)
-}
-
-val pullConsumer = rabbitConnection.newPullConsumer[MyClass]("consumer", parsingFailureAction, monitor)
-
-pullConsumer
-.pull()
-.map {
-  case PullResult.Ok(deliveryWithHandle) =>
-  case PullResult.EmptyQueue =>
-  case PullResult.MalformedContent(delivery, conversionException) => ???
-}
-
-By default, [`DefaultRabbitMQConnection.defaultParsingFailureAction`](core/src/main/scala/com/avast/clients/rabbitmq/DefaultRabbitMQConnection.scala) will be used.
 
 ```
 
@@ -479,10 +437,7 @@ case class NewFileSourceAdded(fileSources: Seq[FileSource])
 val consumer = MultiFormatConsumer.forType[Future, NewFileSourceAdded](
   JsonDeliveryConverter.derive(), // requires implicit `io.circe.Decoder[NewFileSourceAdded]`
   GpbDeliveryConverter[NewFileSourceAddedGpb].derive() // requires implicit `com.avast.cactus.Converter[NewFileSourceAddedGpb, NewFileSourceAdded]`
-)(
-  businessLogic.processMessage,
-  failureHandler
-)
+)(businessLogic.processMessage)
 ```
 (see [unit test](core/src/test/scala/com/avast/clients/rabbitmq/MultiFormatConsumerTest.scala) for full example)
 
