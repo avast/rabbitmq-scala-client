@@ -15,7 +15,7 @@ object Delivery {
   case class MalformedContent(body: Bytes, properties: MessageProperties, routingKey: String, ce: ConversionException)
       extends Delivery[Nothing]
 
-  def apply[A](body: A, properties: MessageProperties, routingKey: String): Delivery[A] = {
+  def apply[A](body: A, properties: MessageProperties, routingKey: String): Delivery.Ok[A] = {
     Delivery.Ok(body, properties, routingKey)
   }
 }
