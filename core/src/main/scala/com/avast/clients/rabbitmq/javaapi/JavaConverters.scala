@@ -152,14 +152,15 @@ private[rabbitmq] object JavaConverters {
   }
 
   implicit class ScalaDeliveryConversion(val d: ScalaDelivery[Bytes]) extends AnyVal {
-    def asJava: JavaDelivery = {
-      new JavaDelivery(d.routingKey, d.body, d.properties.asJava)
+    def asJava: JavaDelivery = d match {
+      case ScalaDelivery.Ok(body, properties, routingKey) => new JavaDelivery(routingKey, body, properties.asJava)
+      case ScalaDelivery.MalformedContent(_, _, _, ce) => throw ce
     }
   }
 
   implicit class JavaDeliveryConversion(val d: JavaDelivery) extends AnyVal {
     def asScala: ScalaDelivery[Bytes] = {
-      ScalaDelivery(d.getBody, d.getProperties.asScala, d.getRoutingKey)
+      ScalaDelivery.Ok(d.getBody, d.getProperties.asScala, d.getRoutingKey)
     }
   }
 

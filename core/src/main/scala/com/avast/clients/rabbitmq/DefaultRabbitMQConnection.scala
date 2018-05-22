@@ -1,7 +1,5 @@
 package com.avast.clients.rabbitmq
 
-import com.avast.bytes.Bytes
-import com.avast.clients.rabbitmq.api.{ConversionException, Delivery, DeliveryResult}
 import com.avast.metrics.scalaapi.Monitor
 import com.rabbitmq.client.ShutdownSignalException
 import com.typesafe.config.Config
@@ -48,35 +46,18 @@ class DefaultRabbitMQConnection[F[_]: FromTask: ToTask](connection: ServerConnec
     }
   }
 
-  override def newConsumer[A: DeliveryConverter](configName: String, parsingFailureAction: ParsingFailureAction[F], monitor: Monitor)(
-      readAction: DeliveryReadAction[F, A])(implicit scheduler: Scheduler): DefaultRabbitMQConsumer = {
-    addAutoCloseable {
-      DefaultRabbitMQClientFactory.Consumer
-        .fromConfig[F, A](config.getConfig(configName),
-                          createChannel(),
-                          info,
-                          blockingScheduler,
-                          monitor,
-                          consumerListener,
-                          readAction,
-                          parsingFailureAction)
-    }
-  }
-
   def newConsumer[A: DeliveryConverter](configName: String, monitor: Monitor)(readAction: DeliveryReadAction[F, A])(
       implicit scheduler: Scheduler): DefaultRabbitMQConsumer = {
-    newConsumer(configName, DefaultRabbitMQConnection.defaultParsingFailureAction[F], monitor)(readAction)
-  }
-
-  override def newPullConsumer[A: DeliveryConverter](configName: String, parsingFailureAction: ParsingFailureAction[F], monitor: Monitor)(
-      implicit scheduler: Scheduler): DefaultRabbitMQPullConsumer[F, A] = {
-    DefaultRabbitMQClientFactory.PullConsumer
-      .fromConfig[F, A](config.getConfig(configName), createChannel(), info, parsingFailureAction, blockingScheduler, monitor)
+    addAutoCloseable {
+      DefaultRabbitMQClientFactory.Consumer
+        .fromConfig[F, A](config.getConfig(configName), createChannel(), info, blockingScheduler, monitor, consumerListener, readAction)
+    }
   }
 
   def newPullConsumer[A: DeliveryConverter](configName: String, monitor: Monitor)(
       implicit scheduler: Scheduler): DefaultRabbitMQPullConsumer[F, A] = addAutoCloseable {
-    newPullConsumer(configName, DefaultRabbitMQConnection.defaultParsingFailureAction[F], monitor)
+    DefaultRabbitMQClientFactory.PullConsumer
+      .fromConfig[F, A](config.getConfig(configName), createChannel(), info, blockingScheduler, monitor)
   }
 
   def newProducer[A: ProductConverter](configName: String, monitor: Monitor): DefaultRabbitMQProducer[F, A] = {
@@ -161,11 +142,4 @@ class DefaultRabbitMQConnection[F[_]: FromTask: ToTask](connection: ServerConnec
 
 }
 
-object DefaultRabbitMQConnection extends StrictLogging {
-  def defaultParsingFailureAction[F[_]: FromTask]: ParsingFailureAction[F] =
-    (consumerName: String, d: Delivery[Bytes], ce: ConversionException) => {
-      logger.debug(s"[$consumerName] ${ce.getMessage}: $d", ce)
-      logger.warn(s"[$consumerName] ${ce.getMessage}, applying DeliveryResult.Republish")
-      implicitly[FromTask[F]].apply(Task.now(DeliveryResult.Republish()))
-    }
-}
+object DefaultRabbitMQConnection extends StrictLogging {}

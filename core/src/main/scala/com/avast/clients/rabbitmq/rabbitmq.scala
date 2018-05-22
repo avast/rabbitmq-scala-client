@@ -68,4 +68,24 @@ package object rabbitmq {
     override def tailRecM[A, B](a: A)(f: A => Task[Either[A, B]]): Task[B] = Task.tailRecM(a)(f)
   }
 
+  private[rabbitmq] implicit class DeliveryOps[A](val d: Delivery[A]) extends AnyVal {
+    def mapBody[B](f: A => B): Delivery[B] = d match {
+      case ok: Delivery.Ok[A] => ok.copy(body = f(ok.body))
+      case m: Delivery.MalformedContent => m
+    }
+
+    def flatMap[B](f: Delivery.Ok[A] => Delivery[B]): Delivery[B] = d match {
+      case ok: Delivery.Ok[A] => f(ok)
+      case m: Delivery.MalformedContent => m
+    }
+  }
+
+  private[rabbitmq] implicit class DeliveryBytesOps(val d: Delivery[Bytes]) extends AnyVal {
+
+    def toMalformed(ce: ConversionException): Delivery.MalformedContent = d match {
+      case ok: Delivery.Ok[Bytes] => Delivery.MalformedContent(ok.body, ok.properties, ok.routingKey, ce)
+      case m: Delivery.MalformedContent => m.copy(ce = ce)
+    }
+  }
+
 }

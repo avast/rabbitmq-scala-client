@@ -18,9 +18,6 @@ class DefaultRabbitMQPullConsumer(scalaConsumer: ScalaConsumer[Future, Bytes] wi
       .map[PullResult] {
         case ScalaResult.Ok(dwh) => new PullResult.Ok(dwh.asJava)
         case ScalaResult.EmptyQueue => PullResult.EmptyQueue
-        case ScalaResult.MalformedContent(d, ce) =>
-          logger.warn(s"Detected error while conversion although it should NOT happen: $d", ce)
-          throw ce
       }
       .asJava
   }

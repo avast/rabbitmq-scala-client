@@ -409,21 +409,21 @@ class LiveTest extends FunSuite with Eventually with ScalaFutures with StrictLog
     val parsingFailures = new AtomicInteger(0)
     val processing = new AtomicInteger(0)
 
-    val parsingFailureAction: ParsingFailureAction[Future] = (_: String, d: Delivery[Bytes], ce: ConversionException) => {
-      assertResult(10)(d.body.size())
+    rabbitConnection.newConsumer[Abc]("consumer", Monitor.noOp()) {
+      case _: Delivery.Ok[Abc] =>
+        processing.incrementAndGet()
+        Future.successful(DeliveryResult.Ack)
 
-      val i = parsingFailures.incrementAndGet()
-      Future.successful(
-        if (i > 3) DeliveryResult.Ack
-        else {
-          logger.info(s"Retrying $i", ce)
-          DeliveryResult.Retry
-        })
-    }
+      case d: Delivery.MalformedContent =>
+        assertResult(10)(d.body.size())
 
-    rabbitConnection.newConsumer[Abc]("consumer", parsingFailureAction, Monitor.noOp()) { _ =>
-      processing.incrementAndGet()
-      Future.successful(DeliveryResult.Ack)
+        val i = parsingFailures.incrementAndGet()
+        Future.successful(
+          if (i > 3) DeliveryResult.Ack
+          else {
+            logger.info(s"Retrying $i", d.ce)
+            DeliveryResult.Retry
+          })
     }
 
     val sender = rabbitConnection.newProducer("producer", Monitor.noOp())

@@ -14,12 +14,11 @@ import monix.execution.Scheduler
 import scala.language.higherKinds
 import scala.util.control.NonFatal
 
-class DefaultRabbitMQPullConsumer[F[_]: FromTask: ToTask, A: DeliveryConverter](
+class DefaultRabbitMQPullConsumer[F[_]: FromTask, A: DeliveryConverter](
     override val name: String,
     protected override val channel: ServerChannel,
     protected override val queueName: String,
     failureAction: DeliveryResult,
-    parsingFailureAction: ParsingFailureAction[F],
     protected override val monitor: Monitor,
     protected override val blockingScheduler: Scheduler)(implicit callbackScheduler: Scheduler)
     extends RabbitMQPullConsumer[F, A]
@@ -73,22 +72,22 @@ class DefaultRabbitMQPullConsumer[F[_]: FromTask: ToTask, A: DeliveryConverter](
     try {
       val bytes = Bytes.copyFrom(response.getBody)
 
-      convertMessage(bytes) match {
+      val delivery = convertMessage(bytes) match {
         case Right(a) =>
-          val d = Delivery(a, properties.asScala, routingKey)
-          logger.trace(s"[$name] Received delivery: ${d.copy(body = bytes)}")
-
-          val dwh = createDeliveryWithHandle(d, handleResult)
-
-          Task.now(PullResult.Ok(dwh))
+          val delivery = Delivery(a, properties.asScala, routingKey)
+          logger.trace(s"[$name] Received delivery: ${delivery.copy(body = bytes)}")
+          delivery
 
         case Left(ce) =>
-          val rawDelivery = Delivery(bytes, properties.asScala, routingKey)
+          val delivery = Delivery.MalformedContent(bytes, properties.asScala, routingKey, ce)
+          logger.trace(s"[$name] Received delivery but could not convert it: $delivery")
+          delivery
+      }
 
-          implicitly[ToTask[F]]
-            .apply(parsingFailureAction(name, rawDelivery, ce))
-            .flatMap(handleResult)
-            .map(_ => PullResult.MalformedContent(rawDelivery, ce))
+      val dwh = createDeliveryWithHandle(delivery, handleResult)
+
+      Task.now {
+        PullResult.Ok(dwh)
       }
     } catch {
       case NonFatal(e) =>
@@ -101,9 +100,9 @@ class DefaultRabbitMQPullConsumer[F[_]: FromTask: ToTask, A: DeliveryConverter](
     }
   }
 
-  private def createDeliveryWithHandle(d: Delivery[A], handleResult: DeliveryResult => Task[Unit]): DeliveryWithHandle[F, A] = {
-    new DeliveryWithHandle[F, A] {
-      override val delivery: Delivery[A] = d
+  private def createDeliveryWithHandle[B](d: Delivery[B], handleResult: DeliveryResult => Task[Unit]): DeliveryWithHandle[F, B] = {
+    new DeliveryWithHandle[F, B] {
+      override val delivery: Delivery[B] = d
 
       override def handle(result: DeliveryResult): F[Unit] = implicitly[FromTask[F]].apply {
         handleResult(result)

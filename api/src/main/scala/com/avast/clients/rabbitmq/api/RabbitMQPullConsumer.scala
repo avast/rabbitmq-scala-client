@@ -1,7 +1,5 @@
 package com.avast.clients.rabbitmq.api
 
-import com.avast.bytes.Bytes
-
 import scala.language.higherKinds
 
 trait RabbitMQPullConsumer[F[_], A] {
@@ -31,10 +29,6 @@ object PullResult {
 
   case object EmptyQueue extends PullResult[Nothing, Nothing] {
     override def toOption: Option[DeliveryWithHandle[Nothing, Nothing]] = None
-  }
-
-  case class MalformedContent[F[_], A](delivery: Delivery[Bytes], ce: ConversionException) extends PullResult[F, A] {
-    override val toOption: Option[DeliveryWithHandle[F, A]] = None
   }
 
 }
