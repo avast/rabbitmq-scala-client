@@ -9,7 +9,6 @@ import com.avast.clients.rabbitmq.api.{Delivery, DeliveryResult}
 import com.avast.clients.rabbitmq.extras.PoisonedMessageHandler._
 import com.avast.clients.rabbitmq.javaapi.JavaConverters._
 import com.avast.clients.rabbitmq.{FromTask, ToTask, javaapi, _}
-import com.avast.utils2.Done
 import com.typesafe.scalalogging.StrictLogging
 import monix.eval.Task
 
@@ -49,7 +48,6 @@ class PoisonedMessageHandler[F[_]: FromTask: ToTask, A](maxAttempts: Int)(wrappe
       }.onErrorRecover {
           case NonFatal(e) =>
             logger.warn("Custom poisoned message handler failed", e)
-            Done
         }
         .map(_ => Reject) // always REJECT the message
     }
