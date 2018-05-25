@@ -2,8 +2,8 @@ package com.avast.clients.rabbitmq.extras.format
 
 import cats.syntax.either._
 import com.avast.bytes.Bytes
-import com.avast.clients.rabbitmq.api.Delivery
-import com.avast.clients.rabbitmq.{CheckedDeliveryConverter, ConversionException}
+import com.avast.clients.rabbitmq.CheckedDeliveryConverter
+import com.avast.clients.rabbitmq.api.{ConversionException, Delivery}
 import io.circe.Decoder
 import io.circe.parser.decode
 

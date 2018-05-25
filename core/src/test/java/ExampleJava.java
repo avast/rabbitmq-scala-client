@@ -4,13 +4,10 @@ import com.avast.metrics.test.NoOpMonitor;
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
 
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ForkJoinPool;
+import java.util.concurrent.*;
 
 public class ExampleJava {
-    public static void main(String[] args) {
+    public static void main(String[] args) throws ExecutionException, InterruptedException {
         final Config config = ConfigFactory.load().getConfig("myConfig");
         final String routingKey = config.getString("consumer.queueName");
 
@@ -26,6 +23,12 @@ public class ExampleJava {
                 ExampleJava::handleDelivery
         );
 
+        final RabbitMQPullConsumer rabbitMQPullConsumer = connection.newPullConsumer(
+                "consumer",
+                NoOpMonitor.INSTANCE,
+                callbackExecutor
+        );
+
         final RabbitMQProducer rabbitMQProducer = connection.newProducer(
                 "producer",
                 NoOpMonitor.INSTANCE,
@@ -38,6 +41,18 @@ public class ExampleJava {
             } catch (Exception e) {
                 System.err.println("Message could not be sent: " + e.getClass().getName() + ": " + e.getMessage());
             }
+        }
+
+        /* Pull consumer: */
+
+        final PullResult pullResult = rabbitMQPullConsumer.pull().get();
+
+        if (pullResult.isOk()) {
+            PullResult.Ok result = (PullResult.Ok) pullResult;
+
+            final DeliveryWithHandle deliveryWithHandle = result.getDeliveryWithHandle();
+
+            deliveryWithHandle.handle(DeliveryResult.Ack()).get();
         }
     }
 

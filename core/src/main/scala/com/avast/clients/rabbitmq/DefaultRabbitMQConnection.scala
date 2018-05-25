@@ -50,7 +50,7 @@ class DefaultRabbitMQConnection[F[_]: FromTask: ToTask](connection: ServerConnec
       implicit scheduler: Scheduler): DefaultRabbitMQConsumer = {
     addAutoCloseable {
       DefaultRabbitMQClientFactory.Consumer
-        .fromConfig[F, A](config.getConfig(configName), createChannel(), info, blockingScheduler, monitor, consumerListener)(readAction)
+        .fromConfig[F, A](config.getConfig(configName), createChannel(), info, blockingScheduler, monitor, consumerListener, readAction)
     }
   }
 
@@ -141,3 +141,5 @@ class DefaultRabbitMQConnection[F[_]: FromTask: ToTask](connection: ServerConnec
   }
 
 }
+
+object DefaultRabbitMQConnection extends StrictLogging {}

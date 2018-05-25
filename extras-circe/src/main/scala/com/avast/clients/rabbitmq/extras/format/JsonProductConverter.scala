@@ -1,8 +1,8 @@
 package com.avast.clients.rabbitmq.extras.format
 
 import com.avast.bytes.Bytes
-import com.avast.clients.rabbitmq.api.MessageProperties
-import com.avast.clients.rabbitmq.{ConversionException, ProductConverter}
+import com.avast.clients.rabbitmq.ProductConverter
+import com.avast.clients.rabbitmq.api.{ConversionException, MessageProperties}
 import io.circe.Encoder
 import io.circe.syntax._
 

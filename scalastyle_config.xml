@@ -128,7 +128,7 @@ it tries to lay a common ground using the official style guide: http://docs.scal
     </check>
     <check class="org.scalastyle.scalariform.ParameterNumberChecker" level="warning" enabled="true">
         <parameters>
-            <parameter name="maxParameters">8</parameter>
+            <parameter name="maxParameters">10</parameter>
         </parameters>
     </check>
     <check class="org.scalastyle.scalariform.PatternMatchAlignChecker" level="warning" enabled="false"/>

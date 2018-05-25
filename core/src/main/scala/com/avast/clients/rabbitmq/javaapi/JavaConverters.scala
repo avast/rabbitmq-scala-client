@@ -4,6 +4,7 @@ import java.util.concurrent.{CompletableFuture, Executor}
 import java.util.{function, Date, Optional}
 
 import com.avast.bytes.Bytes
+import com.avast.clients.rabbitmq.DeliveryReadAction
 import com.avast.clients.rabbitmq.api.{
   Delivery => ScalaDelivery,
   DeliveryResult => ScalaResult,
@@ -151,14 +152,15 @@ private[rabbitmq] object JavaConverters {
   }
 
   implicit class ScalaDeliveryConversion(val d: ScalaDelivery[Bytes]) extends AnyVal {
-    def asJava: JavaDelivery = {
-      new JavaDelivery(d.routingKey, d.body, d.properties.asJava)
+    def asJava: JavaDelivery = d match {
+      case ScalaDelivery.Ok(body, properties, routingKey) => new JavaDelivery(routingKey, body, properties.asJava)
+      case ScalaDelivery.MalformedContent(_, _, _, ce) => throw ce
     }
   }
 
   implicit class JavaDeliveryConversion(val d: JavaDelivery) extends AnyVal {
     def asScala: ScalaDelivery[Bytes] = {
-      ScalaDelivery(d.getBody, d.getProperties.asScala, d.getRoutingKey)
+      ScalaDelivery.Ok(d.getBody, d.getProperties.asScala, d.getRoutingKey)
     }
   }
 
@@ -191,7 +193,7 @@ private[rabbitmq] object JavaConverters {
   }
 
   implicit class JavaActionConversion(val readAction: function.Function[JavaDelivery, CompletableFuture[DeliveryResult]]) extends AnyVal {
-    def asScala(implicit ex: Executor, ec: ExecutionContext): ScalaDelivery[Bytes] => Future[ScalaResult] =
+    def asScala(implicit ex: Executor, ec: ExecutionContext): DeliveryReadAction[Future, Bytes] =
       d => readAction(d.asJava).asScala.map(_.asScala)
   }
 

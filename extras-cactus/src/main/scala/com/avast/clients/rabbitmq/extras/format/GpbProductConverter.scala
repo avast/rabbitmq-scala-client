@@ -5,8 +5,8 @@ import com.avast.bytes.Bytes
 import com.avast.bytes.gpb.ByteStringBytes
 import com.avast.cactus.CactusParser._
 import com.avast.cactus.Converter
-import com.avast.clients.rabbitmq.api.MessageProperties
-import com.avast.clients.rabbitmq.{ConversionException, ProductConverter}
+import com.avast.clients.rabbitmq.ProductConverter
+import com.avast.clients.rabbitmq.api.{ConversionException, MessageProperties}
 import com.google.protobuf.MessageLite
 
 import scala.annotation.implicitNotFound

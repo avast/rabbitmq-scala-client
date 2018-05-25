@@ -3,7 +3,7 @@ package com.avast.clients.rabbitmq
 import java.util.UUID
 
 import com.avast.bytes.Bytes
-import com.avast.clients.rabbitmq.api.DeliveryResult
+import com.avast.clients.rabbitmq.api.{ConversionException, Delivery, DeliveryResult, PullResult}
 import com.avast.metrics.scalaapi.Monitor
 import com.rabbitmq.client.AMQP.BasicProperties
 import com.rabbitmq.client.impl.recovery.AutorecoveringChannel
@@ -51,7 +51,7 @@ class DefaultRabbitMQPullConsumerTest extends FunSuite with MockitoSugar with Sc
       Scheduler.global
     )
 
-    val Some(dwh) = consumer.pull().futureValue
+    val PullResult.Ok(dwh) = consumer.pull().futureValue
 
     assertResult(Some(messageId))(dwh.delivery.properties.messageId)
 
@@ -93,7 +93,7 @@ class DefaultRabbitMQPullConsumerTest extends FunSuite with MockitoSugar with Sc
       Scheduler.global
     )
 
-    val Some(dwh) = consumer.pull().futureValue
+    val PullResult.Ok(dwh) = consumer.pull().futureValue
 
     assertResult(Some(messageId))(dwh.delivery.properties.messageId)
 
@@ -135,7 +135,7 @@ class DefaultRabbitMQPullConsumerTest extends FunSuite with MockitoSugar with Sc
       Scheduler.global
     )
 
-    val Some(dwh) = consumer.pull().futureValue
+    val PullResult.Ok(dwh) = consumer.pull().futureValue
 
     assertResult(Some(messageId))(dwh.delivery.properties.messageId)
 
@@ -176,7 +176,7 @@ class DefaultRabbitMQPullConsumerTest extends FunSuite with MockitoSugar with Sc
       Scheduler.global
     )
 
-    val Some(dwh) = consumer.pull().futureValue
+    val PullResult.Ok(dwh) = consumer.pull().futureValue
 
     assertResult(Some(messageId))(dwh.delivery.properties.messageId)
 
@@ -258,23 +258,24 @@ class DefaultRabbitMQPullConsumerTest extends FunSuite with MockitoSugar with Sc
     case class Abc(i: Int)
 
     implicit val c: DeliveryConverter[Abc] = (_: Bytes) => {
-      Left(ConversionException(""))
+      Left(ConversionException(messageId))
     }
 
     val consumer = new DefaultRabbitMQPullConsumer[Future, Abc](
       "test",
       channel,
       "queueName",
-      DeliveryResult.Retry,
+      DeliveryResult.Ack,
       Monitor.noOp,
       Scheduler.global
     )
 
-    try {
-      consumer.pull().futureValue
-    } catch {
-      case e: TestFailedException if e.getCause.isInstanceOf[ConversionException] => // ok
-    }
+    val PullResult.Ok(dwh) = consumer.pull().futureValue
+    val Delivery.MalformedContent(_, _, _, ce) = dwh.delivery
+
+    assertResult(messageId)(ce.getMessage)
+
+    dwh.handle(DeliveryResult.Retry)
 
     eventually(timeout(Span(1, Seconds)), interval(Span(0.1, Seconds))) {
       verify(channel, times(0)).basicAck(deliveryTag, false)

@@ -26,30 +26,32 @@ class PoisonedMessageHandler[F[_]: FromTask: ToTask, A](maxAttempts: Int)(wrappe
     convertFromF {
       wrappedAction(delivery)
     }.flatMap {
-      case Republish(newHeaders) =>
-        // get current attempt no. from passed headers with fallback to original (incoming) headers - the fallback will most likely happen
-        // but we're giving the programmer chance to programatically _pretend_ lower attempt number
-        val attempt = (newHeaders ++ delivery.properties.headers)
-          .get(RepublishCountHeaderName)
-          .flatMap(v => Try(v.toString.toInt).toOption)
-          .getOrElse(0) + 1
-
-        logger.debug(s"Attempt $attempt/$maxAttempts")
-
-        if (attempt < maxAttempts) {
-          Task.now(Republish(newHeaders + (RepublishCountHeaderName -> attempt.asInstanceOf[AnyRef])))
-        } else {
-          convertFromF {
-            handlePoisonedMessage(delivery)
-          }.onErrorRecover {
-              case NonFatal(e) =>
-                logger.warn("Custom poisoned message handler failed", e)
-                Done
-            }
-            .map(_ => Reject) // always REJECT the message
-        }
-
+      case Republish(newHeaders) => republishDelivery(delivery, newHeaders)
       case r => Task.now(r) // keep other results as they are
+    }
+  }
+
+  private def republishDelivery(delivery: Delivery[A], newHeaders: Map[String, AnyRef]): Task[DeliveryResult] = {
+    // get current attempt no. from passed headers with fallback to original (incoming) headers - the fallback will most likely happen
+    // but we're giving the programmer chance to programatically _pretend_ lower attempt number
+    val attempt = (newHeaders ++ delivery.properties.headers)
+      .get(RepublishCountHeaderName)
+      .flatMap(v => Try(v.toString.toInt).toOption)
+      .getOrElse(0) + 1
+
+    logger.debug(s"Attempt $attempt/$maxAttempts")
+
+    if (attempt < maxAttempts) {
+      Task.now(Republish(newHeaders + (RepublishCountHeaderName -> attempt.asInstanceOf[AnyRef])))
+    } else {
+      convertFromF {
+        handlePoisonedMessage(delivery)
+      }.onErrorRecover {
+          case NonFatal(e) =>
+            logger.warn("Custom poisoned message handler failed", e)
+            Done
+        }
+        .map(_ => Reject) // always REJECT the message
     }
   }
 

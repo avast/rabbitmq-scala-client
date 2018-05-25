@@ -182,9 +182,13 @@ val monitor: Monitor = ???
 // if you expect very high load, you can use separate connections for each producer/consumer, but it's usually not needed
 val rabbitConnection = RabbitMQConnection.fromConfig[Task](config, blockingExecutor) // DefaultRabbitMQConnection[Task]
 
-val consumer = rabbitConnection.newConsumer[Bytes]("consumer", monitor) { (delivery: Delivery[Bytes]) =>
-  println(delivery)
-  Task.now(DeliveryResult.Ack)
+val consumer = rabbitConnection.newConsumer[Bytes]("consumer", monitor) { 
+  case delivery: Delivery.Ok[Bytes] =>
+    println(delivery)
+    Task.now(DeliveryResult.Ack)
+    
+  case _: Delivery.MalformedContent =>
+    Task.now(DeliveryResult.Reject)
 } // DefaultRabbitMQConsumer
 
 val sender = rabbitConnection.newProducer("producer", monitor) // DefaultRabbitMQProducer[Task]
@@ -295,6 +299,9 @@ public class ExampleJava {
 }
 ```
 
+The Java API has some limitations compared to the Scala one - mainly it does not support [types conversions](#providing-converters-for-producer/consumer)
+and it offers only asynchronous version with `CompletableFuture` as result of all operations. 
+
 See [full example](core/src/test/java/ExampleJava.java)
 
 ## Notes
@@ -360,7 +367,12 @@ Check [reference.conf](core/src/main/resources/reference.conf) for all options o
 Sometimes your use-case just doesn't fit the _normal_ consumer scenario. Here you can use the _pull consumer_ which gives you much more
 control over the received messages. You _pull_ new message from the queue and acknowledge (reject, ...) it somewhere in the future.
 
-The pull consumer operates with `Option` which is used for expressing either getting the delivery _or_ detecting an empty queue.
+The pull consumer uses `PullResult` as return type:
+* Ok - contains `DeliveryWithHandle` instance
+* EmptyQueue - there was no message in the queue available
+
+Additionally you can call `.toOption` method on the `PullResult`.
+
 
 A simplified example:
 ```scala
@@ -377,14 +389,14 @@ val consumer = connection.newPullConsumer[Bytes](???, ???)
 
 
 // receive "up to" 100 deliveries
-val deliveries: Future[Seq[Option[DeliveryWithHandle[Future, Bytes]]]] = Future.sequence { (1 to 100).map(_ => consumer.pull()) }
+val deliveries: Future[Seq[PullResult[Future, Bytes]]] = Future.sequence { (1 to 100).map(_ => consumer.pull()) }
 
 // do your stuff!
 
 ???
 
-// "handle" all deliveries
-val handleResult: Future[Unit] = deliveries.flatMap(s => Future.sequence(s.flatten.map(_.handle(DeliveryResult.Ack))).map(_ => Unit))
+// "handle" all deliveries, ignore failures and "empty queue" results
+val handleResult: Future[Unit] = deliveries.flatMap(s => Future.sequence(s.flatMap(_.toOption).map(_.handle(DeliveryResult.Ack))).map(_ => Unit))
 
 consumer.close()
 connection.close()
@@ -425,10 +437,7 @@ case class NewFileSourceAdded(fileSources: Seq[FileSource])
 val consumer = MultiFormatConsumer.forType[Future, NewFileSourceAdded](
   JsonDeliveryConverter.derive(), // requires implicit `io.circe.Decoder[NewFileSourceAdded]`
   GpbDeliveryConverter[NewFileSourceAddedGpb].derive() // requires implicit `com.avast.cactus.Converter[NewFileSourceAddedGpb, NewFileSourceAdded]`
-)(
-  businessLogic.processMessage,
-  failureHandler
-)
+)(businessLogic.processMessage)
 ```
 (see [unit test](core/src/test/scala/com/avast/clients/rabbitmq/MultiFormatConsumerTest.scala) for full example)
 

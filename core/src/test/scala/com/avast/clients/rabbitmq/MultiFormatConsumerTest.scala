@@ -3,7 +3,7 @@ package com.avast.clients.rabbitmq
 import com.avast.bytes.Bytes
 import com.avast.bytes.gpb.ByteStringBytes
 import com.avast.cactus.bytes._
-import com.avast.clients.rabbitmq.api.{Delivery, DeliveryResult, MessageProperties}
+import com.avast.clients.rabbitmq.api.{ConversionException, Delivery, DeliveryResult, MessageProperties}
 import com.avast.clients.rabbitmq.extras.format._
 import com.avast.clients.rabbitmq.test.ExampleEvents.{FileSource => FileSourceGpb, NewFileSourceAdded => NewFileSourceAddedGpb}
 import com.google.protobuf.ByteString
@@ -32,13 +32,13 @@ class MultiFormatConsumerTest extends FunSuite with ScalaFutures {
   case class NewFileSourceAdded(fileSources: Seq[FileSource])
 
   test("basic") {
-    val consumer = MultiFormatConsumer.forType[Future, String](StringDeliveryConverter)(
-      d => {
+    val consumer = MultiFormatConsumer.forType[Future, String](StringDeliveryConverter) {
+      case d: Delivery.Ok[String] =>
         assertResult("abc321")(d.body)
         Future.successful(DeliveryResult.Ack)
-      },
-      (_, _) => Future.successful(DeliveryResult.Reject)
-    )
+
+      case _ => fail()
+    }
 
     val delivery = Delivery(
       body = Bytes.copyFromUtf8("abc321"),
@@ -52,10 +52,12 @@ class MultiFormatConsumerTest extends FunSuite with ScalaFutures {
   }
 
   test("non-supported content-type") {
-    val consumer = MultiFormatConsumer.forType[Future, String](StringDeliveryConverter)(
-      _ => Future.successful(DeliveryResult.Ack),
-      (_, _) => Future.successful(DeliveryResult.Reject)
-    )
+    val consumer = MultiFormatConsumer.forType[Future, String](StringDeliveryConverter) {
+      case _: Delivery.Ok[NewFileSourceAdded] =>
+        Future.successful(DeliveryResult.Ack)
+      case _ =>
+        Future.successful(DeliveryResult.Reject)
+    }
 
     val delivery = Delivery(
       body = Bytes.copyFromUtf8("abc321"),
@@ -69,8 +71,8 @@ class MultiFormatConsumerTest extends FunSuite with ScalaFutures {
   }
 
   test("json") {
-    val consumer = MultiFormatConsumer.forType[Future, NewFileSourceAdded](JsonDeliveryConverter.derive())(
-      d => {
+    val consumer = MultiFormatConsumer.forType[Future, NewFileSourceAdded](JsonDeliveryConverter.derive()) {
+      case d: Delivery.Ok[NewFileSourceAdded] =>
         assertResult(
           NewFileSourceAdded(
             Seq(
@@ -79,9 +81,9 @@ class MultiFormatConsumerTest extends FunSuite with ScalaFutures {
             )))(d.body)
 
         Future.successful(DeliveryResult.Ack)
-      },
-      (_, _) => Future.successful(DeliveryResult.Reject)
-    )
+
+      case _ => Future.successful(DeliveryResult.Reject)
+    }
 
     val delivery = Delivery(
       body = Bytes.copyFromUtf8(s"""
@@ -100,11 +102,9 @@ class MultiFormatConsumerTest extends FunSuite with ScalaFutures {
   }
 
   test("gpb") {
-    val consumer = MultiFormatConsumer.forType[Future, NewFileSourceAdded](
-      JsonDeliveryConverter.derive(),
-      GpbDeliveryConverter[NewFileSourceAddedGpb].derive()
-    )(
-      d => {
+    val consumer = MultiFormatConsumer.forType[Future, NewFileSourceAdded](JsonDeliveryConverter.derive(),
+                                                                           GpbDeliveryConverter[NewFileSourceAddedGpb].derive()) {
+      case d: Delivery.Ok[NewFileSourceAdded] =>
         assertResult(
           NewFileSourceAdded(
             Seq(
@@ -113,9 +113,9 @@ class MultiFormatConsumerTest extends FunSuite with ScalaFutures {
             )))(d.body)
 
         Future.successful(DeliveryResult.Ack)
-      },
-      (_, _) => Future.successful(DeliveryResult.Reject)
-    )
+
+      case _ => fail()
+    }
 
     val delivery = Delivery(
       body = ByteStringBytes.wrap {

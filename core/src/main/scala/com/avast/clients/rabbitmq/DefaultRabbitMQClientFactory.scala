@@ -117,13 +117,14 @@ private[rabbitmq] object DefaultRabbitMQClientFactory extends LazyLogging {
 
   object Consumer {
 
-    def fromConfig[F[_]: ToTask, A: DeliveryConverter](providedConfig: Config,
-                                                       channel: ServerChannel,
-                                                       channelFactoryInfo: RabbitMQConnectionInfo,
-                                                       blockingScheduler: Scheduler,
-                                                       monitor: Monitor,
-                                                       consumerListener: ConsumerListener)(readAction: DeliveryReadAction[F, A])(
-        implicit scheduler: Scheduler): DefaultRabbitMQConsumer = {
+    def fromConfig[F[_]: ToTask, A: DeliveryConverter](
+        providedConfig: Config,
+        channel: ServerChannel,
+        channelFactoryInfo: RabbitMQConnectionInfo,
+        blockingScheduler: Scheduler,
+        monitor: Monitor,
+        consumerListener: ConsumerListener,
+        readAction: DeliveryReadAction[F, A])(implicit scheduler: Scheduler): DefaultRabbitMQConsumer = {
 
       val mergedConfig = providedConfig.withFallback(ConsumerDefaultConfig)
 
@@ -140,16 +141,17 @@ private[rabbitmq] object DefaultRabbitMQClientFactory extends LazyLogging {
 
       val consumerConfig = updatedConfig.wrapped.as[ConsumerConfig]("root")
 
-      create[F, A](consumerConfig, channel, channelFactoryInfo, blockingScheduler, monitor, consumerListener)(readAction)
+      create[F, A](consumerConfig, channel, channelFactoryInfo, blockingScheduler, monitor, consumerListener, readAction)
     }
 
-    def create[F[_]: ToTask, A: DeliveryConverter](consumerConfig: ConsumerConfig,
-                                                   channel: ServerChannel,
-                                                   channelFactoryInfo: RabbitMQConnectionInfo,
-                                                   blockingScheduler: Scheduler,
-                                                   monitor: Monitor,
-                                                   consumerListener: ConsumerListener)(readAction: DeliveryReadAction[F, A])(
-        implicit scheduler: Scheduler): DefaultRabbitMQConsumer = {
+    def create[F[_]: ToTask, A: DeliveryConverter](
+        consumerConfig: ConsumerConfig,
+        channel: ServerChannel,
+        channelFactoryInfo: RabbitMQConnectionInfo,
+        blockingScheduler: Scheduler,
+        monitor: Monitor,
+        consumerListener: ConsumerListener,
+        readAction: DeliveryReadAction[F, A])(implicit scheduler: Scheduler): DefaultRabbitMQConsumer = {
 
       prepareConsumer(consumerConfig, readAction, channelFactoryInfo, channel, consumerListener, blockingScheduler, monitor)
     }
@@ -157,7 +159,7 @@ private[rabbitmq] object DefaultRabbitMQClientFactory extends LazyLogging {
 
   object PullConsumer {
 
-    def fromConfig[F[_]: FromTask, A: DeliveryConverter](
+    def fromConfig[F[_]: FromTask: ToTask, A: DeliveryConverter](
         providedConfig: Config,
         channel: ServerChannel,
         channelFactoryInfo: RabbitMQConnectionInfo,
@@ -182,11 +184,12 @@ private[rabbitmq] object DefaultRabbitMQClientFactory extends LazyLogging {
       create[F, A](consumerConfig, channel, channelFactoryInfo, blockingScheduler, monitor)
     }
 
-    def create[F[_]: FromTask, A: DeliveryConverter](consumerConfig: PullConsumerConfig,
-                                                     channel: ServerChannel,
-                                                     channelFactoryInfo: RabbitMQConnectionInfo,
-                                                     blockingScheduler: Scheduler,
-                                                     monitor: Monitor)(implicit scheduler: Scheduler): DefaultRabbitMQPullConsumer[F, A] = {
+    def create[F[_]: FromTask: ToTask, A: DeliveryConverter](
+        consumerConfig: PullConsumerConfig,
+        channel: ServerChannel,
+        channelFactoryInfo: RabbitMQConnectionInfo,
+        blockingScheduler: Scheduler,
+        monitor: Monitor)(implicit scheduler: Scheduler): DefaultRabbitMQPullConsumer[F, A] = {
 
       preparePullConsumer(consumerConfig, channelFactoryInfo, channel, blockingScheduler, monitor)
     }
@@ -326,7 +329,7 @@ private[rabbitmq] object DefaultRabbitMQClientFactory extends LazyLogging {
     prepareConsumer(consumerConfig, channelFactoryInfo, channel, readAction, consumerListener, blockingScheduler, monitor)
   }
 
-  private def preparePullConsumer[F[_]: FromTask, A: DeliveryConverter](
+  private def preparePullConsumer[F[_]: FromTask: ToTask, A: DeliveryConverter](
       consumerConfig: PullConsumerConfig,
       channelFactoryInfo: RabbitMQConnectionInfo,
       channel: ServerChannel,
@@ -435,15 +438,16 @@ private[rabbitmq] object DefaultRabbitMQClientFactory extends LazyLogging {
     }
 
     val readAction: DefaultDeliveryReadAction = {
-      val convAction: DefaultDeliveryReadAction = { (d: Delivery[Bytes]) =>
+      val convAction: DefaultDeliveryReadAction = { d: Delivery[Bytes] =>
         try {
-          implicitly[DeliveryConverter[A]].convert(d.body) match {
-            case Right(a) =>
-              val devA = d.copy(body = a)
-              implicitly[ToTask[F]].apply(userReadAction(devA))
-
-            case Left(ce) => Task.raiseError(ce)
+          val devA = d.flatMap { d =>
+            implicitly[DeliveryConverter[A]].convert(d.body) match {
+              case Right(a) => d.mapBody(_ => a)
+              case Left(ce) => Delivery.MalformedContent(d.body, d.properties, d.routingKey, ce)
+            }
           }
+
+          implicitly[ToTask[F]].apply(userReadAction(devA))
         } catch {
           case NonFatal(e) =>
             Task.raiseError(e)
@@ -468,7 +472,7 @@ private[rabbitmq] object DefaultRabbitMQClientFactory extends LazyLogging {
       implicit callbackScheduler: Scheduler): DefaultDeliveryReadAction = {
     import consumerConfig._
 
-    (delivery: Delivery[Bytes]) =>
+    delivery: Delivery[Bytes] =>
       try {
         // we try to catch also long-lasting synchronous work on the thread
         val action = Task.deferFuture {
@@ -481,18 +485,18 @@ private[rabbitmq] object DefaultRabbitMQClientFactory extends LazyLogging {
 
         action
           .timeout(ScalaDuration(processTimeout.toMillis, TimeUnit.MILLISECONDS))
-          .onErrorRecover {
+          .onErrorRecoverWith {
             case e: TimeoutException =>
               traceId.foreach(Kluzo.setTraceId)
 
               logger.warn(s"[$name] Task timed-out, applying DeliveryResult.${consumerConfig.timeoutAction}", e)
-              consumerConfig.timeoutAction
+              Task.now(consumerConfig.timeoutAction)
 
             case NonFatal(e) =>
               traceId.foreach(Kluzo.setTraceId)
 
               logger.warn(s"[$name] Error while executing callback, applying DeliveryResult.${consumerConfig.failureAction}", e)
-              consumerConfig.failureAction
+              Task.now(consumerConfig.failureAction)
           }
           .executeOn(callbackScheduler)
       } catch {
@@ -501,6 +505,23 @@ private[rabbitmq] object DefaultRabbitMQClientFactory extends LazyLogging {
           Task.now(consumerConfig.failureAction)
       }
 
+  }
+
+  private def executeParsingFailureAction[A](consumerConfig: ConsumerConfig,
+                                             ce: ConversionException,
+                                             delivery: Delivery[Bytes],
+                                             parsingFailureAction: ParsingFailureAction[Task]): Task[DeliveryResult] = {
+    import consumerConfig._
+
+    // logging on DEBUG, user should provide own higher-level logging in the callback
+    logger.debug(s"[$name] ${ce.getMessage}, executing parsingFailureAction", ce)
+
+    parsingFailureAction(name, delivery, ce)
+      .onErrorRecover {
+        case NonFatal(ex) =>
+          logger.warn(s"[$name] Error while executing parsingFailureAction, applying DeliveryResult.${consumerConfig.failureAction}", ex)
+          consumerConfig.failureAction
+      }
   }
 
   implicit class WrapConfig(val c: Config) extends AnyVal {
