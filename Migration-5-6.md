@@ -11,7 +11,7 @@ Changes in Scala API:
 1. The whole API is _finally tagless_ - all methods return `F[_]`. See [related section](README.md#scala-usage) in docs.
 1. The API now uses type-conversions - provide type and related converter when creating producer/consumer.
 See [related section](README.md#providing-converters-for-producer/consumer) in docs.
-1. The `Delivery` is now sealed trait - there are `Delivery.Ok[A]` (e.g. `Delivery[Bytes]` ,depends on type-conversion) and `Delivery.MalformedContent`.
+1. The `Delivery` is now sealed trait - there are `Delivery.Ok[A]` (e.g. `Delivery[Bytes]`, depends on type-conversion) and `Delivery.MalformedContent`.
 After getting the `Delivery[A]` you should pattern-match it.
 1. The API now requires an implicit `monix.execution.Scheduler` instead of `ExecutionContext`.
 1. Methods like `RabbitMQConnection.declareQueue` now return `F[Unit]` (was `Try[Done]` before).
