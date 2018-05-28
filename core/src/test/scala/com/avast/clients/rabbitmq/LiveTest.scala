@@ -11,7 +11,6 @@ import com.avast.continuity.Continuity
 import com.avast.continuity.monix.Monix
 import com.avast.kluzo.{Kluzo, TraceId}
 import com.avast.metrics.scalaapi.Monitor
-import com.avast.utils2.Done
 import com.typesafe.config.{Config, ConfigFactory, ConfigValueFactory}
 import com.typesafe.scalalogging.StrictLogging
 import monix.eval.Task
@@ -300,7 +299,7 @@ class LiveTest extends FunSuite with Eventually with ScalaFutures with StrictLog
       _ <- rabbitConnection.bindExchange("additionalDeclarations.bindExchange")
       _ <- rabbitConnection.declareQueue("additionalDeclarations.declareQueue")
       _ <- rabbitConnection.bindQueue("additionalDeclarations.bindQueue")
-    } yield Done
+    } yield ()
 
     rabbitConnection.newConsumer("consumer", Monitor.noOp()) { _: Delivery[Bytes] =>
       latch.countDown()
