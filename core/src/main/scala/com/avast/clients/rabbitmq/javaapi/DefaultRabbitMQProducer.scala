@@ -27,7 +27,7 @@ class DefaultRabbitMQProducer(scalaProducer: ScalaProducer[Future, Bytes] with A
       Option(properties.getContentType),
       Option(properties.getContentEncoding),
       Option(properties.getHeaders).map(_.asScala.toMap).getOrElse(Map.empty),
-      Option(DeliveryMode.fromCode(properties.getDeliveryMode)),
+      DeliveryMode.fromCode(properties.getDeliveryMode),
       Option(properties.getPriority),
       Option(properties.getCorrelationId),
       Option(properties.getReplyTo),

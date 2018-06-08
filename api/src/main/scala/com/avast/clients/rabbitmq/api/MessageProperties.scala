@@ -31,9 +31,10 @@ object DeliveryMode {
   case object Persistent extends DeliveryMode {
     override def code: Integer = 2
   }
-  def fromCode(code: Integer): DeliveryMode = code.toInt match {
-    case 1 => NonPersistent
-    case 2 => Persistent
+  def fromCode(code: Integer): Option[DeliveryMode] = code.toInt match {
+    case 0 => None
+    case 1 => Some(NonPersistent)
+    case 2 => Some(Persistent)
     case _ => sys.error(s"Unknown delivery mode: $code")
   }
 }
