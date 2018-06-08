@@ -1,22 +1,12 @@
 package com.avast.clients.rabbitmq.javaapi
 
 import java.util.concurrent.{CompletableFuture, Executor}
-import java.util.{function, Date, Optional}
+import java.util.{Date, Optional, function}
 
 import com.avast.bytes.Bytes
 import com.avast.clients.rabbitmq.DeliveryReadAction
-import com.avast.clients.rabbitmq.api.{
-  Delivery => ScalaDelivery,
-  DeliveryResult => ScalaResult,
-  DeliveryWithHandle => ScalaDeliveryWithHandle,
-  MessageProperties => ScalaProperties
-}
-import com.avast.clients.rabbitmq.javaapi.{
-  Delivery => JavaDelivery,
-  DeliveryResult => JavaResult,
-  DeliveryWithHandle => JavaDeliveryWithHandle,
-  MessageProperties => JavaProperties
-}
+import com.avast.clients.rabbitmq.api.{DeliveryMode, Delivery => ScalaDelivery, DeliveryResult => ScalaResult, DeliveryWithHandle => ScalaDeliveryWithHandle, MessageProperties => ScalaProperties}
+import com.avast.clients.rabbitmq.javaapi.{Delivery => JavaDelivery, DeliveryResult => JavaResult, DeliveryWithHandle => JavaDeliveryWithHandle, MessageProperties => JavaProperties}
 import com.rabbitmq.client.AMQP
 import com.rabbitmq.client.AMQP.BasicProperties
 
@@ -70,7 +60,7 @@ private[rabbitmq] object JavaConverters {
       builder.headers(messageProperties.headers.asJava)
       messageProperties.contentType.foreach(builder.contentType)
       messageProperties.contentEncoding.foreach(builder.contentEncoding)
-      messageProperties.deliveryMode.foreach(builder.deliveryMode)
+      messageProperties.deliveryMode.foreach(dm => builder.deliveryMode(dm.code))
       messageProperties.priority.foreach(builder.priority)
       messageProperties.correlationId.foreach(builder.correlationId)
       messageProperties.replyTo.foreach(builder.replyTo)
@@ -93,7 +83,7 @@ private[rabbitmq] object JavaConverters {
       }
       messageProperties.contentType.foreach(builder.contentType)
       messageProperties.contentEncoding.foreach(builder.contentEncoding)
-      messageProperties.deliveryMode.foreach(builder.deliveryMode)
+      messageProperties.deliveryMode.foreach(dm => builder.deliveryMode(dm.code))
       messageProperties.priority.foreach(builder.priority)
       messageProperties.correlationId.foreach(builder.correlationId)
       messageProperties.replyTo.foreach(builder.replyTo)
@@ -115,7 +105,7 @@ private[rabbitmq] object JavaConverters {
         Option(properties.getContentType),
         Option(properties.getContentEncoding),
         Option(properties.getHeaders).map(_.asScala.toMap).getOrElse(Map.empty),
-        Option(properties.getDeliveryMode),
+        Option(DeliveryMode.fromCode(properties.getDeliveryMode)),
         Option(properties.getPriority),
         Option(properties.getCorrelationId),
         Option(properties.getReplyTo),
@@ -136,7 +126,7 @@ private[rabbitmq] object JavaConverters {
         Option(properties.getContentType),
         Option(properties.getContentEncoding),
         Option(properties.getHeaders).map(_.asScala.toMap).getOrElse(Map.empty),
-        Option(properties.getDeliveryMode),
+        Option(DeliveryMode.fromCode(properties.getDeliveryMode)),
         Option(properties.getPriority),
         Option(properties.getCorrelationId),
         Option(properties.getReplyTo),

@@ -5,7 +5,7 @@ import java.time.Instant
 case class MessageProperties(contentType: Option[String] = None,
                              contentEncoding: Option[String] = None,
                              headers: Map[String, AnyRef] = Map.empty,
-                             deliveryMode: Option[Integer] = None,
+                             deliveryMode: Option[DeliveryMode] = None,
                              priority: Option[Integer] = None,
                              correlationId: Option[String] = None,
                              replyTo: Option[String] = None,
@@ -19,4 +19,21 @@ case class MessageProperties(contentType: Option[String] = None,
 
 object MessageProperties {
   val empty: MessageProperties = MessageProperties()
+}
+
+sealed trait DeliveryMode {
+  def code: Integer
+}
+object DeliveryMode {
+  case object NonPersistent extends DeliveryMode {
+    override def code: Integer = 1
+  }
+  case object Persistent extends DeliveryMode {
+    override def code: Integer = 2
+  }
+  def fromCode(code: Integer): DeliveryMode = code.toInt match {
+    case 1 => NonPersistent
+    case 2 => Persistent
+    case _ => sys.error(s"Unknown delivery mode: $code")
+  }
 }
