@@ -35,6 +35,6 @@ object DeliveryMode {
     case 0 => None
     case 1 => Some(NonPersistent)
     case 2 => Some(Persistent)
-    case _ => sys.error(s"Unknown delivery mode: $code")
+    case _ => throw new IllegalArgumentException(s"Unknown delivery mode: $code")
   }
 }
