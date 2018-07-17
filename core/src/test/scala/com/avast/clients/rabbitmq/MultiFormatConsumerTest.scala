@@ -53,7 +53,7 @@ class MultiFormatConsumerTest extends FunSuite with ScalaFutures {
 
   test("non-supported content-type") {
     val consumer = MultiFormatConsumer.forType[Future, String](StringDeliveryConverter) {
-      case _: Delivery.Ok[NewFileSourceAdded] =>
+      case _: Delivery.Ok[String] =>
         Future.successful(DeliveryResult.Ack)
       case _ =>
         Future.successful(DeliveryResult.Reject)
