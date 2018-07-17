@@ -19,6 +19,7 @@ import scala.util.control.NonFatal
 class DefaultRabbitMQProducer[F[_]: FromTask, A: ProductConverter](name: String,
                                                                    exchangeName: String,
                                                                    channel: ServerChannel,
+                                                                   defaultProperties: MessageProperties,
                                                                    useKluzo: Boolean,
                                                                    reportUnroutable: Boolean,
                                                                    scheduler: Scheduler,
@@ -39,9 +40,8 @@ class DefaultRabbitMQProducer[F[_]: FromTask, A: ProductConverter](name: String,
 
   override def send(routingKey: String, body: A, properties: Option[MessageProperties] = None): F[Unit] = {
     val finalProperties = {
-      val messageProperties = converter.fillProperties {
-        properties.getOrElse(MessageProperties(messageId = Some(UUID.randomUUID().toString)))
-      }
+      val initialProperties = properties.getOrElse(defaultProperties.copy(messageId = Some(UUID.randomUUID().toString)))
+      val messageProperties = converter.fillProperties(initialProperties)
 
       if (useKluzo && Kluzo.getTraceId.nonEmpty) {
 

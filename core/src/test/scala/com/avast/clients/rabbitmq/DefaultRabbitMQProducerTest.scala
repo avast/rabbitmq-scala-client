@@ -28,6 +28,7 @@ class DefaultRabbitMQProducerTest extends FunSuite with MockitoSugar with Eventu
       exchangeName = exchangeName,
       channel = channel,
       monitor = Monitor.noOp,
+      defaultProperties = MessageProperties.empty,
       useKluzo = true,
       reportUnroutable = false,
       scheduler = Scheduler.Implicits.global

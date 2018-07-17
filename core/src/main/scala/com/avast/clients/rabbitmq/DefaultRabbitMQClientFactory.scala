@@ -101,18 +101,9 @@ private[rabbitmq] object DefaultRabbitMQClientFactory extends LazyLogging {
                                                         blockingScheduler: Scheduler,
                                                         monitor: Monitor): DefaultRabbitMQProducer[F, A] = {
       val producerConfig = providedConfig.wrapped.as[ProducerConfig]("root")
-
-      create[F, A](producerConfig, channel, factoryInfo, blockingScheduler, monitor)
-    }
-
-    def create[F[_]: FromTask, A: ProductConverter](producerConfig: ProducerConfig,
-                                                    channel: ServerChannel,
-                                                    factoryInfo: RabbitMQConnectionInfo,
-                                                    blockingScheduler: Scheduler,
-                                                    monitor: Monitor): DefaultRabbitMQProducer[F, A] = {
-
       prepareProducer[F, A](producerConfig, channel, factoryInfo, blockingScheduler, monitor)
     }
+
   }
 
   object Consumer {
@@ -252,6 +243,11 @@ private[rabbitmq] object DefaultRabbitMQClientFactory extends LazyLogging {
     import producerConfig._
 
     val finalBlockingScheduler = if (useKluzo) Monix.wrapScheduler(blockingScheduler) else blockingScheduler
+    val defaultProperties = MessageProperties(
+      deliveryMode = DeliveryMode.fromCode(producerConfig.properties.deliveryMode),
+      contentType = producerConfig.properties.contentType,
+      contentEncoding = producerConfig.properties.contentEncoding,
+      priority = producerConfig.properties.priority.map(Integer.valueOf))
 
     // auto declare of exchange
     // parse it only if it's needed
@@ -260,7 +256,7 @@ private[rabbitmq] object DefaultRabbitMQClientFactory extends LazyLogging {
       val d = declare.wrapped.as[AutoDeclareExchange]("root")
       declareExchange(exchange, channelFactoryInfo, channel, d)
     }
-    new DefaultRabbitMQProducer[F, A](producerConfig.name, exchange, channel, useKluzo, reportUnroutable, finalBlockingScheduler, monitor)
+    new DefaultRabbitMQProducer[F, A](producerConfig.name, exchange, channel, defaultProperties, useKluzo, reportUnroutable, finalBlockingScheduler, monitor)
   }
 
   private[rabbitmq] def declareExchange(name: String,
