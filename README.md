@@ -143,6 +143,14 @@ myConfig {
       durable = true // default value
       autoDelete = false // default value
     }
+    
+    // These properties are used when none properties are passed to the send method.
+    properties {
+      deliveryMode = 2 // this is default value
+      contentType = "text" // default is not set
+      contentEncoding = "UTF8" // default is not set
+      priority = 1 // default is not set
+    }
   }
 }
 ```
