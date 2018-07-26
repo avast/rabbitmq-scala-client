@@ -3,7 +3,7 @@ package com.avast.clients.rabbitmq.javaapi
 import java.util.concurrent.CompletableFuture
 
 import com.avast.bytes.Bytes
-import com.avast.clients.rabbitmq.api.{MessageProperties => ScalaProperties, RabbitMQProducer => ScalaProducer}
+import com.avast.clients.rabbitmq.api.{DeliveryMode, MessageProperties => ScalaProperties, RabbitMQProducer => ScalaProducer}
 import com.avast.clients.rabbitmq.javaapi.JavaConverters._
 
 import scala.collection.JavaConverters._
@@ -27,7 +27,7 @@ class DefaultRabbitMQProducer(scalaProducer: ScalaProducer[Future, Bytes] with A
       Option(properties.getContentType),
       Option(properties.getContentEncoding),
       Option(properties.getHeaders).map(_.asScala.toMap).getOrElse(Map.empty),
-      Option(properties.getDeliveryMode),
+      DeliveryMode.fromCode(properties.getDeliveryMode),
       Option(properties.getPriority),
       Option(properties.getCorrelationId),
       Option(properties.getReplyTo),
