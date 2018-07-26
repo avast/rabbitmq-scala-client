@@ -14,7 +14,7 @@ import scala.util.control.NonFatal
 import scala.util.{Failure, Success}
 
 @implicitNotFound(
-  "Could not generate GpbDeliveryConverter from $GpbMessage to ${A}, try to import or define some\nMaybe you're missing some Cactus imports?")
+  "Could not generate GpbDeliveryConverter from ${GpbMessage} to ${A}, try to import or define some\nMaybe you're missing some Cactus imports?")
 trait GpbDeliveryConverter[GpbMessage, A] extends CheckedDeliveryConverter[A]
 
 object GpbDeliveryConverter {

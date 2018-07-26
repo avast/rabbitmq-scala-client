@@ -14,7 +14,7 @@ import scala.reflect.ClassTag
 import scala.util.control.NonFatal
 
 @implicitNotFound(
-  "Could not generate GpbProductConverter from $GpbMessage to ${A}, try to import or define some\nMaybe you're missing some Cactus imports?")
+  "Could not generate GpbProductConverter from {$GpbMessage} to ${A}, try to import or define some\nMaybe you're missing some Cactus imports?")
 trait GpbProductConverter[GpbMessage, A] extends ProductConverter[A]
 
 object GpbProductConverter {
