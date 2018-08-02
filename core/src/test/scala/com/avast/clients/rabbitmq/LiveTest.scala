@@ -4,6 +4,7 @@ import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.{CountDownLatch, Executors, Semaphore, TimeUnit}
 
 import com.avast.bytes.Bytes
+import com.avast.clients.rabbitmq.TestImplicits._
 import com.avast.clients.rabbitmq.api._
 import com.avast.clients.rabbitmq.extras.PoisonedMessageHandler
 import com.avast.clients.rabbitmq.extras.format.JsonDeliveryConverter

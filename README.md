@@ -159,9 +159,8 @@ For full list of options please see [reference.conf](core/src/main/resources/ref
 ### Scala usage
 
 The Scala API is now _finally tagless_ (read more e.g. [here](https://www.beyondthelines.net/programming/introduction-to-tagless-final/)) -
-you can change the type it works with by specifying it when creating the _connection_. In general you have to provide
-`cats.arrow.FunctionK[Task, A]` and `cats.arrow.FunctionK[A, Task]` however there are some types supported out-of-the-box by just importing
-`import com.avast.clients.rabbitmq._` (`scala.util.Try`, `scala.concurrent.Future` and `monix.eval.Task` currently).
+you can change the type it works with by specifying it when creating the _connection_. You have to provide`cats.arrow.FunctionK[Task, A]`
+and `cats.arrow.FunctionK[A, Task]` when creating new connection.
 
 The Scala API uses types-conversions for both consumer and producer, that means you don't have to work directly with `Bytes` (however you
 still can, if you want) and you touch only your business class which is then (de)serialized using provided converter.
@@ -184,6 +183,8 @@ implicit val sch: Scheduler = ???
 val blockingExecutor: ExecutorService = Executors.newCachedThreadPool()
 
 val monitor: Monitor = ???
+
+implicit val fk: FunctionK[Task, Task] = cats.arrow.FunctionK.id
 
 // here you create the connection; it's shared for all producers/consumers amongst one RabbitMQ server - they will share a single TCP connection
 // but have separated channels
@@ -244,26 +245,6 @@ There are multiple options where to get the _converter_ (it's the same case for 
     is discussed on the [StackOverflow](https://github.com/circe/circe/issues/380) and so is similar the solution:
     1. Remove explicit type completely (not recommended)
     1. Make the explicit type more general (`DeliveryConverter` instead of `JsonDeliveryConverter` in this case)
-
-1. Cryptic errors  
-    It may happen you have everything configured "correctly" and the compiler still reports an error, for example
-    ```scala
-    def rabbitConnection(): RabbitMQConnection[Future] = RabbitMQConnection.fromConfig[Future](rabbitProperties, blocking)
-    ```
-    can give you something like:
-    ```
-    Error:(22, 99) could not find implicit value for evidence parameter of type com.avast.clients.rabbitmq.FromTask[scala.concurrent.Future]
-    Error occurred in an application involving default arguments.
-      def rabbitConnection(): RabbitMQConnection[Future] = RabbitMQConnection.fromConfig[Future](rabbitProperties, blocking)
-    Error:(22, 99) not enough arguments for method fromConfig: (implicit evidence$3: com.avast.clients.rabbitmq.FromTask[scala.concurrent.Future], implicit evidence$4: com.avast.clients.rabbitmq.ToTask[scala.concurrent.Future])com.avast.clients.rabbitmq.DefaultRabbitMQConnection[scala.concurrent.Future].
-    Unspecified value parameters evidence$3, evidence$4.
-    Error occurred in an application involving default arguments.
-      def rabbitConnection(): RabbitMQConnection[Future] = RabbitMQConnection.fromConfig[Future](rabbitProperties, blocking)
-    ```
-    This is caused by absence of `ExecutionContext` which makes `def fkToFuture(implicit ec: ExecutionContext): FromTask[Future]` impossible to
-    use (unfortunately compiler won't say that).  
-    Please bear in mind there is nothing this library could do to help you in this case - there is no way to provide any hint. However there are
-    some compiler plugins available which may help you to prevent such situations, e.g. [Splain](https://github.com/tek/splain).
 
 ### Java usage
 

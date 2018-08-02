@@ -21,8 +21,9 @@ import org.scalatest.time.{Seconds, Span}
 
 import scala.concurrent.Future
 import scala.util.Random
-
+import TestImplicits._
 class DefaultRabbitMQPullConsumerTest extends FunSuite with MockitoSugar with ScalaFutures with Eventually {
+
   test("should ACK") {
     val messageId = UUID.randomUUID().toString
 

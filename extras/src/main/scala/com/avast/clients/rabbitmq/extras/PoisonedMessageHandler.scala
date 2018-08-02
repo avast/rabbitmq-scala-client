@@ -3,14 +3,16 @@ package com.avast.clients.rabbitmq.extras
 import java.util.concurrent.{CompletableFuture, ExecutorService}
 import java.util.function.{Function => JavaFunction}
 
+import cats.arrow.FunctionK
 import com.avast.bytes.Bytes
 import com.avast.clients.rabbitmq.api.DeliveryResult.{Reject, Republish}
 import com.avast.clients.rabbitmq.api.{Delivery, DeliveryResult}
 import com.avast.clients.rabbitmq.extras.PoisonedMessageHandler._
 import com.avast.clients.rabbitmq.javaapi.JavaConverters._
-import com.avast.clients.rabbitmq.{FromTask, ToTask, javaapi, _}
+import com.avast.clients.rabbitmq.{javaapi, FromTask, ToTask}
 import com.typesafe.scalalogging.StrictLogging
 import monix.eval.Task
+import monix.execution.Scheduler
 
 import scala.concurrent.{ExecutionContext, ExecutionContextExecutor, Future}
 import scala.language.higherKinds
@@ -74,6 +76,14 @@ object PoisonedMessageHandler {
 
   type JavaAction = JavaFunction[javaapi.Delivery, CompletableFuture[javaapi.DeliveryResult]]
   type CustomJavaPoisonedAction = JavaFunction[javaapi.Delivery, CompletableFuture[Void]]
+
+  private implicit def fkToFuture(implicit ec: ExecutionContext): FromTask[Future] = new FunctionK[Task, Future] {
+    override def apply[A](fa: Task[A]): Future[A] = fa.runAsync(Scheduler(ec))
+  }
+
+  private implicit val fkFromFuture: ToTask[Future] = new FunctionK[Future, Task] {
+    override def apply[A](fa: Future[A]): Task[A] = Task.fromFuture(fa)
+  }
 
   def apply[F[_]: FromTask: ToTask, A](maxAttempts: Int)(wrappedAction: Delivery[A] => F[DeliveryResult]): PoisonedMessageHandler[F, A] = {
     new PoisonedMessageHandler(maxAttempts)(wrappedAction)

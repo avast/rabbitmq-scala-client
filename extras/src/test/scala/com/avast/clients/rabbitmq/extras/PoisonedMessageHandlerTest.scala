@@ -1,13 +1,13 @@
 package com.avast.clients.rabbitmq.extras
 
 import com.avast.bytes.Bytes
-import com.avast.clients.rabbitmq._
 import com.avast.clients.rabbitmq.api.DeliveryResult.Republish
 import com.avast.clients.rabbitmq.api.{Delivery, DeliveryResult, MessageProperties}
 import com.avast.clients.rabbitmq.extras.PoisonedMessageHandler._
 import monix.execution.Scheduler.Implicits.global
 import org.scalatest.FunSuite
 import org.scalatest.concurrent.ScalaFutures
+import TestImplicits._
 
 import scala.concurrent.Future
 

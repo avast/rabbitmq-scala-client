@@ -1,6 +1,7 @@
 package com.avast.clients.rabbitmq
 
 import com.avast.bytes.Bytes
+import com.avast.clients.rabbitmq.TestImplicits._
 import com.avast.clients.rabbitmq.api.MessageProperties
 import com.avast.metrics.scalaapi.Monitor
 import com.rabbitmq.client.AMQP
@@ -15,8 +16,8 @@ import org.scalatest.mockito.MockitoSugar
 
 import scala.concurrent.Future
 import scala.util.Random
-
 class DefaultRabbitMQProducerTest extends FunSuite with MockitoSugar with Eventually with ScalaFutures {
+
   test("basic") {
     val exchangeName = Random.nextString(10)
     val routingKey = Random.nextString(10)

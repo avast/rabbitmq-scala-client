@@ -31,6 +31,10 @@ Republish(Map(PoisonedMessageHandler.RepublishCountHeaderName -> 1.asInstanceOf[
 ```
 Note you can provide your custom poisoned-message handle action:
 ```scala
+
+implicit val fkFromTask: FunctionK[Task, Future] = ???
+implicit val fkToTask: FunctionK[Future, Task] = ???
+
 val newReadAction = PoisonedMessageHandler.withCustomPoisonedAction[Future](3)(myReadAction) { delivery =>
   logger.warn(s"Delivery $delivery is poisoned!")
   Future.successful(())
