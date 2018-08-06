@@ -4,8 +4,10 @@ import java.nio.file.{Path, Paths}
 import java.time.Duration
 import java.util.concurrent.ExecutorService
 
+import cats.effect.Effect
 import com.avast.clients.rabbitmq.api._
 import com.avast.clients.rabbitmq.ssl.{KeyStoreTypes, SSLBuilder}
+import com.avast.continuity.monix.Monix
 import com.avast.metrics.scalaapi.Monitor
 import com.rabbitmq.client._
 import com.typesafe.config.{Config, ConfigFactory}
@@ -15,6 +17,7 @@ import net.ceedubs.ficus.Ficus._
 import net.ceedubs.ficus.readers.ArbitraryTypeReader._
 import net.ceedubs.ficus.readers.ValueReader
 
+import scala.concurrent.ExecutionContext
 import scala.language.higherKinds
 import scala.util.control.NonFatal
 
@@ -30,10 +33,9 @@ trait RabbitMQConnection[F[_]] extends AutoCloseable {
     * @param configName Name of configuration of the consumer.
     * @param monitor    Monitor for metrics.
     * @param readAction Action executed for each delivered message. You should never return a failed future.
-    * @param scheduler  [[Scheduler]] used for callbacks.
     */
   def newConsumer[A: DeliveryConverter](configName: String, monitor: Monitor)(readAction: DeliveryReadAction[F, A])(
-      implicit scheduler: Scheduler): RabbitMQConsumer with AutoCloseable
+      implicit ec: ExecutionContext): RabbitMQConsumer with AutoCloseable
 
   /** Creates new instance of producer, using the TypeSafe configuration passed to the factory and producer name.
     *
@@ -46,10 +48,9 @@ trait RabbitMQConnection[F[_]] extends AutoCloseable {
     *
     * @param configName Name of configuration of the consumer.
     * @param monitor    Monitor for metrics.
-    * @param scheduler  [[Scheduler]] used for callbacks.
     */
   def newPullConsumer[A: DeliveryConverter](configName: String, monitor: Monitor)(
-      implicit scheduler: Scheduler): RabbitMQPullConsumer[F, A] with AutoCloseable
+      implicit ec: ExecutionContext): RabbitMQPullConsumer[F, A] with AutoCloseable
 
   /**
     * Declares and additional exchange, using the TypeSafe configuration passed to the factory and config name.
@@ -100,9 +101,9 @@ object RabbitMQConnection extends StrictLogging {
   /** Creates new instance of channel factory, using the passed configuration.
     *
     * @param providedConfig   The configuration.
-    * @param blockingExecutor [[ExecutorService]] which should be used as shared blocking pool (IO operations) for all channels from this factory.
+    * @param blockingExecutor [[ExecutorService]] which should be used as shared blocking pool (IO operations) for all channels from this connection.
     */
-  def fromConfig[F[_]: FromTask: ToTask](
+  def fromConfig[F[_]: Effect](
       providedConfig: Config,
       blockingExecutor: ExecutorService,
       connectionListener: ConnectionListener = DefaultListeners.DefaultConnectionListener,
@@ -117,6 +118,14 @@ object RabbitMQConnection extends StrictLogging {
 
     val connection = createConnection(connectionConfig, blockingExecutor, connectionListener, channelListener, consumerListener)
 
+    val useKluzo = connectionConfig.useKluzo
+
+    val blockingScheduler: Scheduler = if (useKluzo) {
+      Monix.wrapScheduler(Scheduler(ses, ExecutionContext.fromExecutor(blockingExecutor)))
+    } else {
+      Scheduler(ses, ExecutionContext.fromExecutor(blockingExecutor))
+    }
+
     new DefaultRabbitMQConnection(
       connection = connection,
       info = RabbitMQConnectionInfo(
@@ -127,7 +136,8 @@ object RabbitMQConnection extends StrictLogging {
       connectionListener = connectionListener,
       channelListener = channelListener,
       consumerListener = consumerListener,
-      blockingScheduler = Scheduler(blockingExecutor)
+      blockingScheduler = blockingScheduler,
+      useKluzo = useKluzo
     )
   }
 
@@ -243,7 +253,7 @@ object RabbitMQConnection extends StrictLogging {
         logger.debug(s"Consumer exception on channel $channel, consumer with tag '$consumerTag', method '$methodName'")
 
         val consumerName = consumer match {
-          case c: DefaultRabbitMQConsumer => c.name
+          case c: DefaultRabbitMQConsumer[_] => c.name
           case _ => "unknown"
         }
 

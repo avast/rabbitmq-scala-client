@@ -2,6 +2,7 @@ package com.avast.clients.rabbitmq
 
 import java.util.UUID
 
+import cats.effect.Effect
 import com.avast.bytes.Bytes
 import com.avast.clients.rabbitmq.api.{MessageProperties, RabbitMQProducer}
 import com.avast.clients.rabbitmq.javaapi.JavaConverters._
@@ -16,14 +17,14 @@ import monix.execution.Scheduler
 import scala.language.higherKinds
 import scala.util.control.NonFatal
 
-class DefaultRabbitMQProducer[F[_]: FromTask, A: ProductConverter](name: String,
-                                                                   exchangeName: String,
-                                                                   channel: ServerChannel,
-                                                                   defaultProperties: MessageProperties,
-                                                                   useKluzo: Boolean,
-                                                                   reportUnroutable: Boolean,
-                                                                   scheduler: Scheduler,
-                                                                   monitor: Monitor)
+class DefaultRabbitMQProducer[F[_], A: ProductConverter](name: String,
+                                                         exchangeName: String,
+                                                         channel: ServerChannel,
+                                                         defaultProperties: MessageProperties,
+                                                         useKluzo: Boolean,
+                                                         reportUnroutable: Boolean,
+                                                         blockingScheduler: Scheduler,
+                                                         monitor: Monitor)(implicit F: Effect[F])
     extends RabbitMQProducer[F, A]
     with AutoCloseable
     with StrictLogging {
@@ -68,7 +69,7 @@ class DefaultRabbitMQProducer[F[_]: FromTask, A: ProductConverter](name: String,
       case Left(ce) => Task.raiseError(ce)
     }
 
-    implicitly[FromTask[F]].apply(task)
+    task.to[F](F, blockingScheduler)
   }
 
   private def send(routingKey: String, body: Bytes, properties: MessageProperties): Task[Unit] = {
@@ -87,7 +88,7 @@ class DefaultRabbitMQProducer[F[_]: FromTask, A: ProductConverter](name: String,
           sentFailedMeter.mark()
           throw e
       }
-    }.executeOn(scheduler)
+    }.executeOn(blockingScheduler)
   }
 
   override def close(): Unit = {

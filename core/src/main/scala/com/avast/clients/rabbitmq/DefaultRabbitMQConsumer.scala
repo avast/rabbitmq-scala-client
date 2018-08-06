@@ -3,6 +3,8 @@ package com.avast.clients.rabbitmq
 import java.util.concurrent.RejectedExecutionException
 import java.util.concurrent.atomic.AtomicInteger
 
+import cats.effect.{Effect, IO}
+import cats.implicits._
 import com.avast.bytes.Bytes
 import com.avast.clients.rabbitmq.api._
 import com.avast.clients.rabbitmq.javaapi.JavaConverters._
@@ -11,13 +13,13 @@ import com.avast.metrics.scalaapi.Monitor
 import com.rabbitmq.client.AMQP.BasicProperties
 import com.rabbitmq.client.{DefaultConsumer, Envelope, ShutdownSignalException}
 import com.typesafe.scalalogging.StrictLogging
-import monix.eval.{Callback, Task}
 import monix.execution.Scheduler
 
 import scala.collection.JavaConverters._
+import scala.language.higherKinds
 import scala.util.control.NonFatal
 
-class DefaultRabbitMQConsumer(
+class DefaultRabbitMQConsumer[F[_]: Effect](
     override val name: String,
     override protected val channel: ServerChannel,
     override protected val queueName: String,
@@ -25,10 +27,10 @@ class DefaultRabbitMQConsumer(
     override protected val monitor: Monitor,
     failureAction: DeliveryResult,
     consumerListener: ConsumerListener,
-    override protected val blockingScheduler: Scheduler)(readAction: DeliveryReadAction[Task, Bytes])(implicit callbackScheduler: Scheduler)
+    override protected val blockingScheduler: Scheduler)(readAction: DeliveryReadAction[F, Bytes])(implicit sch: Scheduler)
     extends DefaultConsumer(channel)
     with RabbitMQConsumer
-    with ConsumerBase
+    with ConsumerBase[F]
     with AutoCloseable
     with StrictLogging {
 
@@ -64,15 +66,17 @@ class DefaultRabbitMQConsumer(
         case None => envelope.getRoutingKey
       }
 
-      val task = handleDelivery(messageId, deliveryTag, properties, routingKey, body)
+      val handleAction = handleDelivery(messageId, deliveryTag, properties, routingKey, body)
 
       processedTimer.time {
-        task.runAsync(new Callback[Unit] {
-          override def onSuccess(value: Unit): Unit = processingCount.decrementAndGet()
-
-          override def onError(ex: Throwable): Unit = processingCount.decrementAndGet()
-        })
-      }
+        (for {
+          _ <- IO.shift(blockingScheduler)
+          _ <- Effect[F].runAsync(handleAction) { _ =>
+            processingCount.decrementAndGet()
+            IO.unit
+          }
+        } yield ()).unsafeToFuture()
+      }(blockingScheduler)
 
       ()
     }
@@ -82,7 +86,7 @@ class DefaultRabbitMQConsumer(
                              deliveryTag: Long,
                              properties: BasicProperties,
                              routingKey: String,
-                             body: Array[Byte]): Task[Unit] = {
+                             body: Array[Byte]): F[Unit] = {
     {
       try {
         readMeter.mark()
@@ -95,12 +99,11 @@ class DefaultRabbitMQConsumer(
 
         readAction(delivery)
           .flatMap {
-            handleResult(messageId, deliveryTag, properties, routingKey, body)
+            handleResult(messageId, deliveryTag, properties, routingKey, body)(_).to[F]
           }
-          .onErrorHandleWith {
-            handleCallbackFailure(messageId, deliveryTag, properties, routingKey, body)
+          .recoverWith {
+            case NonFatal(t) => handleCallbackFailure(messageId, deliveryTag, properties, routingKey, body)(t)
           }
-          .executeOn(callbackScheduler)
       } catch {
         // we catch this specific exception, handling of others is up to Lyra
         case e: RejectedExecutionException =>
@@ -109,7 +112,7 @@ class DefaultRabbitMQConsumer(
 
         case NonFatal(e) => handleCallbackFailure(messageId, deliveryTag, properties, routingKey, body)(e)
       }
-    }.executeOn(callbackScheduler)
+    }
   }
 
   private def extractTraceId(properties: BasicProperties) = {
@@ -130,7 +133,7 @@ class DefaultRabbitMQConsumer(
                                     deliveryTag: Long,
                                     properties: BasicProperties,
                                     routingKey: String,
-                                    body: Array[Byte])(t: Throwable): Task[Unit] = {
+                                    body: Array[Byte])(t: Throwable): F[Unit] = {
 
     logger.error(s"[$name] Error while executing callback, it's probably a BUG", t)
 
@@ -142,7 +145,7 @@ class DefaultRabbitMQConsumer(
                             properties: BasicProperties,
                             routingKey: String,
                             body: Array[Byte],
-                            t: Throwable): Task[Unit] = {
+                            t: Throwable): F[Unit] = {
     processingCount.decrementAndGet()
     processingFailedMeter.mark()
     consumerListener.onError(this, name, channel, t)
@@ -153,15 +156,20 @@ class DefaultRabbitMQConsumer(
                                    deliveryTag: Long,
                                    properties: BasicProperties,
                                    routingKey: String,
-                                   body: Array[Byte]): Task[Unit] = {
+                                   body: Array[Byte]): F[Unit] = {
     import DeliveryResult._
 
-    failureAction match {
+    val task = failureAction match {
       case Ack => ack(messageId, deliveryTag)
       case Reject => reject(messageId, deliveryTag)
       case Retry => retry(messageId, deliveryTag)
       case Republish(newHeaders) => republish(messageId, deliveryTag, mergeHeadersForRepublish(newHeaders, properties, routingKey), body)
     }
+
+    task
+      .executeOn(blockingScheduler)
+      .asyncBoundary
+      .to[F](Effect[F], blockingScheduler)
   }
 
   override def close(): Unit = {

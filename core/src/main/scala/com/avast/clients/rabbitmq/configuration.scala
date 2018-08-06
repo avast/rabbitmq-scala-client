@@ -3,7 +3,7 @@ package com.avast.clients.rabbitmq
 import java.nio.file.Path
 import java.time.Duration
 
-import com.avast.clients.rabbitmq.api.{DeliveryMode, DeliveryResult}
+import com.avast.clients.rabbitmq.api.DeliveryResult
 import com.typesafe.config.Config
 
 import scala.collection.immutable
@@ -16,7 +16,8 @@ case class RabbitMQConnectionConfig(hosts: Array[String],
                                     topologyRecovery: Boolean,
                                     networkRecovery: NetworkRecovery,
                                     credentials: Credentials,
-                                    ssl: Ssl)
+                                    ssl: Ssl,
+                                    useKluzo: Boolean)
 
 case class NetworkRecovery(enabled: Boolean, period: Duration)
 
@@ -33,7 +34,6 @@ case class ConsumerConfig(queueName: String,
                           failureAction: DeliveryResult,
                           timeoutAction: DeliveryResult,
                           prefetchCount: Int,
-                          useKluzo: Boolean,
                           declare: AutoDeclareQueue,
                           bindings: immutable.Seq[AutoBindQueue],
                           consumerTag: String,
@@ -41,7 +41,6 @@ case class ConsumerConfig(queueName: String,
 
 case class PullConsumerConfig(queueName: String,
                               failureAction: DeliveryResult,
-                              useKluzo: Boolean,
                               declare: AutoDeclareQueue,
                               bindings: immutable.Seq[AutoBindQueue],
                               name: String)
@@ -56,7 +55,7 @@ case class AutoBindQueue(exchange: AutoBindExchange, routingKeys: immutable.Seq[
 
 case class AutoBindExchange(name: String, declare: Config)
 
-case class ProducerConfig(exchange: String, declare: Config, useKluzo: Boolean, reportUnroutable: Boolean, name: String, properties: ProducerProperties)
+case class ProducerConfig(exchange: String, declare: Config, reportUnroutable: Boolean, name: String, properties: ProducerProperties)
 case class ProducerProperties(deliveryMode: Int, contentType: Option[String], contentEncoding: Option[String], priority: Option[Int])
 
 case class AutoDeclareExchange(enabled: Boolean, `type`: String, durable: Boolean, autoDelete: Boolean, arguments: DeclareArguments)

@@ -1,5 +1,6 @@
 package com.avast.clients.rabbitmq.extras
 
+import cats.instances.future._
 import com.avast.bytes.Bytes
 import com.avast.clients.rabbitmq.api.DeliveryResult.Republish
 import com.avast.clients.rabbitmq.api.{Delivery, DeliveryResult, MessageProperties}
@@ -7,11 +8,10 @@ import com.avast.clients.rabbitmq.extras.PoisonedMessageHandler._
 import monix.execution.Scheduler.Implicits.global
 import org.scalatest.FunSuite
 import org.scalatest.concurrent.ScalaFutures
-import TestImplicits._
 
 import scala.concurrent.Future
 
-class PoisonedMessageHandlerTest extends FunSuite with ScalaFutures {
+class DefaultPoisonedMessageHandlerTest extends FunSuite with ScalaFutures {
 
   test("basic") {
 
@@ -19,7 +19,7 @@ class PoisonedMessageHandlerTest extends FunSuite with ScalaFutures {
       Future.successful(Republish())
     }
 
-    val handler = new PoisonedMessageHandler[Future, Bytes](5)(readAction)
+    val handler = PoisonedMessageHandler[Future, Bytes](5)(readAction)
 
     def run(properties: MessageProperties): DeliveryResult = {
       handler(Delivery(Bytes.empty(), properties, "")).futureValue
@@ -47,7 +47,7 @@ class PoisonedMessageHandlerTest extends FunSuite with ScalaFutures {
       Future.successful(Republish())
     }
 
-    val handler = new PoisonedMessageHandler[Future, Bytes](5)(readAction)
+    val handler = PoisonedMessageHandler[Future, Bytes](5)(readAction)
 
     def run(properties: MessageProperties): DeliveryResult = {
       handler(Delivery(Bytes.empty(), properties, "")).futureValue

@@ -158,16 +158,17 @@ For full list of options please see [reference.conf](core/src/main/resources/ref
 
 ### Scala usage
 
-The Scala API is now _finally tagless_ (read more e.g. [here](https://www.beyondthelines.net/programming/introduction-to-tagless-final/)) -
-you can change the type it works with by specifying it when creating the _connection_. You have to provide`cats.arrow.FunctionK[Task, A]`
-and `cats.arrow.FunctionK[A, Task]` when creating new connection.
+The Scala API is now _finally tagless_ (read more e.g. [here](https://www.beyondthelines.net/programming/introduction-to-tagless-final/))
+meaning it can use whatever [`F[_]: cats.effect.Effect`](https://typelevel.org/cats-effect/typeclasses/effect.html)
+(e.g. `cats.effect.IO`, `monix.eval.Task`).
+Alternatively you are able to use any `F[_]` which is convertible to/from `monix.eval.Task` (see [Using own F](#using-own-non-effect-f))
 
 The Scala API uses types-conversions for both consumer and producer, that means you don't have to work directly with `Bytes` (however you
 still can, if you want) and you touch only your business class which is then (de)serialized using provided converter.
 
 The library uses two types of executors - one is for blocking (IO) operations and the second for callbacks. You _have to_ provide both of them:
 1. Blocking executor as `ExecutorService`
-1. Callback executor as `monix.execution.Scheduler` - you can get it e.g. by calling `Scheduler(myFavoriteExecutionContext)`
+1. Callback executor as `scala.concurrent.ExecutionContext`
 
 ```scala
 import com.typesafe.config.ConfigFactory
@@ -179,12 +180,10 @@ import monix.eval._
 
 val config = ConfigFactory.load().getConfig("myRabbitConfig")
 
-implicit val sch: Scheduler = ???
+implicit val ec: ExecutionContext = ???
 val blockingExecutor: ExecutorService = Executors.newCachedThreadPool()
 
 val monitor: Monitor = ???
-
-implicit val fk: FunctionK[Task, Task] = cats.arrow.FunctionK.id
 
 // here you create the connection; it's shared for all producers/consumers amongst one RabbitMQ server - they will share a single TCP connection
 // but have separated channels
@@ -203,6 +202,20 @@ val consumer = rabbitConnection.newConsumer[Bytes]("consumer", monitor) {
 val sender = rabbitConnection.newProducer("producer", monitor) // DefaultRabbitMQProducer[Task]
 
 sender.send(...).runAsync // because it's Task, don't forget to run it ;-)
+```
+
+#### Using own non-Effect F
+
+By default only `F[_]: cats.effect.Effect` can be used when creating new connection which makes impossible to use some commonly used
+([_strict_](https://stackoverflow.com/questions/27454798/is-future-in-scala-a-monad)) types like `scala.cuncurrent.Future`.  
+However there exists a workaround:
+1. Create `RabbitMQConnection[Task]`
+1. Convert it to your `F[_]` by providing `cats.arrow.FunctionK[Task, A]` and `cats.arrow.FunctionK[A, Task]`
+```scala
+implicit val fkToFuture: cats.arrow.FunctionK[Task, Future] = ???
+implicit val fkFromFuture: cats.arrow.FunctionK[Future, Task] = ???
+
+val rabbitConnection: RabbitMQConnection[Future] = RabbitMQConnection.fromConfig[Task].imapK[Future]
 ```
 
 #### Providing converters for producer/consumer

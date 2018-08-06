@@ -3,7 +3,6 @@ package com.avast.clients.rabbitmq.javaapi
 import java.io.IOException
 import java.util.concurrent.{CompletableFuture, ExecutorService}
 
-import cats.arrow.FunctionK
 import com.avast.clients.rabbitmq.RabbitMQConnection.DefaultListeners
 import com.avast.clients.rabbitmq.{ChannelListener, ConnectionListener, ConsumerListener, RabbitMQConnection => ScalaConnection}
 import com.avast.metrics.api.Monitor
@@ -11,7 +10,7 @@ import com.typesafe.config.Config
 import monix.eval.Task
 import monix.execution.Scheduler
 
-import scala.concurrent.{ExecutionContext, Future}
+import scala.concurrent.Future
 
 trait RabbitMQJavaConnection extends AutoCloseable {
 
@@ -100,25 +99,18 @@ object RabbitMQJavaConnection {
     def build(): RabbitMQJavaConnection = {
       import com.avast.clients.rabbitmq._
 
-      implicit val ec: ExecutionContext = ExecutionContext.fromExecutorService(executorService)
-
-      implicit val fkToFuture: FromTask[Future] = new FunctionK[Task, Future] {
-        override def apply[A](fa: Task[A]): Future[A] = fa.runAsync(Scheduler(ec))
-      }
-
-      implicit val fkFromFuture: ToTask[Future] = new FunctionK[Future, Task] {
-        override def apply[A](fa: Future[A]): Task[A] = Task.fromFuture(fa)
-      }
+      implicit val sch: Scheduler = Scheduler(executorService)
 
       new RabbitMQJavaConnectionImpl(
         ScalaConnection
-          .fromConfig[Future](
+          .fromConfig[Task](
             config,
             executorService,
             Option(connectionListener).getOrElse(DefaultListeners.DefaultConnectionListener),
             Option(channelListener).getOrElse(DefaultListeners.DefaultChannelListener),
             Option(consumerListener).getOrElse(DefaultListeners.DefaultConsumerListener)
           )
+          .imapK[Future]
       )
     }
 

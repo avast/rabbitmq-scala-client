@@ -8,6 +8,7 @@ import com.avast.metrics.scalaapi.Monitor
 import com.rabbitmq.client.AMQP.BasicProperties
 import com.rabbitmq.client.impl.recovery.AutorecoveringChannel
 import com.rabbitmq.client.{Envelope, GetResponse}
+import monix.eval.Task
 import monix.execution.Scheduler
 import monix.execution.Scheduler.Implicits.global
 import org.mockito.Matchers
@@ -19,9 +20,7 @@ import org.scalatest.exceptions.TestFailedException
 import org.scalatest.mockito.MockitoSugar
 import org.scalatest.time.{Seconds, Span}
 
-import scala.concurrent.Future
 import scala.util.Random
-import TestImplicits._
 class DefaultRabbitMQPullConsumerTest extends FunSuite with MockitoSugar with ScalaFutures with Eventually {
 
   test("should ACK") {
@@ -43,7 +42,7 @@ class DefaultRabbitMQPullConsumerTest extends FunSuite with MockitoSugar with Sc
       new GetResponse(envelope, properties, body, 1)
     )
 
-    val consumer = new DefaultRabbitMQPullConsumer[Future, Bytes](
+    val consumer = new DefaultRabbitMQPullConsumer[Task, Bytes](
       "test",
       channel,
       "queueName",
@@ -52,11 +51,11 @@ class DefaultRabbitMQPullConsumerTest extends FunSuite with MockitoSugar with Sc
       Scheduler.global
     )
 
-    val PullResult.Ok(dwh) = consumer.pull().futureValue
+    val PullResult.Ok(dwh) = consumer.pull().runAsync.futureValue
 
     assertResult(Some(messageId))(dwh.delivery.properties.messageId)
 
-    dwh.handle(DeliveryResult.Ack).futureValue
+    dwh.handle(DeliveryResult.Ack).runAsync.futureValue
 
     eventually(timeout(Span(1, Seconds)), interval(Span(0.1, Seconds))) {
       verify(channel, times(1)).basicAck(deliveryTag, false)
@@ -85,7 +84,7 @@ class DefaultRabbitMQPullConsumerTest extends FunSuite with MockitoSugar with Sc
       new GetResponse(envelope, properties, body, 1)
     )
 
-    val consumer = new DefaultRabbitMQPullConsumer[Future, Bytes](
+    val consumer = new DefaultRabbitMQPullConsumer[Task, Bytes](
       "test",
       channel,
       "queueName",
@@ -94,11 +93,11 @@ class DefaultRabbitMQPullConsumerTest extends FunSuite with MockitoSugar with Sc
       Scheduler.global
     )
 
-    val PullResult.Ok(dwh) = consumer.pull().futureValue
+    val PullResult.Ok(dwh) = consumer.pull().runAsync.futureValue
 
     assertResult(Some(messageId))(dwh.delivery.properties.messageId)
 
-    dwh.handle(DeliveryResult.Retry).futureValue
+    dwh.handle(DeliveryResult.Retry).runAsync.futureValue
 
     eventually(timeout(Span(1, Seconds)), interval(Span(0.1, Seconds))) {
       verify(channel, times(0)).basicAck(deliveryTag, false)
@@ -127,7 +126,7 @@ class DefaultRabbitMQPullConsumerTest extends FunSuite with MockitoSugar with Sc
       new GetResponse(envelope, properties, body, 1)
     )
 
-    val consumer = new DefaultRabbitMQPullConsumer[Future, Bytes](
+    val consumer = new DefaultRabbitMQPullConsumer[Task, Bytes](
       "test",
       channel,
       "queueName",
@@ -136,11 +135,11 @@ class DefaultRabbitMQPullConsumerTest extends FunSuite with MockitoSugar with Sc
       Scheduler.global
     )
 
-    val PullResult.Ok(dwh) = consumer.pull().futureValue
+    val PullResult.Ok(dwh) = consumer.pull().runAsync.futureValue
 
     assertResult(Some(messageId))(dwh.delivery.properties.messageId)
 
-    dwh.handle(DeliveryResult.Reject).futureValue
+    dwh.handle(DeliveryResult.Reject).runAsync.futureValue
 
     eventually(timeout(Span(1, Seconds)), interval(Span(0.1, Seconds))) {
       verify(channel, times(0)).basicAck(deliveryTag, false)
@@ -168,7 +167,7 @@ class DefaultRabbitMQPullConsumerTest extends FunSuite with MockitoSugar with Sc
       new GetResponse(envelope, properties, body, 1)
     )
 
-    val consumer = new DefaultRabbitMQPullConsumer[Future, Bytes](
+    val consumer = new DefaultRabbitMQPullConsumer[Task, Bytes](
       "test",
       channel,
       "queueName",
@@ -177,11 +176,11 @@ class DefaultRabbitMQPullConsumerTest extends FunSuite with MockitoSugar with Sc
       Scheduler.global
     )
 
-    val PullResult.Ok(dwh) = consumer.pull().futureValue
+    val PullResult.Ok(dwh) = consumer.pull().runAsync.futureValue
 
     assertResult(Some(messageId))(dwh.delivery.properties.messageId)
 
-    dwh.handle(DeliveryResult.Republish()).futureValue
+    dwh.handle(DeliveryResult.Republish()).runAsync.futureValue
 
     eventually(timeout(Span(1, Seconds)), interval(Span(0.1, Seconds))) {
       verify(channel, times(1)).basicAck(deliveryTag, false)
@@ -216,7 +215,7 @@ class DefaultRabbitMQPullConsumerTest extends FunSuite with MockitoSugar with Sc
       throw new IllegalArgumentException
     }
 
-    val consumer = new DefaultRabbitMQPullConsumer[Future, Abc](
+    val consumer = new DefaultRabbitMQPullConsumer[Task, Abc](
       "test",
       channel,
       "queueName",
@@ -226,7 +225,7 @@ class DefaultRabbitMQPullConsumerTest extends FunSuite with MockitoSugar with Sc
     )
 
     try {
-      consumer.pull().futureValue
+      consumer.pull().runAsync.futureValue
     } catch {
       case e: TestFailedException if e.getCause.isInstanceOf[IllegalArgumentException] => // ok
     }
@@ -262,7 +261,7 @@ class DefaultRabbitMQPullConsumerTest extends FunSuite with MockitoSugar with Sc
       Left(ConversionException(messageId))
     }
 
-    val consumer = new DefaultRabbitMQPullConsumer[Future, Abc](
+    val consumer = new DefaultRabbitMQPullConsumer[Task, Abc](
       "test",
       channel,
       "queueName",
@@ -271,12 +270,12 @@ class DefaultRabbitMQPullConsumerTest extends FunSuite with MockitoSugar with Sc
       Scheduler.global
     )
 
-    val PullResult.Ok(dwh) = consumer.pull().futureValue
+    val PullResult.Ok(dwh) = consumer.pull().runAsync.futureValue
     val Delivery.MalformedContent(_, _, _, ce) = dwh.delivery
 
     assertResult(messageId)(ce.getMessage)
 
-    dwh.handle(DeliveryResult.Retry)
+    dwh.handle(DeliveryResult.Retry).runAsync.futureValue
 
     eventually(timeout(Span(1, Seconds)), interval(Span(0.1, Seconds))) {
       verify(channel, times(0)).basicAck(deliveryTag, false)

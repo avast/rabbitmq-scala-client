@@ -200,7 +200,7 @@ class LiveTest extends FunSuite with Eventually with ScalaFutures with StrictLog
     val c = createConfig()
     import c._
 
-    val rabbitConnection = RabbitMQConnection.fromConfig[Try](config, ex)
+    val rabbitConnection = RabbitMQConnection.fromConfig[Task](config, ex).imapK[Try]
 
     val cnt = new AtomicInteger(0)
 
@@ -227,7 +227,7 @@ class LiveTest extends FunSuite with Eventually with ScalaFutures with StrictLog
     val c = createConfig()
     import c._
 
-    val rabbitConnection = RabbitMQConnection.fromConfig[Try](config, ex)
+    val rabbitConnection = RabbitMQConnection.fromConfig[Task](config, ex).imapK[Try]
 
     val cnt = new AtomicInteger(0)
 
@@ -257,7 +257,7 @@ class LiveTest extends FunSuite with Eventually with ScalaFutures with StrictLog
     val c = createConfig()
     import c._
 
-    val rabbitConnection = RabbitMQConnection.fromConfig[Try](config, ex)
+    val rabbitConnection = RabbitMQConnection.fromConfig[Task](config, ex).imapK[Try]
 
     val cnt = new AtomicInteger(0)
 
@@ -289,7 +289,7 @@ class LiveTest extends FunSuite with Eventually with ScalaFutures with StrictLog
 
     val latch = new CountDownLatch(10)
 
-    val rabbitConnection = RabbitMQConnection.fromConfig[Try](config, ex)
+    val rabbitConnection = RabbitMQConnection.fromConfig[Task](config, ex).imapK[Try]
 
     val sender = rabbitConnection.newProducer("producer", Monitor.noOp())
 
@@ -359,7 +359,7 @@ class LiveTest extends FunSuite with Eventually with ScalaFutures with StrictLog
     val c = createConfig()
     import c._
 
-    val rabbitConnection = RabbitMQConnection.fromConfig[Future](config, ex)
+    val rabbitConnection = RabbitMQConnection.fromConfig[Task](config, ex).imapK[Future]
 
     val consumer = rabbitConnection.newPullConsumer[Bytes]("consumer", Monitor.noOp())
 
@@ -404,7 +404,7 @@ class LiveTest extends FunSuite with Eventually with ScalaFutures with StrictLog
 
     implicit val conv = JsonDeliveryConverter.derive[Abc]()
 
-    val rabbitConnection = RabbitMQConnection.fromConfig[Future](config, ex)
+    val rabbitConnection = RabbitMQConnection.fromConfig[Task](config, ex).imapK[Future]
 
     val parsingFailures = new AtomicInteger(0)
     val processing = new AtomicInteger(0)

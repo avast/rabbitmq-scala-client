@@ -13,7 +13,7 @@ Changes in Scala API:
 See [related section](README.md#providing-converters-for-producer/consumer) in docs.
 1. The `Delivery` is now sealed trait - there are `Delivery.Ok[A]` (e.g. `Delivery[Bytes]`, depends on type-conversion) and `Delivery.MalformedContent`.
 After getting the `Delivery[A]` you should pattern-match it.
-1. The API now requires an implicit `monix.execution.Scheduler` instead of `ExecutionContext`.
+1. The API of 6.0.x now requires an implicit `monix.execution.Scheduler` instead of `ExecutionContext` **(Changed back in 6.1.x)**
 1. Methods like `RabbitMQConnection.declareQueue` now return `F[Unit]` (was `Try[Done]` before).
 1. Possibility to pass manually created configurations (`ProducerConfig` etc.) is now gone. The only option is to use TypeSafe config.
 1. There is no `RabbitMQConsumer.bindTo` method anymore. Use [additional declarations](README.md#additional-declarations-and-bindings) for such thing.

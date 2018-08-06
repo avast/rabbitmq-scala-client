@@ -5,7 +5,7 @@ import java.util.function
 
 import com.avast.bytes.Bytes
 import com.avast.clients.rabbitmq.javaapi.JavaConverters._
-import com.avast.clients.rabbitmq.{DefaultRabbitMQConnection => ScalaConnection}
+import com.avast.clients.rabbitmq.{RabbitMQConnection => ScalaConnection}
 import com.avast.metrics.api.Monitor
 import com.avast.metrics.scalaapi.{Monitor => ScalaMonitor}
 import monix.execution.Scheduler

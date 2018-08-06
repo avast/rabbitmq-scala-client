@@ -2,6 +2,8 @@ package com.avast.clients.rabbitmq
 
 import java.util.concurrent.atomic.AtomicInteger
 
+import cats.effect.Effect
+import cats.implicits._
 import com.avast.bytes.Bytes
 import com.avast.clients.rabbitmq.api._
 import com.avast.clients.rabbitmq.javaapi.JavaConverters._
@@ -13,16 +15,15 @@ import monix.execution.Scheduler
 
 import scala.language.higherKinds
 import scala.util.control.NonFatal
-
-class DefaultRabbitMQPullConsumer[F[_]: FromTask, A: DeliveryConverter](
+class DefaultRabbitMQPullConsumer[F[_]: Effect, A: DeliveryConverter](
     override val name: String,
     protected override val channel: ServerChannel,
     protected override val queueName: String,
     failureAction: DeliveryResult,
     protected override val monitor: Monitor,
-    protected override val blockingScheduler: Scheduler)(implicit callbackScheduler: Scheduler)
+    protected override val blockingScheduler: Scheduler)(implicit sch: Scheduler)
     extends RabbitMQPullConsumer[F, A]
-    with ConsumerBase
+    with ConsumerBase[F]
     with AutoCloseable
     with StrictLogging {
 
@@ -34,10 +35,12 @@ class DefaultRabbitMQPullConsumer[F[_]: FromTask, A: DeliveryConverter](
 
   private def convertMessage(b: Bytes): Either[ConversionException, A] = implicitly[DeliveryConverter[A]].convert(b)
 
-  override def pull(): F[PullResult[F, A]] = implicitly[FromTask[F]].apply {
+  override def pull(): F[PullResult[F, A]] = {
     Task {
       Option(channel.basicGet(queueName, false))
-    }.executeOn(blockingScheduler) // blocking operation!
+    }.executeOn(blockingScheduler, forceAsync = true) // blocking operation!
+      .asyncBoundary
+      .to[F]
       .flatMap {
         case Some(response) =>
           processingCount.incrementAndGet()
@@ -54,21 +57,22 @@ class DefaultRabbitMQPullConsumer[F[_]: FromTask, A: DeliveryConverter](
           handleMessage(response, properties, routingKey) { result =>
             super
               .handleResult(messageId, deliveryTag, properties, routingKey, response.getBody)(result)
-              .foreachL { _ =>
+              .to[F]
+              .map { _ =>
                 processingCount.decrementAndGet()
                 ()
               }
           }
 
         case None =>
-          Task.now {
+          Effect[F].pure {
             PullResult.EmptyQueue.asInstanceOf[PullResult[F, A]]
           }
       }
   }
 
   private def handleMessage(response: GetResponse, properties: AMQP.BasicProperties, routingKey: String)(
-      handleResult: DeliveryResult => Task[Unit]): Task[PullResult[F, A]] = {
+      handleResult: DeliveryResult => F[Unit]): F[PullResult[F, A]] = {
     try {
       val bytes = Bytes.copyFrom(response.getBody)
 
@@ -86,7 +90,7 @@ class DefaultRabbitMQPullConsumer[F[_]: FromTask, A: DeliveryConverter](
 
       val dwh = createDeliveryWithHandle(delivery, handleResult)
 
-      Task.now {
+      Effect[F].pure {
         PullResult.Ok(dwh)
       }
     } catch {
@@ -96,17 +100,15 @@ class DefaultRabbitMQPullConsumer[F[_]: FromTask, A: DeliveryConverter](
           e
         )
 
-        handleResult(failureAction).flatMap(_ => Task.raiseError(e))
+        handleResult(failureAction).flatMap(_ => Effect[F].raiseError(e))
     }
   }
 
-  private def createDeliveryWithHandle[B](d: Delivery[B], handleResult: DeliveryResult => Task[Unit]): DeliveryWithHandle[F, B] = {
+  private def createDeliveryWithHandle[B](d: Delivery[B], handleResult: DeliveryResult => F[Unit]): DeliveryWithHandle[F, B] = {
     new DeliveryWithHandle[F, B] {
       override val delivery: Delivery[B] = d
 
-      override def handle(result: DeliveryResult): F[Unit] = implicitly[FromTask[F]].apply {
-        handleResult(result)
-      }
+      override def handle(result: DeliveryResult): F[Unit] = handleResult(result)
     }
   }
 
