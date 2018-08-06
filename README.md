@@ -4,9 +4,8 @@
 [![Download](https://api.bintray.com/packages/avast/maven/rabbitmq-scala-client/images/download.svg) ](https://bintray.com/avast/maven/rabbitmq-scala-client/_latestVersion)
 
 
-This client is lightweight wrapper over standard [RabbitMQ java client](https://www.rabbitmq.com/java-client.html).
-It's API may be difficult to use for inexperienced RabbitMQ users. Goal of this library is to simplify basic use cases and shadow the programmer
-from the underlying client.
+This client is Scala-first wrapper over standard [RabbitMQ java client](https://www.rabbitmq.com/java-client.html). Goal of this library is
+to simplify basic use cases - to provide FP-oriented API for programmers and to shadow the programmer from an underlying client.
 
 The library has both Scala and Java API where the Scala API is generic and gives you an option to adapt to your application's type -
 see [Scala usage below](#scala-usage).
@@ -206,11 +205,12 @@ sender.send(...).runAsync // because it's Task, don't forget to run it ;-)
 
 #### Using own non-Effect F
 
-By default only `F[_]: cats.effect.Effect` can be used when creating new connection which makes impossible to use some commonly used
-([_strict_](https://stackoverflow.com/questions/27454798/is-future-in-scala-a-monad)) types like `scala.cuncurrent.Future`.  
+By default only `F[_]: cats.effect.Effect` can be used when creating new connection which makes some commonly used
+([_strict_](https://stackoverflow.com/questions/27454798/is-future-in-scala-a-monad)) types like `scala.cuncurrent.Future` impossible to use.  
 However there exists a workaround:
 1. Create `RabbitMQConnection[Task]`
 1. Convert it to your `F[_]` by providing `cats.arrow.FunctionK[Task, A]` and `cats.arrow.FunctionK[A, Task]`
+
 ```scala
 implicit val fkToFuture: cats.arrow.FunctionK[Task, Future] = ???
 implicit val fkFromFuture: cats.arrow.FunctionK[Future, Task] = ???
