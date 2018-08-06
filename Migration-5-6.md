@@ -3,6 +3,7 @@
 Common changes:
 1. GroupId of all artifacts has changed from `com.avast.clients` to `com.avast.clients.rabbitmq`.
 1. The library doesn't use [Lyra library](https://github.com/jhalterman/lyra) anymore. Removing the Lyra resulted into change of listeners.
+1. The Kluzo usage is configurable per connection (not for every consumer and producer separately)
 
 Changes in Scala API:
 
