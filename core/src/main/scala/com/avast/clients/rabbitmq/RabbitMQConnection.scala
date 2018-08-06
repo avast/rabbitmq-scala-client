@@ -80,6 +80,10 @@ trait RabbitMQConnection[F[_]] extends AutoCloseable {
     * @return Result of performed action.
     */
   def withChannel[A](f: ServerChannel => F[A]): F[A]
+
+  def connectionListener: ConnectionListener
+  def channelListener: ChannelListener
+  def consumerListener: ConsumerListener
 }
 
 object RabbitMQConnection extends StrictLogging {

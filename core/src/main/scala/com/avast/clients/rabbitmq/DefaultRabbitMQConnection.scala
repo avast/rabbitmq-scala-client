@@ -17,9 +17,9 @@ class DefaultRabbitMQConnection[F[_]: Effect](connection: ServerConnection,
                                               info: RabbitMQConnectionInfo,
                                               config: Config,
                                               useKluzo: Boolean,
-                                              connectionListener: ConnectionListener,
-                                              channelListener: ChannelListener,
-                                              consumerListener: ConsumerListener,
+                                              override val connectionListener: ConnectionListener,
+                                              override val channelListener: ChannelListener,
+                                              override val consumerListener: ConsumerListener,
                                               blockingScheduler: Scheduler)
     extends RabbitMQConnection[F]
     with StrictLogging {

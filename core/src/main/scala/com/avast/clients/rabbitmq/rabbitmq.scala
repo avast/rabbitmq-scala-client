@@ -45,6 +45,7 @@ package object rabbitmq {
   }
 
   implicit class ConnectionOps(val connection: RabbitMQConnection[Task]) {
+    // scalastyle:off
     def imapK[G[_]](implicit fromTask: FromTask[G], toTask: ToTask[G]): RabbitMQConnection[G] = {
       new RabbitMQConnection[G] {
         override def newChannel(): ServerChannel = connection.newChannel()
@@ -94,6 +95,9 @@ package object rabbitmq {
         override def bindExchange(configName: String): G[Unit] = connection.bindExchange(configName)
         override def withChannel[A](f: ServerChannel => G[A]): G[A] = connection.withChannel(f(_))
         override def close(): Unit = connection.close()
+        override def connectionListener: ConnectionListener = connection.connectionListener
+        override def channelListener: ChannelListener = connection.channelListener
+        override def consumerListener: ConsumerListener = connection.consumerListener
       }
     }
 
