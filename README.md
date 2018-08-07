@@ -184,19 +184,38 @@ val blockingExecutor: ExecutorService = Executors.newCachedThreadPool()
 
 val monitor: Monitor = ???
 
+implicit val fkToTask: FunctionK[Future, Task] = ???
+implicit val fkFromTask: FunctionK[Task, Future] = ???
+
 // here you create the connection; it's shared for all producers/consumers amongst one RabbitMQ server - they will share a single TCP connection
 // but have separated channels
 // if you expect very high load, you can use separate connections for each producer/consumer, but it's usually not needed
-val rabbitConnection = RabbitMQConnection.fromConfig[Task](config, blockingExecutor) // DefaultRabbitMQConnection[Task]
+val rabbitConnection = RabbitMQConnection.fromConfig[Future](config, blockingExecutor) // DefaultRabbitMQConnection[Future]
 
 val consumer = rabbitConnection.newConsumer[Bytes]("consumer", monitor) { 
   case delivery: Delivery.Ok[Bytes] =>
     println(delivery)
-    Task.now(DeliveryResult.Ack)
+    Future.successful(DeliveryResult.Ack)
     
   case _: Delivery.MalformedContent =>
-    Task.now(DeliveryResult.Reject)
-} // DefaultRabbitMQConsumer
+    Future.successful(DeliveryResult.Reject)
+} // DefaultRabbitMQConsumer[Future]
+
+val sender = rabbitConnection.newProducer("producer", monitor) // DefaultRabbitMQProducer[Future]
+
+sender.send(...) // Future[Unit]
+```
+
+or with `monix.eval.Task`:
+
+```scala
+implicit val fk: FunctionK[Task, Task] = cats.arrow.FunctionK.id
+
+val rabbitConnection = RabbitMQConnection.fromConfig[Task](config, blockingExecutor) // DefaultRabbitMQConnection[Task]
+
+val consumer = rabbitConnection.newConsumer[Bytes]("consumer", monitor) { 
+  ...
+} // DefaultRabbitMQConsumer[Task]
 
 val sender = rabbitConnection.newProducer("producer", monitor) // DefaultRabbitMQProducer[Task]
 

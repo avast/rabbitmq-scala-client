@@ -9,7 +9,7 @@ Changes in Scala API:
 
 1. `RabbitMQFactory` was renamed to `RabbitMQConnection`. It's factory method returns `DefaultRabbitMQConnection` and requires an
 `ExecutorService` to be passed (was optional before).
-1. The whole API is _finally tagless_ - all methods return `F[_]`. See [related section](README.md#scala-usage) in docs.
+1. The whole API is _finally tagless_ - all methods now return `F[_]`. See [related section](README.md#scala-usage) in docs.
 1. The API now uses type-conversions - provide type and related converter when creating producer/consumer.
 See [related section](README.md#providing-converters-for-producer/consumer) in docs.
 1. The `Delivery` is now sealed trait - there are `Delivery.Ok[A]` (e.g. `Delivery[Bytes]`, depends on type-conversion) and `Delivery.MalformedContent`.
