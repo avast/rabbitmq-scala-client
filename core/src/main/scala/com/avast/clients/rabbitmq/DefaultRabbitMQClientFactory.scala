@@ -21,7 +21,6 @@ import net.ceedubs.ficus.readers.ValueReader
 
 import scala.collection.JavaConverters._
 import scala.collection.immutable
-import scala.concurrent.Future
 import scala.concurrent.duration.{Duration => ScalaDuration}
 import scala.language.{higherKinds, implicitConversions}
 import scala.util.control.NonFatal
@@ -475,11 +474,11 @@ private[rabbitmq] object DefaultRabbitMQClientFactory extends LazyLogging {
     delivery: Delivery[Bytes] =>
       try {
         // we try to catch also long-lasting synchronous work on the thread
-        val action = Task.deferFuture {
-          Future {
-            Task.fromEffect { userReadAction(delivery) }
-          }(blockingScheduler)
-        }.flatten
+        val action = Task { userReadAction(delivery) }
+          .executeOn(blockingScheduler)
+          .asyncBoundary
+          .map(Task.fromEffect)
+          .flatten
 
         val traceId = Kluzo.getTraceId
 
