@@ -184,13 +184,35 @@ val blockingExecutor: ExecutorService = Executors.newCachedThreadPool()
 
 val monitor: Monitor = ???
 
-implicit val fkToTask: FunctionK[Future, Task] = ???
-implicit val fkFromTask: FunctionK[Task, Future] = ???
+implicit val fk: FunctionK[Task, Task] = cats.arrow.FunctionK.id
 
 // here you create the connection; it's shared for all producers/consumers amongst one RabbitMQ server - they will share a single TCP connection
 // but have separated channels
 // if you expect very high load, you can use separate connections for each producer/consumer, but it's usually not needed
-val rabbitConnection = RabbitMQConnection.fromConfig[Future](config, blockingExecutor) // DefaultRabbitMQConnection[Future]
+val rabbitConnection = RabbitMQConnection.fromConfig[Task](config, blockingExecutor) // DefaultRabbitMQConnection[Task]
+
+val consumer = rabbitConnection.newConsumer[Bytes]("consumer", monitor) { 
+  case delivery: Delivery.Ok[Bytes] =>
+      println(delivery)
+      Task.now(DeliveryResult.Ack)
+      
+    case _: Delivery.MalformedContent =>
+      Task.now(DeliveryResult.Reject)
+} // DefaultRabbitMQConsumer[Task]
+
+val sender = rabbitConnection.newProducer("producer", monitor) // DefaultRabbitMQProducer[Task]
+
+sender.send(...).runAsync // because it's Task, don't forget to run it ;-)
+
+```
+
+or with `scala.concurrent.Future` (and other _strict_ types):
+
+```scala
+implicit val fkToTask: FunctionK[Future, Task] = ???
+implicit val fkFromTask: FunctionK[Task, Future] = ???
+
+val rabbitConnection = RabbitMQConnection.fromConfig[Task](config, blockingExecutor).imapK[Future] // DefaultRabbitMQConnection[Future]
 
 val consumer = rabbitConnection.newConsumer[Bytes]("consumer", monitor) { 
   case delivery: Delivery.Ok[Bytes] =>
@@ -204,22 +226,6 @@ val consumer = rabbitConnection.newConsumer[Bytes]("consumer", monitor) {
 val sender = rabbitConnection.newProducer("producer", monitor) // DefaultRabbitMQProducer[Future]
 
 sender.send(...) // Future[Unit]
-```
-
-or with `monix.eval.Task`:
-
-```scala
-implicit val fk: FunctionK[Task, Task] = cats.arrow.FunctionK.id
-
-val rabbitConnection = RabbitMQConnection.fromConfig[Task](config, blockingExecutor) // DefaultRabbitMQConnection[Task]
-
-val consumer = rabbitConnection.newConsumer[Bytes]("consumer", monitor) { 
-  ...
-} // DefaultRabbitMQConsumer[Task]
-
-val sender = rabbitConnection.newProducer("producer", monitor) // DefaultRabbitMQProducer[Task]
-
-sender.send(...).runAsync // because it's Task, don't forget to run it ;-)
 ```
 
 #### Using own non-Effect F
