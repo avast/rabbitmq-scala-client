@@ -10,6 +10,7 @@ import com.rabbitmq.client.Envelope
 import com.rabbitmq.client.impl.recovery.AutorecoveringChannel
 import monix.eval.Task
 import monix.execution.Scheduler
+import monix.execution.Scheduler.Implicits.global
 import org.mockito.Matchers
 import org.mockito.Matchers.any
 import org.mockito.Mockito._
@@ -18,7 +19,6 @@ import org.scalatest.concurrent.Eventually
 import org.scalatest.mockito.MockitoSugar
 import org.scalatest.time.{Seconds, Span}
 
-import Scheduler.Implicits.global
 import scala.util.Random
 
 class DefaultRabbitMQConsumerTest extends FunSuite with MockitoSugar with Eventually {
@@ -35,11 +35,10 @@ class DefaultRabbitMQConsumerTest extends FunSuite with MockitoSugar with Eventu
 
     val channel = mock[AutorecoveringChannel]
 
-    val consumer = new DefaultRabbitMQConsumer(
+    val consumer = new DefaultRabbitMQConsumer[Task](
       "test",
       channel,
       "queueName",
-      true,
       Monitor.noOp,
       DeliveryResult.Reject,
       DefaultListeners.DefaultConsumerListener,
@@ -74,11 +73,10 @@ class DefaultRabbitMQConsumerTest extends FunSuite with MockitoSugar with Eventu
 
     val channel = mock[AutorecoveringChannel]
 
-    val consumer = new DefaultRabbitMQConsumer(
+    val consumer = new DefaultRabbitMQConsumer[Task](
       "test",
       channel,
       "queueName",
-      true,
       Monitor.noOp,
       DeliveryResult.Reject,
       DefaultListeners.DefaultConsumerListener,
@@ -113,11 +111,10 @@ class DefaultRabbitMQConsumerTest extends FunSuite with MockitoSugar with Eventu
 
     val channel = mock[AutorecoveringChannel]
 
-    val consumer = new DefaultRabbitMQConsumer(
+    val consumer = new DefaultRabbitMQConsumer[Task](
       "test",
       channel,
       "queueName",
-      true,
       Monitor.noOp,
       DeliveryResult.Reject,
       DefaultListeners.DefaultConsumerListener,
@@ -151,11 +148,10 @@ class DefaultRabbitMQConsumerTest extends FunSuite with MockitoSugar with Eventu
 
     val channel = mock[AutorecoveringChannel]
 
-    val consumer = new DefaultRabbitMQConsumer(
+    val consumer = new DefaultRabbitMQConsumer[Task](
       "test",
       channel,
       "queueName",
-      true,
       Monitor.noOp,
       DeliveryResult.Reject,
       DefaultListeners.DefaultConsumerListener,
@@ -190,11 +186,10 @@ class DefaultRabbitMQConsumerTest extends FunSuite with MockitoSugar with Eventu
 
     val channel = mock[AutorecoveringChannel]
 
-    val consumer = new DefaultRabbitMQConsumer(
+    val consumer = new DefaultRabbitMQConsumer[Task](
       "test",
       channel,
       "queueName",
-      true,
       Monitor.noOp,
       DeliveryResult.Retry,
       DefaultListeners.DefaultConsumerListener,
@@ -226,11 +221,10 @@ class DefaultRabbitMQConsumerTest extends FunSuite with MockitoSugar with Eventu
 
     val channel = mock[AutorecoveringChannel]
 
-    val consumer = new DefaultRabbitMQConsumer(
+    val consumer = new DefaultRabbitMQConsumer[Task](
       "test",
       channel,
       "queueName",
-      true,
       Monitor.noOp,
       DeliveryResult.Retry,
       DefaultListeners.DefaultConsumerListener,

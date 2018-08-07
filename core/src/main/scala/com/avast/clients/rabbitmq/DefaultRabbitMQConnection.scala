@@ -1,5 +1,6 @@
 package com.avast.clients.rabbitmq
 
+import cats.effect.Effect
 import com.avast.metrics.scalaapi.Monitor
 import com.rabbitmq.client.ShutdownSignalException
 import com.typesafe.config.Config
@@ -7,16 +8,17 @@ import com.typesafe.scalalogging.StrictLogging
 import monix.eval.Task
 import monix.execution.Scheduler
 
+import scala.concurrent.ExecutionContext
 import scala.language.higherKinds
 import scala.util.control.NonFatal
 
-class DefaultRabbitMQConnection[F[_]: FromTask: ToTask](connection: ServerConnection,
-                                                        info: RabbitMQConnectionInfo,
-                                                        config: Config,
-                                                        connectionListener: ConnectionListener,
-                                                        channelListener: ChannelListener,
-                                                        consumerListener: ConsumerListener,
-                                                        blockingScheduler: Scheduler)
+class DefaultRabbitMQConnection[F[_]: Effect](connection: ServerConnection,
+                                              info: RabbitMQConnectionInfo,
+                                              config: Config,
+                                              override val connectionListener: ConnectionListener,
+                                              override val channelListener: ChannelListener,
+                                              override val consumerListener: ConsumerListener,
+                                              blockingScheduler: Scheduler)
     extends RabbitMQConnection[F]
     with StrictLogging {
   // scalastyle:off
@@ -47,7 +49,10 @@ class DefaultRabbitMQConnection[F[_]: FromTask: ToTask](connection: ServerConnec
   }
 
   def newConsumer[A: DeliveryConverter](configName: String, monitor: Monitor)(readAction: DeliveryReadAction[F, A])(
-      implicit scheduler: Scheduler): DefaultRabbitMQConsumer = {
+      implicit ec: ExecutionContext): DefaultRabbitMQConsumer[F] = {
+
+    implicit val scheduler = Scheduler(ses, ec)
+
     addAutoCloseable {
       DefaultRabbitMQClientFactory.Consumer
         .fromConfig[F, A](config.getConfig(configName), createChannel(), info, blockingScheduler, monitor, consumerListener, readAction)
@@ -55,12 +60,19 @@ class DefaultRabbitMQConnection[F[_]: FromTask: ToTask](connection: ServerConnec
   }
 
   def newPullConsumer[A: DeliveryConverter](configName: String, monitor: Monitor)(
-      implicit scheduler: Scheduler): DefaultRabbitMQPullConsumer[F, A] = addAutoCloseable {
-    DefaultRabbitMQClientFactory.PullConsumer
-      .fromConfig[F, A](config.getConfig(configName), createChannel(), info, blockingScheduler, monitor)
+      implicit ec: ExecutionContext): DefaultRabbitMQPullConsumer[F, A] = {
+    implicit val scheduler = Scheduler(ses, ec)
+
+    addAutoCloseable {
+      DefaultRabbitMQClientFactory.PullConsumer
+        .fromConfig[F, A](config.getConfig(configName), createChannel(), info, blockingScheduler, monitor)
+    }
   }
 
-  def newProducer[A: ProductConverter](configName: String, monitor: Monitor): DefaultRabbitMQProducer[F, A] = {
+  def newProducer[A: ProductConverter](configName: String, monitor: Monitor)(
+      implicit ec: ExecutionContext): DefaultRabbitMQProducer[F, A] = {
+    implicit val scheduler = Scheduler(ses, ec)
+
     addAutoCloseable {
       DefaultRabbitMQClientFactory.Producer
         .fromConfig[F, A](config.getConfig(configName), createChannel(), info, blockingScheduler, monitor)
@@ -70,25 +82,25 @@ class DefaultRabbitMQConnection[F[_]: FromTask: ToTask](connection: ServerConnec
   def declareExchange(configName: String): F[Unit] = convertToF {
     taskWithChannel { ch =>
       DefaultRabbitMQClientFactory.Declarations.declareExchange(config.getConfig(configName), ch, info)
-    }.executeOn(blockingScheduler)
+    }
   }
 
   def declareQueue(configName: String): F[Unit] = convertToF {
     taskWithChannel { ch =>
       DefaultRabbitMQClientFactory.Declarations.declareQueue(config.getConfig(configName), ch, info)
-    }.executeOn(blockingScheduler)
+    }
   }
 
   def bindQueue(configName: String): F[Unit] = convertToF {
     taskWithChannel { ch =>
       DefaultRabbitMQClientFactory.Declarations.bindQueue(config.getConfig(configName), ch, info)
-    }.executeOn(blockingScheduler)
+    }
   }
 
   def bindExchange(configName: String): F[Unit] = convertToF {
     taskWithChannel { ch =>
       DefaultRabbitMQClientFactory.Declarations.bindExchange(config.getConfig(configName), ch, info)
-    }.executeOn(blockingScheduler)
+    }
   }
 
   protected def addAutoCloseable[A <: AutoCloseable](a: A): A = {
@@ -123,6 +135,7 @@ class DefaultRabbitMQConnection[F[_]: FromTask: ToTask](connection: ServerConnec
             .flatMap(_ => Task.raiseError(e))
       }
     }.flatten // surrounded with Task.apply to catch possible errors when creating the channel
+    .asyncBoundary
   }
 
   /** Closes this factory and all created consumers and producers.
@@ -133,13 +146,11 @@ class DefaultRabbitMQConnection[F[_]: FromTask: ToTask](connection: ServerConnec
   }
 
   private def convertFromF[A](task: F[A]): Task[A] = {
-    implicitly[ToTask[F]].apply(task)
+    Task.fromEffect(task)
   }
 
   private def convertToF[A](task: Task[A]): F[A] = {
-    implicitly[FromTask[F]].apply(task)
+    task.to[F](Effect[F], blockingScheduler)
   }
 
 }
-
-object DefaultRabbitMQConnection extends StrictLogging {}

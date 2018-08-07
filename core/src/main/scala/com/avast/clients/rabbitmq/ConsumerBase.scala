@@ -1,17 +1,19 @@
 package com.avast.clients.rabbitmq
 
+import cats.effect.Effect
 import com.avast.clients.rabbitmq.DefaultRabbitMQConsumer.RepublishOriginalRoutingKeyHeaderName
 import com.avast.clients.rabbitmq.api.DeliveryResult
-import com.avast.clients.rabbitmq.api.DeliveryResult.{Ack, Reject, Republish, Retry}
 import com.avast.metrics.scalaapi.Monitor
 import com.rabbitmq.client.AMQP.BasicProperties
 import com.typesafe.scalalogging.StrictLogging
 import monix.eval.Task
 import monix.execution.Scheduler
+
 import scala.collection.JavaConverters._
+import scala.language.higherKinds
 import scala.util.control.NonFatal
 
-private[rabbitmq] trait ConsumerBase extends StrictLogging {
+private[rabbitmq] trait ConsumerBase[F[_]] extends StrictLogging {
   protected def name: String
   protected def queueName: String
   protected def channel: ServerChannel
@@ -25,16 +27,18 @@ private[rabbitmq] trait ConsumerBase extends StrictLogging {
   private val resultRepublishMeter = resultsMonitor.meter("republish")
 
   protected def handleResult(messageId: String, deliveryTag: Long, properties: BasicProperties, routingKey: String, body: Array[Byte])(
-      res: DeliveryResult): Task[Unit] = {
+      res: DeliveryResult)(implicit F: Effect[F], sch: Scheduler): F[Unit] = {
     import DeliveryResult._
 
-    res match {
+    val task = res match {
       case Ack => ack(messageId, deliveryTag)
       case Reject => reject(messageId, deliveryTag)
       case Retry => retry(messageId, deliveryTag)
       case Republish(newHeaders) =>
         republish(messageId, deliveryTag, mergeHeadersForRepublish(newHeaders, properties, routingKey), body)
     }
+
+    task.to[F]
   }
 
   protected def ack(messageId: String, deliveryTag: Long): Task[Unit] =
@@ -46,7 +50,7 @@ private[rabbitmq] trait ConsumerBase extends StrictLogging {
       } catch {
         case NonFatal(e) => logger.warn(s"[$name] Error while confirming the delivery", e)
       }
-    }.executeOn(blockingScheduler)
+    }.executeOn(blockingScheduler).asyncBoundary
 
   protected def reject(messageId: String, deliveryTag: Long): Task[Unit] =
     Task {
@@ -57,7 +61,7 @@ private[rabbitmq] trait ConsumerBase extends StrictLogging {
       } catch {
         case NonFatal(e) => logger.warn(s"[$name] Error while rejecting the delivery", e)
       }
-    }.executeOn(blockingScheduler)
+    }.executeOn(blockingScheduler).asyncBoundary
 
   protected def retry(messageId: String, deliveryTag: Long): Task[Unit] =
     Task {
@@ -68,7 +72,7 @@ private[rabbitmq] trait ConsumerBase extends StrictLogging {
       } catch {
         case NonFatal(e) => logger.warn(s"[$name] Error while rejecting (with requeue) the delivery", e)
       }
-    }.executeOn(blockingScheduler)
+    }.executeOn(blockingScheduler).asyncBoundary
 
   protected def republish(messageId: String, deliveryTag: Long, properties: BasicProperties, body: Array[Byte]): Task[Unit] =
     Task {
@@ -80,7 +84,7 @@ private[rabbitmq] trait ConsumerBase extends StrictLogging {
       } catch {
         case NonFatal(e) => logger.warn(s"[$name] Error while republishing the delivery", e)
       }
-    }.executeOn(blockingScheduler)
+    }.executeOn(blockingScheduler).asyncBoundary
 
   protected def mergeHeadersForRepublish(newHeaders: Map[String, AnyRef],
                                          properties: BasicProperties,

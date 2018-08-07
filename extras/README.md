@@ -18,9 +18,15 @@ _Note: it works ONLY for `Republish` and not for `Retry`!_
 
 The `PoisonedMessageHandler` is _finally tagless_ for Scala (see [related info](../README.md#scala-usage)) and bound to `CompletableFuture` for Java.
 
+Scala:
 ```scala
-val newReadAction = PoisonedMessageHandler[Future](3)(myReadAction)
+import cats.instances.future._ // imports `MonadError[Future, Throwable]`
+
+val newReadAction = PoisonedMessageHandler[Future, MyDeliveryType](3)(myReadAction)
 ```
+
+Please note that unlike the RabbitMQConnection, just `F[_]: MonadError` is required here -> `Future` etc. works!
+
 Java:
 ```java
 newReadAction = PoisonedMessageHandler.forJava(3, myReadAction, executor);
@@ -31,11 +37,9 @@ Republish(Map(PoisonedMessageHandler.RepublishCountHeaderName -> 1.asInstanceOf[
 ```
 Note you can provide your custom poisoned-message handle action:
 ```scala
+import cats.instances.future._ // imports `MonadError[Future, Throwable]`
 
-implicit val fkFromTask: FunctionK[Task, Future] = ???
-implicit val fkToTask: FunctionK[Future, Task] = ???
-
-val newReadAction = PoisonedMessageHandler.withCustomPoisonedAction[Future](3)(myReadAction) { delivery =>
+val newReadAction = PoisonedMessageHandler.withCustomPoisonedAction[Future, MyDeliveryType](3)(myReadAction) { delivery =>
   logger.warn(s"Delivery $delivery is poisoned!")
   Future.successful(())
 }

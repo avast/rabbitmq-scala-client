@@ -4,9 +4,8 @@
 [![Download](https://api.bintray.com/packages/avast/maven/rabbitmq-scala-client/images/download.svg) ](https://bintray.com/avast/maven/rabbitmq-scala-client/_latestVersion)
 
 
-This client is lightweight wrapper over standard [RabbitMQ java client](https://www.rabbitmq.com/java-client.html).
-It's API may be difficult to use for inexperienced RabbitMQ users. Goal of this library is to simplify basic use cases and shadow the programmer
-from the underlying client.
+This client is Scala-first wrapper over standard [RabbitMQ java client](https://www.rabbitmq.com/java-client.html). Goal of this library is
+to simplify basic use cases - to provide FP-oriented API for programmers and to shadow the programmer from an underlying client.
 
 The library has both Scala and Java API where the Scala API is generic and gives you an option to adapt to your application's type -
 see [Scala usage below](#scala-usage).
@@ -28,14 +27,15 @@ some optional functionality:
 
 ## Migration
 
-There is a [migration guide](Migration-5-6.md) between versions 5 and 6.
+There is a [migration guide](Migration-5-6.md) between versions 5 and 6.0.x.  
+There is a [migration guide](Migration-6-6_1.md) between versions 6.0.x and 6.1.x.
 
 ## Usage
 
 ### Configuration
 
 #### Structured config
-Since v 5.x, it's necessary to have the config structured as following:
+
 ```hocon
 rabbitConfig {
   // connection config
@@ -158,39 +158,59 @@ For full list of options please see [reference.conf](core/src/main/resources/ref
 
 ### Scala usage
 
-The Scala API is now _finally tagless_ (read more e.g. [here](https://www.beyondthelines.net/programming/introduction-to-tagless-final/)) -
-you can change the type it works with by specifying it when creating the _connection_. You have to provide`cats.arrow.FunctionK[Task, A]`
-and `cats.arrow.FunctionK[A, Task]` when creating new connection.
+The Scala API is now _finally tagless_ (read more e.g. [here](https://www.beyondthelines.net/programming/introduction-to-tagless-final/))
+meaning it can use whatever [`F[_]: cats.effect.Effect`](https://typelevel.org/cats-effect/typeclasses/effect.html)
+(e.g. `cats.effect.IO`, `monix.eval.Task`).
+Alternatively you are able to use any `F[_]` which is convertible to/from `monix.eval.Task` (see [Using own F](#using-own-non-effect-f))
 
 The Scala API uses types-conversions for both consumer and producer, that means you don't have to work directly with `Bytes` (however you
 still can, if you want) and you touch only your business class which is then (de)serialized using provided converter.
 
 The library uses two types of executors - one is for blocking (IO) operations and the second for callbacks. You _have to_ provide both of them:
 1. Blocking executor as `ExecutorService`
-1. Callback executor as `monix.execution.Scheduler` - you can get it e.g. by calling `Scheduler(myFavoriteExecutionContext)`
+1. Callback executor as `scala.concurrent.ExecutionContext`
 
 ```scala
 import com.typesafe.config.ConfigFactory
 import com.avast.metrics.api.Monitor
 import com.avast.clients.rabbitmq._ // for generic types support
 import com.avast.bytes.Bytes
-import monix.execution._
 import monix.eval._
 
 val config = ConfigFactory.load().getConfig("myRabbitConfig")
 
-implicit val sch: Scheduler = ???
+implicit val ec: ExecutionContext = ???
 val blockingExecutor: ExecutorService = Executors.newCachedThreadPool()
 
 val monitor: Monitor = ???
 
-implicit val fkToTask: FunctionK[Future, Task] = ???
-implicit val fkFromTask: FunctionK[Task, Future] = ???
-
 // here you create the connection; it's shared for all producers/consumers amongst one RabbitMQ server - they will share a single TCP connection
 // but have separated channels
 // if you expect very high load, you can use separate connections for each producer/consumer, but it's usually not needed
-val rabbitConnection = RabbitMQConnection.fromConfig[Future](config, blockingExecutor) // DefaultRabbitMQConnection[Future]
+val rabbitConnection = RabbitMQConnection.fromConfig[Task](config, blockingExecutor) // DefaultRabbitMQConnection[Task]
+
+val consumer = rabbitConnection.newConsumer[Bytes]("consumer", monitor) { 
+  case delivery: Delivery.Ok[Bytes] =>
+      println(delivery)
+      Task.now(DeliveryResult.Ack)
+      
+    case _: Delivery.MalformedContent =>
+      Task.now(DeliveryResult.Reject)
+} // DefaultRabbitMQConsumer[Task]
+
+val sender = rabbitConnection.newProducer("producer", monitor) // DefaultRabbitMQProducer[Task]
+
+sender.send(...).runAsync // because it's Task, don't forget to run it ;-)
+
+```
+
+or with `scala.concurrent.Future` (and other _strict_ types):
+
+```scala
+implicit val fkToTask: FunctionK[Future, Task] = ???
+implicit val fkFromTask: FunctionK[Task, Future] = ???
+
+val rabbitConnection = RabbitMQConnection.fromConfig[Task](config, blockingExecutor).imapK[Future] // DefaultRabbitMQConnection[Future]
 
 val consumer = rabbitConnection.newConsumer[Bytes]("consumer", monitor) { 
   case delivery: Delivery.Ok[Bytes] =>
@@ -206,20 +226,19 @@ val sender = rabbitConnection.newProducer("producer", monitor) // DefaultRabbitM
 sender.send(...) // Future[Unit]
 ```
 
-or with `monix.eval.Task`:
+#### Using own non-Effect F
+
+By default only `F[_]: cats.effect.Effect` can be used when creating new connection which makes some commonly used
+([_strict_](https://stackoverflow.com/questions/27454798/is-future-in-scala-a-monad)) types like `scala.cuncurrent.Future` impossible to use.  
+However there exists a workaround:
+1. Create `RabbitMQConnection[Task]`
+1. Convert it to your `F[_]` by providing `cats.arrow.FunctionK[Task, A]` and `cats.arrow.FunctionK[A, Task]`
 
 ```scala
-implicit val fk: FunctionK[Task, Task] = cats.arrow.FunctionK.id
+implicit val fkToFuture: cats.arrow.FunctionK[Task, Future] = ???
+implicit val fkFromFuture: cats.arrow.FunctionK[Future, Task] = ???
 
-val rabbitConnection = RabbitMQConnection.fromConfig[Task](config, blockingExecutor) // DefaultRabbitMQConnection[Task]
-
-val consumer = rabbitConnection.newConsumer[Bytes]("consumer", monitor) { 
-  ...
-} // DefaultRabbitMQConsumer[Task]
-
-val sender = rabbitConnection.newProducer("producer", monitor) // DefaultRabbitMQProducer[Task]
-
-sender.send(...).runAsync // because it's Task, don't forget to run it ;-)
+val rabbitConnection: RabbitMQConnection[Future] = RabbitMQConnection.fromConfig[Task].imapK[Future]
 ```
 
 #### Providing converters for producer/consumer
