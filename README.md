@@ -34,7 +34,7 @@ There is a [migration guide](Migration-5-6.md) between versions 5 and 6.
 ### Configuration
 
 #### Structured config
-Since v 5.x, it's necessary to have the config structured as following:
+
 ```hocon
 rabbitConfig {
   // connection config
@@ -174,7 +174,6 @@ import com.typesafe.config.ConfigFactory
 import com.avast.metrics.api.Monitor
 import com.avast.clients.rabbitmq._ // for generic types support
 import com.avast.bytes.Bytes
-import monix.execution._
 import monix.eval._
 
 val config = ConfigFactory.load().getConfig("myRabbitConfig")
@@ -183,8 +182,6 @@ implicit val ec: ExecutionContext = ???
 val blockingExecutor: ExecutorService = Executors.newCachedThreadPool()
 
 val monitor: Monitor = ???
-
-implicit val fk: FunctionK[Task, Task] = cats.arrow.FunctionK.id
 
 // here you create the connection; it's shared for all producers/consumers amongst one RabbitMQ server - they will share a single TCP connection
 // but have separated channels
