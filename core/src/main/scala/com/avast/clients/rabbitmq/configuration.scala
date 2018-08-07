@@ -16,8 +16,7 @@ case class RabbitMQConnectionConfig(hosts: Array[String],
                                     topologyRecovery: Boolean,
                                     networkRecovery: NetworkRecovery,
                                     credentials: Credentials,
-                                    ssl: Ssl,
-                                    useKluzo: Boolean)
+                                    ssl: Ssl)
 
 case class NetworkRecovery(enabled: Boolean, period: Duration)
 

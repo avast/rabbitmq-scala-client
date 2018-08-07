@@ -8,9 +8,6 @@ import com.avast.clients.rabbitmq.TestImplicits._
 import com.avast.clients.rabbitmq.api._
 import com.avast.clients.rabbitmq.extras.PoisonedMessageHandler
 import com.avast.clients.rabbitmq.extras.format.JsonDeliveryConverter
-import com.avast.continuity.Continuity
-import com.avast.continuity.monix.Monix
-import com.avast.kluzo.{Kluzo, TraceId}
 import com.avast.metrics.scalaapi.Monitor
 import com.typesafe.config.{Config, ConfigFactory, ConfigValueFactory}
 import com.typesafe.scalalogging.StrictLogging
@@ -63,9 +60,9 @@ class LiveTest extends FunSuite with Eventually with ScalaFutures with StrictLog
       Random.alphanumeric.take(length).mkString("")
     }
 
-    val ex = Continuity.wrapExecutionContextExecutorService(ExecutionContext.fromExecutorService(Executors.newCachedThreadPool()))
+    val ex = ExecutionContext.fromExecutorService(Executors.newCachedThreadPool())
 
-    implicit val sched: Scheduler = Monix.wrapScheduler(Scheduler(Executors.newCachedThreadPool()))
+    implicit val sched: Scheduler = Scheduler(Executors.newCachedThreadPool())
   }
 
   val testHelper = new TestHelper(System.getProperty("rabbit.host"), System.getProperty("rabbit.tcp.15672").toInt)
@@ -81,8 +78,6 @@ class LiveTest extends FunSuite with Eventually with ScalaFutures with StrictLog
 
     rabbitConnection.newConsumer("consumer", Monitor.noOp()) { _: Delivery[Bytes] =>
       counter.incrementAndGet()
-      logger.debug(s"Kluzo: ${Kluzo.getTraceId}")
-      assertResult(true)(Kluzo.getTraceId.nonEmpty)
 
       Task {
         processed.release()
@@ -175,10 +170,8 @@ class LiveTest extends FunSuite with Eventually with ScalaFutures with StrictLog
 
     rabbitConnection.newConsumer("consumer", Monitor.noOp()) { _: Delivery[Bytes] =>
       cnt.incrementAndGet()
-      assertResult(true)(Kluzo.getTraceId.nonEmpty)
 
       Task {
-        assertResult(true)(Kluzo.getTraceId.nonEmpty)
         Thread.sleep(800) // timeout is set to 500 ms
         Ack
       }
@@ -220,66 +213,6 @@ class LiveTest extends FunSuite with Eventually with ScalaFutures with StrictLog
     eventually(timeout(Span(5, Seconds)), interval(Span(0.25, Seconds))) {
       assert(cnt.get() >= 40)
       assert(testHelper.getMessagesCount(queueName) <= 20)
-    }
-  }
-
-  test("passes TraceId through the queue") {
-    val c = createConfig()
-    import c._
-
-    val rabbitConnection = RabbitMQConnection.fromConfig[Task](config, ex).imapK[Try]
-
-    val cnt = new AtomicInteger(0)
-
-    val traceId = TraceId.generate
-
-    rabbitConnection.newConsumer("consumer", Monitor.noOp()) { _: Delivery[Bytes] =>
-      cnt.incrementAndGet()
-      assertResult(Some(traceId))(Kluzo.getTraceId)
-      Success(Ack)
-    }
-
-    val sender = rabbitConnection.newProducer("producer", Monitor.noOp())
-
-    for (_ <- 1 to 10) {
-      Kluzo.withTraceId(Some(traceId)) {
-        sender.send("test", Bytes.copyFromUtf8(Random.nextString(10)))
-      }
-    }
-
-    eventually(timeout(Span(3, Seconds)), interval(Span(0.25, Seconds))) {
-      assert(cnt.get() == 10)
-      assert(testHelper.getMessagesCount(queueName) <= 0)
-    }
-  }
-
-  test("passes user-specified TraceId through the queue") {
-    val c = createConfig()
-    import c._
-
-    val rabbitConnection = RabbitMQConnection.fromConfig[Task](config, ex).imapK[Try]
-
-    val cnt = new AtomicInteger(0)
-
-    val traceId = "someTraceId"
-
-    rabbitConnection.newConsumer("consumer", Monitor.noOp()) { _: Delivery[Bytes] =>
-      cnt.incrementAndGet()
-      assertResult(Some(TraceId(traceId)))(Kluzo.getTraceId)
-      Success(Ack)
-    }
-
-    val sender = rabbitConnection.newProducer("producer", Monitor.noOp())
-
-    for (_ <- 1 to 10) {
-      val properties = MessageProperties(headers = Map(Kluzo.HttpHeaderName -> traceId.asInstanceOf[AnyRef]))
-
-      sender.send("test", Bytes.copyFromUtf8(Random.nextString(10)), Some(properties)).failed.foreach(fail(_: Throwable))
-    }
-
-    eventually(timeout(Span(3, Seconds)), interval(Span(0.25, Seconds))) {
-      assert(cnt.get() >= 10)
-      assert(testHelper.getMessagesCount(queueName) <= 0)
     }
   }
 

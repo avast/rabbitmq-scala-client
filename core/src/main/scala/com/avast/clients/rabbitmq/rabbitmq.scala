@@ -56,13 +56,15 @@ package object rabbitmq {
             readAction(d)
         }
 
-        override def newProducer[A: ProductConverter](configName: String, monitor: Monitor): RabbitMQProducer[G, A] with AutoCloseable = {
+        override def newProducer[A: ProductConverter](configName: String, monitor: Monitor)(
+            implicit ec: ExecutionContext): RabbitMQProducer[G, A] with AutoCloseable = {
 
           new RabbitMQProducer[G, A] with AutoCloseable {
             private val producer = connection.newProducer(configName, monitor)
 
-            override def send(routingKey: String, body: A, properties: Option[MessageProperties]): G[Unit] =
+            override def send(routingKey: String, body: A, properties: Option[MessageProperties]): G[Unit] = taskToG[G, Unit] {
               producer.send(routingKey, body, properties)
+            }
 
             override def close(): Unit = producer.close()
           }

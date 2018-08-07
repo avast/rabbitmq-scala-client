@@ -27,7 +27,8 @@ some optional functionality:
 
 ## Migration
 
-There is a [migration guide](Migration-5-6.md) between versions 5 and 6.
+There is a [migration guide](Migration-5-6.md) between versions 5 and 6.0.x.  
+There is a [migration guide](Migration-6-6_1.md) between versions 6.0.x and 6.1.x.
 
 ## Usage
 

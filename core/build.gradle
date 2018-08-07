@@ -32,9 +32,8 @@ dependencies {
     compile "com.iheart:ficus_$scalaVersion:1.4.3"
 
     compile "io.monix:monix_$scalaVersion:$monixVersion"
-
-    compile "com.avast.kluzo:kluzo-scala_$scalaVersion:3.0.1"
-    compile "com.avast.continuity:continuity-monix_$scalaVersion:3.2.0"
+    compile "org.typelevel:cats-core_$scalaVersion:$catsVersion"
+    compile "org.typelevel:cats-effect_$scalaVersion:$catsEffectVersion"
 
     compile 'org.xbib:jsr-305:1.0.0'
 

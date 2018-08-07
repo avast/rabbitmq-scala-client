@@ -6,7 +6,6 @@ import cats.effect.Effect
 import com.avast.bytes.Bytes
 import com.avast.clients.rabbitmq.api.{MessageProperties, RabbitMQProducer}
 import com.avast.clients.rabbitmq.javaapi.JavaConverters._
-import com.avast.kluzo.Kluzo
 import com.avast.metrics.scalaapi.Monitor
 import com.rabbitmq.client.AMQP.BasicProperties
 import com.rabbitmq.client.ReturnListener
@@ -21,10 +20,9 @@ class DefaultRabbitMQProducer[F[_], A: ProductConverter](name: String,
                                                          exchangeName: String,
                                                          channel: ServerChannel,
                                                          defaultProperties: MessageProperties,
-                                                         useKluzo: Boolean,
                                                          reportUnroutable: Boolean,
                                                          blockingScheduler: Scheduler,
-                                                         monitor: Monitor)(implicit F: Effect[F])
+                                                         monitor: Monitor)(implicit F: Effect[F], sch: Scheduler)
     extends RabbitMQProducer[F, A]
     with AutoCloseable
     with StrictLogging {
@@ -42,26 +40,7 @@ class DefaultRabbitMQProducer[F[_], A: ProductConverter](name: String,
   override def send(routingKey: String, body: A, properties: Option[MessageProperties] = None): F[Unit] = {
     val finalProperties = {
       val initialProperties = properties.getOrElse(defaultProperties.copy(messageId = Some(UUID.randomUUID().toString)))
-      val messageProperties = converter.fillProperties(initialProperties)
-
-      if (useKluzo && Kluzo.getTraceId.nonEmpty) {
-
-        val headers = {
-          val headers = messageProperties.headers
-
-          headers
-            .get(Kluzo.HttpHeaderName)
-            .map(_.toString)
-            .orElse(Kluzo.getTraceId.map(_.value)) match {
-            case Some(traceId) => headers + (Kluzo.HttpHeaderName -> traceId)
-            case None => headers
-          }
-        }
-
-        messageProperties.copy(headers = headers)
-      } else {
-        messageProperties
-      }
+      converter.fillProperties(initialProperties)
     }
 
     val task = converter.convert(body) match {
@@ -69,7 +48,7 @@ class DefaultRabbitMQProducer[F[_], A: ProductConverter](name: String,
       case Left(ce) => Task.raiseError(ce)
     }
 
-    task.to[F](F, blockingScheduler)
+    task.to[F]
   }
 
   private def send(routingKey: String, body: Bytes, properties: MessageProperties): Task[Unit] = {
@@ -88,7 +67,7 @@ class DefaultRabbitMQProducer[F[_], A: ProductConverter](name: String,
           sentFailedMeter.mark()
           throw e
       }
-    }.executeOn(blockingScheduler)
+    }.executeOn(blockingScheduler).asyncBoundary
   }
 
   override def close(): Unit = {

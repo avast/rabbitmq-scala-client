@@ -57,7 +57,6 @@ class DefaultRabbitMQPullConsumer[F[_]: Effect, A: DeliveryConverter](
           handleMessage(response, properties, routingKey) { result =>
             super
               .handleResult(messageId, deliveryTag, properties, routingKey, response.getBody)(result)
-              .to[F]
               .map { _ =>
                 processingCount.decrementAndGet()
                 ()

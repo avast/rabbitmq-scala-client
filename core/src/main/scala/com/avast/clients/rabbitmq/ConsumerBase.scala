@@ -1,5 +1,6 @@
 package com.avast.clients.rabbitmq
 
+import cats.effect.Effect
 import com.avast.clients.rabbitmq.DefaultRabbitMQConsumer.RepublishOriginalRoutingKeyHeaderName
 import com.avast.clients.rabbitmq.api.DeliveryResult
 import com.avast.metrics.scalaapi.Monitor
@@ -26,7 +27,7 @@ private[rabbitmq] trait ConsumerBase[F[_]] extends StrictLogging {
   private val resultRepublishMeter = resultsMonitor.meter("republish")
 
   protected def handleResult(messageId: String, deliveryTag: Long, properties: BasicProperties, routingKey: String, body: Array[Byte])(
-      res: DeliveryResult): Task[Unit] = {
+      res: DeliveryResult)(implicit F: Effect[F], sch: Scheduler): F[Unit] = {
     import DeliveryResult._
 
     val task = res match {
@@ -37,7 +38,7 @@ private[rabbitmq] trait ConsumerBase[F[_]] extends StrictLogging {
         republish(messageId, deliveryTag, mergeHeadersForRepublish(newHeaders, properties, routingKey), body)
     }
 
-    task
+    task.to[F]
   }
 
   protected def ack(messageId: String, deliveryTag: Long): Task[Unit] =

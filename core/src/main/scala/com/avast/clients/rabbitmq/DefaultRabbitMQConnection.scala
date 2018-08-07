@@ -1,7 +1,6 @@
 package com.avast.clients.rabbitmq
 
 import cats.effect.Effect
-import com.avast.continuity.monix.Monix
 import com.avast.metrics.scalaapi.Monitor
 import com.rabbitmq.client.ShutdownSignalException
 import com.typesafe.config.Config
@@ -16,7 +15,6 @@ import scala.util.control.NonFatal
 class DefaultRabbitMQConnection[F[_]: Effect](connection: ServerConnection,
                                               info: RabbitMQConnectionInfo,
                                               config: Config,
-                                              useKluzo: Boolean,
                                               override val connectionListener: ConnectionListener,
                                               override val channelListener: ChannelListener,
                                               override val consumerListener: ConsumerListener,
@@ -53,28 +51,17 @@ class DefaultRabbitMQConnection[F[_]: Effect](connection: ServerConnection,
   def newConsumer[A: DeliveryConverter](configName: String, monitor: Monitor)(readAction: DeliveryReadAction[F, A])(
       implicit ec: ExecutionContext): DefaultRabbitMQConsumer[F] = {
 
-    implicit val scheduler = if (useKluzo) {
-      Monix.wrapScheduler(Scheduler(ses, ec))
-    } else Scheduler(ses, ec)
+    implicit val scheduler = Scheduler(ses, ec)
 
     addAutoCloseable {
       DefaultRabbitMQClientFactory.Consumer
-        .fromConfig[F, A](config.getConfig(configName),
-                          createChannel(),
-                          info,
-                          useKluzo,
-                          blockingScheduler,
-                          monitor,
-                          consumerListener,
-                          readAction)
+        .fromConfig[F, A](config.getConfig(configName), createChannel(), info, blockingScheduler, monitor, consumerListener, readAction)
     }
   }
 
   def newPullConsumer[A: DeliveryConverter](configName: String, monitor: Monitor)(
       implicit ec: ExecutionContext): DefaultRabbitMQPullConsumer[F, A] = {
-    implicit val scheduler = if (useKluzo) {
-      Monix.wrapScheduler(Scheduler(ses, ec))
-    } else Scheduler(ses, ec)
+    implicit val scheduler = Scheduler(ses, ec)
 
     addAutoCloseable {
       DefaultRabbitMQClientFactory.PullConsumer
@@ -82,10 +69,13 @@ class DefaultRabbitMQConnection[F[_]: Effect](connection: ServerConnection,
     }
   }
 
-  def newProducer[A: ProductConverter](configName: String, monitor: Monitor): DefaultRabbitMQProducer[F, A] = {
+  def newProducer[A: ProductConverter](configName: String, monitor: Monitor)(
+      implicit ec: ExecutionContext): DefaultRabbitMQProducer[F, A] = {
+    implicit val scheduler = Scheduler(ses, ec)
+
     addAutoCloseable {
       DefaultRabbitMQClientFactory.Producer
-        .fromConfig[F, A](config.getConfig(configName), createChannel(), info, useKluzo, blockingScheduler, monitor)
+        .fromConfig[F, A](config.getConfig(configName), createChannel(), info, blockingScheduler, monitor)
     }
   }
 

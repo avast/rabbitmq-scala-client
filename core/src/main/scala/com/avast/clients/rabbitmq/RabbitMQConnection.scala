@@ -7,7 +7,6 @@ import java.util.concurrent.ExecutorService
 import cats.effect.Effect
 import com.avast.clients.rabbitmq.api._
 import com.avast.clients.rabbitmq.ssl.{KeyStoreTypes, SSLBuilder}
-import com.avast.continuity.monix.Monix
 import com.avast.metrics.scalaapi.Monitor
 import com.rabbitmq.client._
 import com.typesafe.config.{Config, ConfigFactory}
@@ -42,7 +41,8 @@ trait RabbitMQConnection[F[_]] extends AutoCloseable {
     * @param configName Name of configuration of the producer.
     * @param monitor    Monitor for metrics.F
     */
-  def newProducer[A: ProductConverter](configName: String, monitor: Monitor): RabbitMQProducer[F, A] with AutoCloseable
+  def newProducer[A: ProductConverter](configName: String, monitor: Monitor)(
+      implicit ec: ExecutionContext): RabbitMQProducer[F, A] with AutoCloseable
 
   /** Creates new instance of pull consumer, using the TypeSafe configuration passed to the factory and consumer name.
     *
@@ -122,13 +122,7 @@ object RabbitMQConnection extends StrictLogging {
 
     val connection = createConnection(connectionConfig, blockingExecutor, connectionListener, channelListener, consumerListener)
 
-    val useKluzo = connectionConfig.useKluzo
-
-    val blockingScheduler: Scheduler = if (useKluzo) {
-      Monix.wrapScheduler(Scheduler(ses, ExecutionContext.fromExecutor(blockingExecutor)))
-    } else {
-      Scheduler(ses, ExecutionContext.fromExecutor(blockingExecutor))
-    }
+    val blockingScheduler: Scheduler = Scheduler(ses, ExecutionContext.fromExecutor(blockingExecutor))
 
     new DefaultRabbitMQConnection(
       connection = connection,
@@ -140,8 +134,7 @@ object RabbitMQConnection extends StrictLogging {
       connectionListener = connectionListener,
       channelListener = channelListener,
       consumerListener = consumerListener,
-      blockingScheduler = blockingScheduler,
-      useKluzo = useKluzo
+      blockingScheduler = blockingScheduler
     )
   }
 
