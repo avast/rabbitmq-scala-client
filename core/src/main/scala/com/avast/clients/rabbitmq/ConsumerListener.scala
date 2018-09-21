@@ -36,7 +36,11 @@ object ConsumerListener {
                             consumerName: String,
                             consumerTag: String,
                             cause: ShutdownSignalException): Unit = {
-      logger.warn(s"[$consumerName] Shutdown of consumer on channel $channel", cause)
+      if (cause.isInitiatedByApplication) {
+        logger.info(s"[$consumerName] Shutdown of consumer on channel $channel")
+      } else {
+        logger.warn(s"[$consumerName] Shutdown of consumer on channel $channel", cause)
+      }
     }
   }
 }
