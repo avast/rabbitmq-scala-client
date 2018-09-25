@@ -43,7 +43,11 @@ object ConnectionListener {
     }
 
     override def onShutdown(connection: Connection, cause: ShutdownSignalException): Unit = {
-      logger.warn(s"Connection shutdown: $connection (name ${connection.getClientProvidedName})", cause)
+      if (cause.isInitiatedByApplication) {
+        logger.info(s"Connection shutdown: $connection (name ${connection.getClientProvidedName})")
+      } else {
+        logger.warn(s"Connection shutdown: $connection (name ${connection.getClientProvidedName})", cause)
+      }
     }
   }
 }
