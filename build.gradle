@@ -9,7 +9,6 @@ buildscript {
     dependencies {
         classpath 'com.google.protobuf:protobuf-gradle-plugin:0.8.4'
         classpath 'com.avast.gradle:gradle-docker-compose-plugin:0.6.13'
-        classpath 'com.github.maiflai:gradle-scalatest:0.19'
         classpath 'com.github.ben-manes:gradle-versions-plugin:0.17.0'
         classpath 'com.jfrog.bintray.gradle:gradle-bintray-plugin:1.7.3'
     }
@@ -24,7 +23,6 @@ version = version == 'unspecified' ? 'DEVELOPER-SNAPSHOT' : version
 subprojects {
     apply plugin: 'java'
     apply plugin: 'scala'
-    apply plugin: 'com.github.maiflai.scalatest'
     apply plugin: 'com.github.ben-manes.versions'
     apply plugin: 'com.jfrog.bintray'
     apply plugin: 'maven'
@@ -96,17 +94,17 @@ subprojects {
     ext {
         scalaVersion = "2.12"
         scalaVersionFull = "2.12.6"
-        metricsVersion = "2.4.3"
+        metricsVersion = "2.4.4"
         bytesVersion = "2.0.3"
         circeVersion = "0.9.3"
-        cactusVersion = "0.11.1"
+        cactusVersion = "0.12.2"
         monixVersion = "3.0.0-RC1"
         catsVersion = "1.2.0"
         catsEffectVersion = "1.0.0-RC2-78a795d"
     }
 
     dependencies {
-        scalaCompilerPlugin "org.spire-math:kind-projector_$scalaVersion:0.9.4"
+        scalaCompilerPlugin "org.spire-math:kind-projector_$scalaVersion:0.9.7"
 
         testCompile "com.avast.metrics:metrics-jmx:${metricsVersion}"
 

@@ -14,14 +14,11 @@ import monix.execution.Scheduler.Implicits.global
 import org.mockito.Matchers
 import org.mockito.Matchers.any
 import org.mockito.Mockito._
-import org.scalatest.FunSuite
-import org.scalatest.concurrent.{Eventually, ScalaFutures}
-import org.scalatest.exceptions.TestFailedException
-import org.scalatest.mockito.MockitoSugar
 import org.scalatest.time.{Seconds, Span}
 
 import scala.util.Random
-class DefaultRabbitMQPullConsumerTest extends FunSuite with MockitoSugar with ScalaFutures with Eventually {
+
+class DefaultRabbitMQPullConsumerTest extends TestBase {
 
   test("should ACK") {
     val messageId = UUID.randomUUID().toString
@@ -51,11 +48,11 @@ class DefaultRabbitMQPullConsumerTest extends FunSuite with MockitoSugar with Sc
       Scheduler.global
     )
 
-    val PullResult.Ok(dwh) = consumer.pull().runAsync.futureValue
+    val PullResult.Ok(dwh) = consumer.pull().await
 
     assertResult(Some(messageId))(dwh.delivery.properties.messageId)
 
-    dwh.handle(DeliveryResult.Ack).runAsync.futureValue
+    dwh.handle(DeliveryResult.Ack).await
 
     eventually(timeout(Span(1, Seconds)), interval(Span(0.1, Seconds))) {
       verify(channel, times(1)).basicAck(deliveryTag, false)
@@ -93,11 +90,11 @@ class DefaultRabbitMQPullConsumerTest extends FunSuite with MockitoSugar with Sc
       Scheduler.global
     )
 
-    val PullResult.Ok(dwh) = consumer.pull().runAsync.futureValue
+    val PullResult.Ok(dwh) = consumer.pull().await
 
     assertResult(Some(messageId))(dwh.delivery.properties.messageId)
 
-    dwh.handle(DeliveryResult.Retry).runAsync.futureValue
+    dwh.handle(DeliveryResult.Retry).await
 
     eventually(timeout(Span(1, Seconds)), interval(Span(0.1, Seconds))) {
       verify(channel, times(0)).basicAck(deliveryTag, false)
@@ -135,11 +132,11 @@ class DefaultRabbitMQPullConsumerTest extends FunSuite with MockitoSugar with Sc
       Scheduler.global
     )
 
-    val PullResult.Ok(dwh) = consumer.pull().runAsync.futureValue
+    val PullResult.Ok(dwh) = consumer.pull().await
 
     assertResult(Some(messageId))(dwh.delivery.properties.messageId)
 
-    dwh.handle(DeliveryResult.Reject).runAsync.futureValue
+    dwh.handle(DeliveryResult.Reject).await
 
     eventually(timeout(Span(1, Seconds)), interval(Span(0.1, Seconds))) {
       verify(channel, times(0)).basicAck(deliveryTag, false)
@@ -176,11 +173,11 @@ class DefaultRabbitMQPullConsumerTest extends FunSuite with MockitoSugar with Sc
       Scheduler.global
     )
 
-    val PullResult.Ok(dwh) = consumer.pull().runAsync.futureValue
+    val PullResult.Ok(dwh) = consumer.pull().await
 
     assertResult(Some(messageId))(dwh.delivery.properties.messageId)
 
-    dwh.handle(DeliveryResult.Republish()).runAsync.futureValue
+    dwh.handle(DeliveryResult.Republish()).await
 
     eventually(timeout(Span(1, Seconds)), interval(Span(0.1, Seconds))) {
       verify(channel, times(1)).basicAck(deliveryTag, false)
@@ -224,10 +221,8 @@ class DefaultRabbitMQPullConsumerTest extends FunSuite with MockitoSugar with Sc
       Scheduler.global
     )
 
-    try {
-      consumer.pull().runAsync.futureValue
-    } catch {
-      case e: TestFailedException if e.getCause.isInstanceOf[IllegalArgumentException] => // ok
+    assertThrows[IllegalArgumentException] {
+      consumer.pull().await
     }
 
     eventually(timeout(Span(1, Seconds)), interval(Span(0.1, Seconds))) {
@@ -270,12 +265,12 @@ class DefaultRabbitMQPullConsumerTest extends FunSuite with MockitoSugar with Sc
       Scheduler.global
     )
 
-    val PullResult.Ok(dwh) = consumer.pull().runAsync.futureValue
+    val PullResult.Ok(dwh) = consumer.pull().await
     val Delivery.MalformedContent(_, _, _, ce) = dwh.delivery
 
     assertResult(messageId)(ce.getMessage)
 
-    dwh.handle(DeliveryResult.Retry).runAsync.futureValue
+    dwh.handle(DeliveryResult.Retry).await
 
     eventually(timeout(Span(1, Seconds)), interval(Span(0.1, Seconds))) {
       verify(channel, times(0)).basicAck(deliveryTag, false)

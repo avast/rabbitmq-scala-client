@@ -10,13 +10,12 @@ import com.google.protobuf.ByteString
 import io.circe.Decoder
 import io.circe.generic.extras.Configuration
 import io.circe.generic.extras.auto._
-import org.scalatest.FunSuite
 import org.scalatest.concurrent.ScalaFutures
 
 import scala.collection.JavaConverters._
 import scala.concurrent.Future
 
-class MultiFormatConsumerTest extends FunSuite with ScalaFutures {
+class MultiFormatConsumerTest extends TestBase with ScalaFutures {
 
   val StringDeliveryConverter: CheckedDeliveryConverter[String] = new CheckedDeliveryConverter[String] {
     override def canConvert(d: Delivery[Bytes]): Boolean = d.properties.contentType.contains("text/plain")

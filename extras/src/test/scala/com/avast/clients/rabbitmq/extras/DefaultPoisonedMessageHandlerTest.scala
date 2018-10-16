@@ -6,12 +6,11 @@ import com.avast.clients.rabbitmq.api.DeliveryResult.Republish
 import com.avast.clients.rabbitmq.api.{Delivery, DeliveryResult, MessageProperties}
 import com.avast.clients.rabbitmq.extras.PoisonedMessageHandler._
 import monix.execution.Scheduler.Implicits.global
-import org.scalatest.FunSuite
 import org.scalatest.concurrent.ScalaFutures
 
 import scala.concurrent.Future
 
-class DefaultPoisonedMessageHandlerTest extends FunSuite with ScalaFutures {
+class DefaultPoisonedMessageHandlerTest extends TestBase with ScalaFutures {
 
   test("basic") {
 

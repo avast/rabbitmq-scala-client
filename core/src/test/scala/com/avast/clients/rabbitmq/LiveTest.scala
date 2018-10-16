@@ -10,19 +10,17 @@ import com.avast.clients.rabbitmq.extras.PoisonedMessageHandler
 import com.avast.clients.rabbitmq.extras.format.JsonDeliveryConverter
 import com.avast.metrics.scalaapi.Monitor
 import com.typesafe.config.{Config, ConfigFactory, ConfigValueFactory}
-import com.typesafe.scalalogging.StrictLogging
 import monix.eval.Task
 import monix.execution.Scheduler
 import net.ceedubs.ficus.Ficus._
-import org.scalatest.FunSuite
-import org.scalatest.concurrent.{Eventually, ScalaFutures}
+import org.scalatest.concurrent.ScalaFutures
 import org.scalatest.time.{Milliseconds, Seconds, Span}
 
 import scala.collection.JavaConverters._
 import scala.concurrent.{ExecutionContext, Future}
 import scala.util.{Random, Success, Try}
 
-class LiveTest extends FunSuite with Eventually with ScalaFutures with StrictLogging {
+class LiveTest extends TestBase with ScalaFutures {
 
   import com.avast.clients.rabbitmq.api.DeliveryResult._
 
@@ -87,7 +85,7 @@ class LiveTest extends FunSuite with Eventually with ScalaFutures with StrictLog
 
     val sender = rabbitConnection.newProducer("producer", Monitor.noOp())
 
-    sender.send("test", Bytes.copyFromUtf8(Random.nextString(10))).runAsync.futureValue
+    sender.send("test", Bytes.copyFromUtf8(Random.nextString(10))).await
 
     assert(processed.tryAcquire(1, TimeUnit.SECONDS)) // this is to prevent bug where the event was processed multiple times
 
@@ -125,7 +123,7 @@ class LiveTest extends FunSuite with Eventually with ScalaFutures with StrictLog
     val sender = rabbitConnection.newProducer("producer", Monitor.noOp())
 
     for (_ <- 1 to count) {
-      sender.send("test", Bytes.copyFromUtf8(Random.nextString(10))).runAsync.futureValue
+      sender.send("test", Bytes.copyFromUtf8(Random.nextString(10))).await
     }
 
     eventually(timeout(Span(3, Seconds)), interval(Span(0.1, Seconds))) {
@@ -151,8 +149,8 @@ class LiveTest extends FunSuite with Eventually with ScalaFutures with StrictLog
     val sender2 = rabbitConnection.newProducer("producer2", Monitor.noOp())
 
     for (_ <- 1 to 10) {
-      sender1.send("test", Bytes.copyFromUtf8(Random.nextString(10))).runAsync.futureValue
-      sender2.send("test2", Bytes.copyFromUtf8(Random.nextString(10))).runAsync.futureValue
+      sender1.send("test", Bytes.copyFromUtf8(Random.nextString(10))).await
+      sender2.send("test2", Bytes.copyFromUtf8(Random.nextString(10))).await
     }
 
     assertResult(true)(latch.await(500, TimeUnit.MILLISECONDS))
@@ -180,7 +178,7 @@ class LiveTest extends FunSuite with Eventually with ScalaFutures with StrictLog
     val sender = rabbitConnection.newProducer("producer", Monitor.noOp())
 
     for (_ <- 1 to 10) {
-      sender.send("test", Bytes.copyFromUtf8(Random.nextString(10))).runAsync.futureValue
+      sender.send("test", Bytes.copyFromUtf8(Random.nextString(10))).await
     }
 
     eventually(timeout(Span(3, Seconds)), interval(Span(0.25, Seconds))) {
@@ -278,7 +276,7 @@ class LiveTest extends FunSuite with Eventually with ScalaFutures with StrictLog
     val sender = rabbitConnection.newProducer("producer", Monitor.noOp())
 
     for (_ <- 1 to 10) {
-      sender.send("test", Bytes.copyFromUtf8(Random.nextString(10))).runAsync.futureValue
+      sender.send("test", Bytes.copyFromUtf8(Random.nextString(10))).await
     }
 
     eventually {

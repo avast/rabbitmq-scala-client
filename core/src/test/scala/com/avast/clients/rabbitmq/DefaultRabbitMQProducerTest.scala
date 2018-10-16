@@ -10,12 +10,10 @@ import monix.execution.Scheduler
 import monix.execution.Scheduler.Implicits.global
 import org.mockito.Mockito._
 import org.mockito.{ArgumentCaptor, Matchers}
-import org.scalatest.FunSuite
-import org.scalatest.concurrent.{Eventually, ScalaFutures}
-import org.scalatest.mockito.MockitoSugar
 
 import scala.util.Random
-class DefaultRabbitMQProducerTest extends FunSuite with MockitoSugar with Eventually with ScalaFutures {
+
+class DefaultRabbitMQProducerTest extends TestBase {
 
   test("basic") {
     val exchangeName = Random.nextString(10)
@@ -38,7 +36,7 @@ class DefaultRabbitMQProducerTest extends FunSuite with MockitoSugar with Eventu
 
     val body = Bytes.copyFromUtf8(Random.nextString(10))
 
-    producer.send(routingKey, body, Some(MessageProperties.empty)).runAsync.futureValue
+    producer.send(routingKey, body, Some(MessageProperties.empty)).await
 
     val captor = ArgumentCaptor.forClass(classOf[AMQP.BasicProperties])
 

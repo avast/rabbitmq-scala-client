@@ -14,14 +14,11 @@ import monix.execution.Scheduler.Implicits.global
 import org.mockito.Matchers
 import org.mockito.Matchers.any
 import org.mockito.Mockito._
-import org.scalatest.FunSuite
-import org.scalatest.concurrent.Eventually
-import org.scalatest.mockito.MockitoSugar
 import org.scalatest.time.{Seconds, Span}
 
 import scala.util.Random
 
-class DefaultRabbitMQConsumerTest extends FunSuite with MockitoSugar with Eventually {
+class DefaultRabbitMQConsumerTest extends TestBase {
   test("should ACK") {
     val messageId = UUID.randomUUID().toString
 
