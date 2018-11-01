@@ -72,18 +72,16 @@ class LiveTest extends TestBase with ScalaFutures {
     val counter = new AtomicInteger(0)
     val processed = new Semaphore(0)
 
-    val rabbitConnection = RabbitMQConnection.fromConfig[Task](config, ex)
+    val rabbitConnection = RabbitMQConnection.fromConfig[Task](config, ex).await
 
-    rabbitConnection.newConsumer("consumer", Monitor.noOp()) { _: Delivery[Bytes] =>
-      counter.incrementAndGet()
-
-      Task {
-        processed.release()
-        DeliveryResult.Ack
-      }
+    rabbitConnection.newConsumer("consumer", Monitor.noOp()) { _: Delivery[Bytes] => counter.incrementAndGet()Task {
+      processed.release()
+      DeliveryResult.Ack
     }
+    }
+      .await
 
-    val sender = rabbitConnection.newProducer("producer", Monitor.noOp())
+    val sender = rabbitConnection.newProducer("producer", Monitor.noOp()).await
 
     sender.send("test", Bytes.copyFromUtf8(Random.nextString(10))).await
 
@@ -104,23 +102,23 @@ class LiveTest extends TestBase with ScalaFutures {
 
     val latch = new CountDownLatch(count + 5)
 
-    val rabbitConnection = RabbitMQConnection.fromConfig[Task](config, ex)
+    val rabbitConnection = RabbitMQConnection.fromConfig[Task](config, ex).await
 
     val d = new AtomicInteger(0)
 
-    rabbitConnection.newConsumer("consumer", Monitor.noOp()) { _: Delivery[Bytes] =>
-      Task {
-        Thread.sleep(if (d.get() % 2 == 0) 300 else 0)
-        latch.countDown()
+    rabbitConnection.newConsumer("consumer", Monitor.noOp()) { _: Delivery[Bytes] => Task {
+      Thread.sleep(if (d.get() % 2 == 0) 300 else 0)
+      latch.countDown()
 
-        if (d.incrementAndGet() < (cnt - 50)) Ack
-        else {
-          if (d.incrementAndGet() < (cnt - 10)) Retry else Republish()
-        }
+      if (d.incrementAndGet() < (cnt - 50)) Ack
+      else {
+        if (d.incrementAndGet() < (cnt - 10)) Retry else Republish()
       }
     }
+    }
+      .await
 
-    val sender = rabbitConnection.newProducer("producer", Monitor.noOp())
+    val sender = rabbitConnection.newProducer("producer", Monitor.noOp()).await
 
     for (_ <- 1 to count) {
       sender.send("test", Bytes.copyFromUtf8(Random.nextString(10))).await
@@ -138,15 +136,14 @@ class LiveTest extends TestBase with ScalaFutures {
 
     val latch = new CountDownLatch(20)
 
-    val rabbitConnection = RabbitMQConnection.fromConfig[Task](config, ex)
+    val rabbitConnection = RabbitMQConnection.fromConfig[Task](config, ex).await
 
-    rabbitConnection.newConsumer("consumer", Monitor.noOp()) { _: Delivery[Bytes] =>
-      latch.countDown()
-      Task.now(Ack)
-    }
+    rabbitConnection.newConsumer("consumer", Monitor.noOp()) { _: Delivery[Bytes] => latch.countDown()Task.now(Ack)
+      }
+      .await
 
-    val sender1 = rabbitConnection.newProducer("producer", Monitor.noOp())
-    val sender2 = rabbitConnection.newProducer("producer2", Monitor.noOp())
+    val sender1 = rabbitConnection.newProducer("producer", Monitor.noOp()).await
+    val sender2 = rabbitConnection.newProducer("producer2", Monitor.noOp()).await
 
     for (_ <- 1 to 10) {
       sender1.send("test", Bytes.copyFromUtf8(Random.nextString(10))).await
@@ -162,20 +159,18 @@ class LiveTest extends TestBase with ScalaFutures {
     val c = createConfig()
     import c._
 
-    val rabbitConnection = RabbitMQConnection.fromConfig[Task](config, ex)
+    val rabbitConnection = RabbitMQConnection.fromConfig[Task](config, ex).await
 
     val cnt = new AtomicInteger(0)
 
-    rabbitConnection.newConsumer("consumer", Monitor.noOp()) { _: Delivery[Bytes] =>
-      cnt.incrementAndGet()
-
-      Task {
-        Thread.sleep(800) // timeout is set to 500 ms
-        Ack
-      }
+    rabbitConnection.newConsumer("consumer", Monitor.noOp()) { _: Delivery[Bytes] => cnt.incrementAndGet()Task {
+      Thread.sleep(800) // timeout is set to 500 ms
+      Ack
     }
+    }
+      .await
 
-    val sender = rabbitConnection.newProducer("producer", Monitor.noOp())
+    val sender = rabbitConnection.newProducer("producer", Monitor.noOp()).await
 
     for (_ <- 1 to 10) {
       sender.send("test", Bytes.copyFromUtf8(Random.nextString(10))).await
@@ -191,21 +186,19 @@ class LiveTest extends TestBase with ScalaFutures {
     val c = createConfig()
     import c._
 
-    val rabbitConnection = RabbitMQConnection.fromConfig[Task](config, ex).imapK[Try]
+    val rabbitConnection = RabbitMQConnection.fromConfig[Task](config, ex).await.imapK[Try]
 
     val cnt = new AtomicInteger(0)
 
-    rabbitConnection.newConsumer("consumer", Monitor.noOp()) { _: Delivery[Bytes] =>
-      cnt.incrementAndGet()
+    rabbitConnection.newConsumer("consumer", Monitor.noOp()) { _: Delivery[Bytes] => cnt.incrementAndGet()Thread.sleep(800) // timeout is set to 500 ms
+        Success(Ack)
+      }
+      .getOrElse(fail())
 
-      Thread.sleep(800) // timeout is set to 500 ms
-      Success(Ack)
-    }
-
-    val sender = rabbitConnection.newProducer("producer", Monitor.noOp())
+    val sender = rabbitConnection.newProducer("producer", Monitor.noOp()).getOrElse(fail())
 
     for (_ <- 1 to 10) {
-      sender.send("test", Bytes.copyFromUtf8(Random.nextString(10)))
+      sender.send("test", Bytes.copyFromUtf8(Random.nextString(10))).getOrElse(fail())
     }
 
     eventually(timeout(Span(5, Seconds)), interval(Span(0.25, Seconds))) {
@@ -220,9 +213,9 @@ class LiveTest extends TestBase with ScalaFutures {
 
     val latch = new CountDownLatch(10)
 
-    val rabbitConnection = RabbitMQConnection.fromConfig[Task](config, ex).imapK[Try]
+    val rabbitConnection = RabbitMQConnection.fromConfig[Task](config, ex).await.imapK[Try]
 
-    val sender = rabbitConnection.newProducer("producer", Monitor.noOp())
+    val sender = rabbitConnection.newProducer("producer", Monitor.noOp()).getOrElse(fail())
 
     // additional declarations
 
@@ -257,7 +250,7 @@ class LiveTest extends TestBase with ScalaFutures {
     val poisoned = new AtomicInteger(0)
     val processed = new AtomicInteger(0)
 
-    val rabbitConnection = RabbitMQConnection.fromConfig[Task](config, ex)
+    val rabbitConnection = RabbitMQConnection.fromConfig[Task](config, ex).await
 
     val h = PoisonedMessageHandler.withCustomPoisonedAction[Task, Bytes](2) { _: Delivery[Bytes] =>
       Task {
@@ -271,9 +264,9 @@ class LiveTest extends TestBase with ScalaFutures {
       }
     }
 
-    rabbitConnection.newConsumer("consumer", Monitor.noOp())(h)
+    rabbitConnection.newConsumer("consumer", Monitor.noOp())(h).await
 
-    val sender = rabbitConnection.newProducer("producer", Monitor.noOp())
+    val sender = rabbitConnection.newProducer("producer", Monitor.noOp()).await
 
     for (_ <- 1 to 10) {
       sender.send("test", Bytes.copyFromUtf8(Random.nextString(10))).await
@@ -290,11 +283,11 @@ class LiveTest extends TestBase with ScalaFutures {
     val c = createConfig()
     import c._
 
-    val rabbitConnection = RabbitMQConnection.fromConfig[Task](config, ex).imapK[Future]
+    val rabbitConnection = RabbitMQConnection.fromConfig[Task](config, ex).await.imapK[Future]
 
-    val consumer = rabbitConnection.newPullConsumer[Bytes]("consumer", Monitor.noOp())
+    val consumer = rabbitConnection.newPullConsumer[Bytes]("consumer", Monitor.noOp()).futureValue
 
-    val sender = rabbitConnection.newProducer("producer", Monitor.noOp())
+    val sender = rabbitConnection.newProducer("producer", Monitor.noOp()).futureValue
 
     for (_ <- 1 to 10) {
       sender.send("test", Bytes.copyFromUtf8(Random.nextString(10))).futureValue
@@ -335,7 +328,7 @@ class LiveTest extends TestBase with ScalaFutures {
 
     implicit val conv = JsonDeliveryConverter.derive[Abc]()
 
-    val rabbitConnection = RabbitMQConnection.fromConfig[Task](config, ex).imapK[Future]
+    val rabbitConnection = RabbitMQConnection.fromConfig[Task](config, ex).await.imapK[Future]
 
     val parsingFailures = new AtomicInteger(0)
     val processing = new AtomicInteger(0)
@@ -357,7 +350,7 @@ class LiveTest extends TestBase with ScalaFutures {
           })
     }
 
-    val sender = rabbitConnection.newProducer("producer", Monitor.noOp())
+    val sender = rabbitConnection.newProducer("producer", Monitor.noOp()).futureValue
 
     sender.send("test", Bytes.copyFromUtf8(randomString(10))).futureValue
 

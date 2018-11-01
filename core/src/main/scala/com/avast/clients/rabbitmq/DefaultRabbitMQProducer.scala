@@ -2,7 +2,7 @@ package com.avast.clients.rabbitmq
 
 import java.util.UUID
 
-import cats.effect.Effect
+import cats.effect.{Effect, Sync}
 import com.avast.bytes.Bytes
 import com.avast.clients.rabbitmq.api.{MessageProperties, RabbitMQProducer}
 import com.avast.clients.rabbitmq.javaapi.JavaConverters._
@@ -24,7 +24,6 @@ class DefaultRabbitMQProducer[F[_], A: ProductConverter](name: String,
                                                          blockingScheduler: Scheduler,
                                                          monitor: Monitor)(implicit F: Effect[F], sch: Scheduler)
     extends RabbitMQProducer[F, A]
-    with AutoCloseable
     with StrictLogging {
 
   private val sentMeter = monitor.meter("sent")
@@ -70,7 +69,7 @@ class DefaultRabbitMQProducer[F[_], A: ProductConverter](name: String,
     }.executeOn(blockingScheduler).asyncBoundary
   }
 
-  override def close(): Unit = {
+  override def close(): F[Unit] = Sync[F].delay {
     channel.close()
   }
 

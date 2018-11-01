@@ -11,6 +11,7 @@ import monix.eval.Task
 import monix.execution.Scheduler
 
 import scala.concurrent.Future
+import scala.concurrent.duration.Duration
 
 trait RabbitMQJavaConnection extends AutoCloseable {
 
@@ -110,6 +111,7 @@ object RabbitMQJavaConnection {
             Option(channelListener).getOrElse(DefaultListeners.DefaultChannelListener),
             Option(consumerListener).getOrElse(DefaultListeners.DefaultConsumerListener)
           )
+          .runSyncUnsafe(Duration.Inf)
           .imapK[Future]
       )
     }

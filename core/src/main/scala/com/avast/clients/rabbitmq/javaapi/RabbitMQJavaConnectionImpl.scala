@@ -11,7 +11,8 @@ import com.avast.metrics.scalaapi.{Monitor => ScalaMonitor}
 import monix.execution.Scheduler
 import monix.execution.schedulers.SchedulerService
 
-import scala.concurrent.{ExecutionContext, Future}
+import scala.concurrent.duration.Duration
+import scala.concurrent.{Await, ExecutionContext, Future}
 
 private class RabbitMQJavaConnectionImpl(scalaConnection: ScalaConnection[Future])(implicit ec: ExecutionContext)
     extends RabbitMQJavaConnection {
@@ -22,19 +23,28 @@ private class RabbitMQJavaConnectionImpl(scalaConnection: ScalaConnection[Future
                            readAction: function.Function[Delivery, CompletableFuture[DeliveryResult]]): DefaultRabbitMQConsumer = {
     implicit val sch: SchedulerService = Scheduler(executor)
 
-    new DefaultRabbitMQConsumer(scalaConnection.newConsumer(configName, ScalaMonitor(monitor))(readAction.asScala))
+    Await.result(
+      scalaConnection.newConsumer(configName, ScalaMonitor(monitor))(readAction.asScala).map(new DefaultRabbitMQConsumer(_)),
+      Duration.Inf
+    )
   }
 
   override def newPullConsumer(configName: String, monitor: Monitor, executor: ExecutorService): RabbitMQPullConsumer = {
     implicit val sch: SchedulerService = Scheduler(executor)
 
-    new DefaultRabbitMQPullConsumer(scalaConnection.newPullConsumer(configName, ScalaMonitor(monitor)))
+    Await.result(
+      scalaConnection.newPullConsumer(configName, ScalaMonitor(monitor)).map(new DefaultRabbitMQPullConsumer(_)),
+      Duration.Inf
+    )
   }
 
   override def newProducer(configName: String, monitor: Monitor, executor: ExecutorService): RabbitMQProducer = {
     implicit val sch: SchedulerService = Scheduler(executor)
 
-    new DefaultRabbitMQProducer(scalaConnection.newProducer[Bytes](configName, ScalaMonitor(monitor)))
+    Await.result(
+      scalaConnection.newProducer[Bytes](configName, ScalaMonitor(monitor)).map(new DefaultRabbitMQProducer(_)),
+      Duration.Inf
+    )
   }
 
   override def declareExchange(configName: String): CompletableFuture[Void] = {
@@ -53,6 +63,6 @@ private class RabbitMQJavaConnectionImpl(scalaConnection: ScalaConnection[Future
     scalaConnection.bindExchange(configName).map(_ => null: Void).asJava
   }
 
-  override def close(): Unit = scalaConnection.close()
+  override def close(): Unit = Await.result(scalaConnection.close(), Duration.Inf)
 
 }
