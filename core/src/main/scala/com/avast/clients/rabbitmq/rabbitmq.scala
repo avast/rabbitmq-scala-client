@@ -61,8 +61,19 @@ package object rabbitmq {
             .newConsumer(configName, monitor) { d: Delivery[A] =>
               toTask { readAction(d) }
             }
-            .map { consumer =>
-              new RabbitMQConsumer[G] { override def close(): G[Unit] = fromTask { consumer.close() } }
+            .map { consumer => () =>
+              fromTask { consumer.close() }
+            }
+        }
+
+        override def newConsumer[A: DeliveryConverter](consumerConfig: ConsumerConfig, monitor: Monitor)(
+            readAction: DeliveryReadAction[G, A])(implicit ec: ExecutionContext): G[RabbitMQConsumer[G]] = fromTask {
+          connection
+            .newConsumer(consumerConfig, monitor) { d: Delivery[A] =>
+              toTask { readAction(d) }
+            }
+            .map { consumer => () =>
+              fromTask { consumer.close() }
             }
         }
 
@@ -80,9 +91,45 @@ package object rabbitmq {
           }
         }
 
+        override def newProducer[A: ProductConverter](producerConfig: ProducerConfig, monitor: Monitor)(
+            implicit ec: ExecutionContext): G[RabbitMQProducer[G, A]] = fromTask {
+          connection.newProducer(producerConfig, monitor).map { producer =>
+            new RabbitMQProducer[G, A] {
+
+              override def send(routingKey: String, body: A, properties: Option[MessageProperties]): G[Unit] = taskToG[G, Unit] {
+                producer.send(routingKey, body, properties)
+              }
+
+              override def close(): G[Unit] = fromTask { producer.close() }
+            }
+          }
+        }
+
         override def newPullConsumer[A: DeliveryConverter](configName: String, monitor: Monitor)(
             implicit ec: ExecutionContext): G[RabbitMQPullConsumer[G, A]] = fromTask {
           connection.newPullConsumer(configName, monitor).map { consumer =>
+            new RabbitMQPullConsumer[G, A] {
+
+              override def pull(): G[PullResult[G, A]] = taskToG[G, PullResult[G, A]] {
+                consumer.pull().map {
+                  case PullResult.Ok(deliveryWithHandle) =>
+                    PullResult.Ok(new DeliveryWithHandle[G, A] {
+                      override def delivery: Delivery[A] = deliveryWithHandle.delivery
+
+                      override def handle(result: DeliveryResult): G[Unit] = taskToG[G, Unit](deliveryWithHandle.handle(result))
+                    })
+                  case PullResult.EmptyQueue => PullResult.EmptyQueue
+                }
+              }
+
+              override def close(): G[Unit] = fromTask { consumer.close() }
+            }
+          }
+        }
+
+        override def newPullConsumer[A: DeliveryConverter](pullConsumerConfig: PullConsumerConfig, monitor: Monitor)(
+            implicit ec: ExecutionContext): G[RabbitMQPullConsumer[G, A]] = fromTask {
+          connection.newPullConsumer(pullConsumerConfig, monitor).map { consumer =>
             new RabbitMQPullConsumer[G, A] {
 
               override def pull(): G[PullResult[G, A]] = taskToG[G, PullResult[G, A]] {

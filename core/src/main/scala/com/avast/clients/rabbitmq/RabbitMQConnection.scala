@@ -36,12 +36,29 @@ trait RabbitMQConnection[F[_]] extends FAutoCloseable[F] {
   def newConsumer[A: DeliveryConverter](configName: String, monitor: Monitor)(readAction: DeliveryReadAction[F, A])(
       implicit ec: ExecutionContext): F[RabbitMQConsumer[F]]
 
+  /** Creates new instance of consumer, using the passed configuration.
+    *
+    * @param consumerConfig Configuration of the consumer.
+    * @param monitor    Monitor for metrics.
+    * @param readAction Action executed for each delivered message. You should never return a failed future.
+    */
+  def newConsumer[A: DeliveryConverter](consumerConfig: ConsumerConfig, monitor: Monitor)(readAction: DeliveryReadAction[F, A])(
+      implicit ec: ExecutionContext): F[RabbitMQConsumer[F]]
+
   /** Creates new instance of producer, using the TypeSafe configuration passed to the factory and producer name.
     *
     * @param configName Name of configuration of the producer.
-    * @param monitor    Monitor for metrics.F
+    * @param monitor    Monitor for metrics.
     */
   def newProducer[A: ProductConverter](configName: String, monitor: Monitor)(implicit ec: ExecutionContext): F[RabbitMQProducer[F, A]]
+
+  /** Creates new instance of producer, using the passed configuration.
+    *
+    * @param producerConfig Configuration of the producer.
+    * @param monitor    Monitor for metrics.
+    */
+  def newProducer[A: ProductConverter](producerConfig: ProducerConfig, monitor: Monitor)(
+      implicit ec: ExecutionContext): F[RabbitMQProducer[F, A]]
 
   /** Creates new instance of pull consumer, using the TypeSafe configuration passed to the factory and consumer name.
     *
@@ -49,6 +66,14 @@ trait RabbitMQConnection[F[_]] extends FAutoCloseable[F] {
     * @param monitor    Monitor for metrics.
     */
   def newPullConsumer[A: DeliveryConverter](configName: String, monitor: Monitor)(
+      implicit ec: ExecutionContext): F[RabbitMQPullConsumer[F, A]]
+
+  /** Creates new instance of pull consumer, using the passed configuration.
+    *
+    * @param pullConsumerConfig Configuration of the consumer.
+    * @param monitor    Monitor for metrics.
+    */
+  def newPullConsumer[A: DeliveryConverter](pullConsumerConfig: PullConsumerConfig, monitor: Monitor)(
       implicit ec: ExecutionContext): F[RabbitMQPullConsumer[F, A]]
 
   /**

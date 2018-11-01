@@ -66,6 +66,18 @@ class DefaultRabbitMQConnection[F[_]](connection: ServerConnection,
     }
   }
 
+  def newConsumer[A: DeliveryConverter](consumerConfig: ConsumerConfig, monitor: Monitor)(readAction: DeliveryReadAction[F, A])(
+      implicit ec: ExecutionContext): F[RabbitMQConsumer[F]] = {
+    addAutoCloseable {
+      createChannel().map { channel =>
+        implicit val scheduler = Scheduler(ses, ec)
+
+        DefaultRabbitMQClientFactory.Consumer
+          .create[F, A](consumerConfig, channel, info, blockingScheduler, monitor, consumerListener, readAction)
+      }
+    }
+  }
+
   def newPullConsumer[A: DeliveryConverter](configName: String, monitor: Monitor)(
       implicit ec: ExecutionContext): F[RabbitMQPullConsumer[F, A]] = {
     addAutoCloseable {
@@ -78,6 +90,18 @@ class DefaultRabbitMQConnection[F[_]](connection: ServerConnection,
     }
   }
 
+  override def newPullConsumer[A: DeliveryConverter](pullConsumerConfig: PullConsumerConfig, monitor: Monitor)(
+      implicit ec: ExecutionContext): F[RabbitMQPullConsumer[F, A]] = {
+    addAutoCloseable {
+      createChannel().map { channel =>
+        implicit val scheduler = Scheduler(ses, ec)
+
+        DefaultRabbitMQClientFactory.PullConsumer
+          .create[F, A](pullConsumerConfig, channel, info, blockingScheduler, monitor)
+      }
+    }
+  }
+
   def newProducer[A: ProductConverter](configName: String, monitor: Monitor)(implicit ec: ExecutionContext): F[RabbitMQProducer[F, A]] = {
     addAutoCloseable {
       createChannel().map { channel =>
@@ -85,6 +109,18 @@ class DefaultRabbitMQConnection[F[_]](connection: ServerConnection,
 
         DefaultRabbitMQClientFactory.Producer
           .fromConfig[F, A](config.getConfig(configName), channel, info, blockingScheduler, monitor)
+      }
+    }
+  }
+
+  override def newProducer[A: ProductConverter](producerConfig: ProducerConfig, monitor: Monitor)(
+      implicit ec: ExecutionContext): F[RabbitMQProducer[F, A]] = {
+    addAutoCloseable {
+      createChannel().map { channel =>
+        implicit val scheduler = Scheduler(ses, ec)
+
+        DefaultRabbitMQClientFactory.Producer
+          .create[F, A](producerConfig, channel, info, blockingScheduler, monitor)
       }
     }
   }
