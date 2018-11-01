@@ -17,6 +17,7 @@ import org.scalatest.concurrent.ScalaFutures
 import org.scalatest.time.{Milliseconds, Seconds, Span}
 
 import scala.collection.JavaConverters._
+import scala.concurrent.duration._
 import scala.concurrent.{ExecutionContext, Future}
 import scala.util.{Random, Success, Try}
 
@@ -74,11 +75,14 @@ class LiveTest extends TestBase with ScalaFutures {
 
     val rabbitConnection = RabbitMQConnection.fromConfig[Task](config, ex).await
 
-    rabbitConnection.newConsumer("consumer", Monitor.noOp()) { _: Delivery[Bytes] => counter.incrementAndGet()Task {
-      processed.release()
-      DeliveryResult.Ack
-    }
-    }
+    rabbitConnection
+      .newConsumer("consumer", Monitor.noOp()) { _: Delivery[Bytes] =>
+        counter.incrementAndGet()
+        Task {
+          processed.release()
+          DeliveryResult.Ack
+        }
+      }
       .await
 
     val sender = rabbitConnection.newProducer("producer", Monitor.noOp()).await
@@ -106,16 +110,18 @@ class LiveTest extends TestBase with ScalaFutures {
 
     val d = new AtomicInteger(0)
 
-    rabbitConnection.newConsumer("consumer", Monitor.noOp()) { _: Delivery[Bytes] => Task {
-      Thread.sleep(if (d.get() % 2 == 0) 300 else 0)
-      latch.countDown()
+    rabbitConnection
+      .newConsumer("consumer", Monitor.noOp()) { _: Delivery[Bytes] =>
+        Task {
+          Thread.sleep(if (d.get() % 2 == 0) 300 else 0)
+          latch.countDown()
 
-      if (d.incrementAndGet() < (cnt - 50)) Ack
-      else {
-        if (d.incrementAndGet() < (cnt - 10)) Retry else Republish()
+          if (d.incrementAndGet() < (cnt - 50)) Ack
+          else {
+            if (d.incrementAndGet() < (cnt - 10)) Retry else Republish()
+          }
+        }
       }
-    }
-    }
       .await
 
     val sender = rabbitConnection.newProducer("producer", Monitor.noOp()).await
@@ -138,7 +144,10 @@ class LiveTest extends TestBase with ScalaFutures {
 
     val rabbitConnection = RabbitMQConnection.fromConfig[Task](config, ex).await
 
-    rabbitConnection.newConsumer("consumer", Monitor.noOp()) { _: Delivery[Bytes] => latch.countDown()Task.now(Ack)
+    rabbitConnection
+      .newConsumer("consumer", Monitor.noOp()) { _: Delivery[Bytes] =>
+        latch.countDown()
+        Task.now(Ack)
       }
       .await
 
@@ -163,11 +172,14 @@ class LiveTest extends TestBase with ScalaFutures {
 
     val cnt = new AtomicInteger(0)
 
-    rabbitConnection.newConsumer("consumer", Monitor.noOp()) { _: Delivery[Bytes] => cnt.incrementAndGet()Task {
-      Thread.sleep(800) // timeout is set to 500 ms
-      Ack
-    }
-    }
+    rabbitConnection
+      .newConsumer("consumer", Monitor.noOp()) { _: Delivery[Bytes] =>
+        cnt.incrementAndGet()
+
+        Task {
+          Ack
+        }.delayResult(800.millis) // timeout is set to 500 ms
+      }
       .await
 
     val sender = rabbitConnection.newProducer("producer", Monitor.noOp()).await
@@ -190,7 +202,10 @@ class LiveTest extends TestBase with ScalaFutures {
 
     val cnt = new AtomicInteger(0)
 
-    rabbitConnection.newConsumer("consumer", Monitor.noOp()) { _: Delivery[Bytes] => cnt.incrementAndGet()Thread.sleep(800) // timeout is set to 500 ms
+    rabbitConnection
+      .newConsumer("consumer", Monitor.noOp()) { _: Delivery[Bytes] =>
+        cnt.incrementAndGet()
+        Thread.sleep(800) // timeout is set to 500 ms
         Success(Ack)
       }
       .getOrElse(fail())
