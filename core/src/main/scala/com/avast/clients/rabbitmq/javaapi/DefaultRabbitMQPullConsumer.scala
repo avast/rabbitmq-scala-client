@@ -10,7 +10,7 @@ import com.typesafe.scalalogging.StrictLogging
 import scala.concurrent.duration.Duration
 import scala.concurrent.{Await, ExecutionContext, Future}
 
-class DefaultRabbitMQPullConsumer(scalaConsumer: ScalaConsumer[Future, Bytes])(implicit ec: ExecutionContext)
+class DefaultRabbitMQPullConsumer(scalaConsumer: ScalaConsumer[Future, Bytes], initTimeout: Duration)(implicit ec: ExecutionContext)
     extends RabbitMQPullConsumer
     with StrictLogging {
   override def pull(): CompletableFuture[PullResult] = {
@@ -23,5 +23,5 @@ class DefaultRabbitMQPullConsumer(scalaConsumer: ScalaConsumer[Future, Bytes])(i
       .asJava
   }
 
-  override def close(): Unit = Await.result(scalaConsumer.close(), Duration.Inf)
+  override def close(): Unit = Await.result(scalaConsumer.close(), initTimeout)
 }

@@ -14,7 +14,7 @@ import monix.execution.schedulers.SchedulerService
 import scala.concurrent.duration.Duration
 import scala.concurrent.{Await, ExecutionContext, Future}
 
-private class RabbitMQJavaConnectionImpl(scalaConnection: ScalaConnection[Future])(implicit ec: ExecutionContext)
+private class RabbitMQJavaConnectionImpl(scalaConnection: ScalaConnection[Future], initTimeout: Duration)(implicit ec: ExecutionContext)
     extends RabbitMQJavaConnection {
 
   override def newConsumer(configName: String,
@@ -24,8 +24,8 @@ private class RabbitMQJavaConnectionImpl(scalaConnection: ScalaConnection[Future
     implicit val sch: SchedulerService = Scheduler(executor)
 
     Await.result(
-      scalaConnection.newConsumer(configName, ScalaMonitor(monitor))(readAction.asScala).map(new DefaultRabbitMQConsumer(_)),
-      Duration.Inf
+      scalaConnection.newConsumer(configName, ScalaMonitor(monitor))(readAction.asScala).map(new DefaultRabbitMQConsumer(_, initTimeout)),
+      initTimeout
     )
   }
 
@@ -33,8 +33,8 @@ private class RabbitMQJavaConnectionImpl(scalaConnection: ScalaConnection[Future
     implicit val sch: SchedulerService = Scheduler(executor)
 
     Await.result(
-      scalaConnection.newPullConsumer(configName, ScalaMonitor(monitor)).map(new DefaultRabbitMQPullConsumer(_)),
-      Duration.Inf
+      scalaConnection.newPullConsumer(configName, ScalaMonitor(monitor)).map(new DefaultRabbitMQPullConsumer(_, initTimeout)),
+      initTimeout
     )
   }
 
@@ -42,8 +42,8 @@ private class RabbitMQJavaConnectionImpl(scalaConnection: ScalaConnection[Future
     implicit val sch: SchedulerService = Scheduler(executor)
 
     Await.result(
-      scalaConnection.newProducer[Bytes](configName, ScalaMonitor(monitor)).map(new DefaultRabbitMQProducer(_)),
-      Duration.Inf
+      scalaConnection.newProducer[Bytes](configName, ScalaMonitor(monitor)).map(new DefaultRabbitMQProducer(_, initTimeout)),
+      initTimeout
     )
   }
 
@@ -63,6 +63,6 @@ private class RabbitMQJavaConnectionImpl(scalaConnection: ScalaConnection[Future
     scalaConnection.bindExchange(configName).map(_ => null: Void).asJava
   }
 
-  override def close(): Unit = Await.result(scalaConnection.close(), Duration.Inf)
+  override def close(): Unit = Await.result(scalaConnection.close(), initTimeout)
 
 }
