@@ -33,7 +33,6 @@ dependencies {
 
     compile "io.monix:monix_$scalaVersion:$monixVersion"
     compile "org.typelevel:cats-core_$scalaVersion:$catsVersion"
-    compile "org.typelevel:cats-effect_$scalaVersion:$catsEffectVersion"
 
     compile 'org.xbib:jsr-305:1.0.0'
 
