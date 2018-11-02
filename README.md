@@ -167,8 +167,6 @@ Alternatively you are able to use any `F[_]` which is convertible to/from `monix
 The Scala API uses types-conversions for both consumer and producer, that means you don't have to work directly with `Bytes` (however you
 still can, if you want) and you touch only your business class which is then (de)serialized using provided converter.
 
-Since the API is fully effectful don't forget
-
 The library uses two types of executors - one is for blocking (IO) operations and the second for callbacks. You _have to_ provide both of them:
 1. Blocking executor as `ExecutorService`
 1. Callback executor as `scala.concurrent.ExecutionContext`
@@ -184,14 +182,14 @@ import com.typesafe.config.ConfigFactory
 import monix.eval._
 import monix.execution.Scheduler
 
-import scala.concurrent.duration.Duration
+import scala.concurrent.duration._
 
 val config = ConfigFactory.load().getConfig("myRabbitConfig")
 
 implicit val sch: Scheduler = ???
 val monitor: Monitor = ???
 
-val blockingExecutor: ExecutorService = Executors.newCachedThreadPool()
+val blockingExecutor: ExecutorService = ???
 
 // the "FP" way:
 
@@ -215,14 +213,12 @@ val consumerAndProducer: Task[(RabbitMQConsumer[Task], RabbitMQProducer[Task, By
       }
 
       producer <- connection.newProducer("producer", monitor)
-    } yield {
-      (consumer, producer)
-    }
+    } yield (consumer, producer)
   }
 
 // the "common" way:
 
-val rabbitConnection = RabbitMQConnection.fromConfig[Task](config, blockingExecutor).runSyncUnsafe(Duration.Inf) // DefaultRabbitMQConnection[Task]
+val rabbitConnection = RabbitMQConnection.fromConfig[Task](config, blockingExecutor).runSyncUnsafe(10.seconds) // DefaultRabbitMQConnection[Task]
 
 val consumer = rabbitConnection.newConsumer[Bytes]("consumer", monitor) {
   case delivery: Delivery.Ok[Bytes] =>
@@ -231,9 +227,9 @@ val consumer = rabbitConnection.newConsumer[Bytes]("consumer", monitor) {
 
   case _: Delivery.MalformedContent =>
     Task.now(DeliveryResult.Reject)
-}.runSyncUnsafe(Duration.Inf) // RabbitMQConsumer[Task]
+}.runSyncUnsafe(10.seconds) // RabbitMQConsumer[Task]
 
-val sender = rabbitConnection.newProducer("producer", monitor).runSyncUnsafe(Duration.Inf) // RabbitMQProducer[Task, Bytes]
+val sender = rabbitConnection.newProducer("producer", monitor).runSyncUnsafe(10.seconds) // RabbitMQProducer[Task, Bytes]
 
 sender.send(...).runAsync // because it's Task, don't forget to run it ;-)
 ```
@@ -244,7 +240,7 @@ or with `scala.concurrent.Future` (and other _strict_ types):
 implicit val fkToTask: FunctionK[Future, Task] = ???
 implicit val fkFromTask: FunctionK[Task, Future] = ???
 
-val rabbitConnection = RabbitMQConnection.fromConfig[Task](config, blockingExecutor).runSyncUnsafe(Duration.Inf).imapK[Future] // DefaultRabbitMQConnection[Future]
+val rabbitConnection = RabbitMQConnection.fromConfig[Task](config, blockingExecutor).runSyncUnsafe(10.seconds).imapK[Future] // DefaultRabbitMQConnection[Future]
 
 val consumer = rabbitConnection.newConsumer[Bytes]("consumer", monitor) { 
   case delivery: Delivery.Ok[Bytes] =>
@@ -272,7 +268,7 @@ However there exists a workaround:
 implicit val fkToFuture: cats.arrow.FunctionK[Task, Future] = ???
 implicit val fkFromFuture: cats.arrow.FunctionK[Future, Task] = ???
 
-val rabbitConnection: RabbitMQConnection[Future] = RabbitMQConnection.fromConfig[Task].map(_.imapK[Future]).runSyncUnsafe(Duration.Inf)
+val rabbitConnection: RabbitMQConnection[Future] = RabbitMQConnection.fromConfig[Task].map(_.imapK[Future]).runSyncUnsafe(10.seconds)
 ```
 
 #### Providing converters for producer/consumer

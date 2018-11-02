@@ -149,7 +149,13 @@ class DefaultRabbitMQConnection[F[_]](connection: ServerConnection,
   /** Closes this factory and all created consumers and producers.
     */
   override def close(): F[Unit] = F.delay {
-    closeables.foreach(_.close())
+    closeables.foreach { cl =>
+      try {
+        cl.close()
+      } catch {
+        case NonFatal(e) => logger.error(s"Could not close some resource: $cl", e)
+      }
+    }
     connection.close()
   }
 
