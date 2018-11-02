@@ -100,7 +100,6 @@ subprojects {
         cactusVersion = "0.12.2"
         monixVersion = "3.0.0-RC1"
         catsVersion = "1.2.0"
-        catsEffectVersion = "1.0.0-RC2-78a795d"
     }
 
     dependencies {
