@@ -256,6 +256,8 @@ val sender = rabbitConnection.newProducer("producer", monitor).await // RabbitMQ
 sender.send(...) // Future[Unit]
 ```
 
+_Note: `await` used in the example is kind of a pseudo-code. In real code, you will probably use `Await.result`._
+
 #### Using own non-Effect F
 
 By default only `F[_]: cats.effect.Effect` can be used when creating new connection which makes some commonly used
