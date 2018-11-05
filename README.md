@@ -167,8 +167,6 @@ Alternatively you are able to use any `F[_]` which is convertible to/from `monix
 The Scala API uses types-conversions for both consumer and producer, that means you don't have to work directly with `Bytes` (however you
 still can, if you want) and you touch only your business class which is then (de)serialized using provided converter.
 
-Since the API is fully effectful don't forget
-
 The library uses two types of executors - one is for blocking (IO) operations and the second for callbacks. You _have to_ provide both of them:
 1. Blocking executor as `ExecutorService`
 1. Callback executor as `scala.concurrent.ExecutionContext`
