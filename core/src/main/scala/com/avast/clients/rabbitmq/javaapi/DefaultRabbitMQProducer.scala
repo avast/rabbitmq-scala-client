@@ -3,7 +3,12 @@ package com.avast.clients.rabbitmq.javaapi
 import java.util.concurrent.CompletableFuture
 
 import com.avast.bytes.Bytes
-import com.avast.clients.rabbitmq.api.{DeliveryMode, MessageProperties => ScalaProperties, RabbitMQProducer => ScalaProducer}
+import com.avast.clients.rabbitmq.api.{
+  DeliveryMode,
+  FAutoCloseable,
+  MessageProperties => ScalaProperties,
+  RabbitMQProducer => ScalaProducer
+}
 import com.avast.clients.rabbitmq.javaapi.JavaConverters._
 
 import scala.collection.JavaConverters._

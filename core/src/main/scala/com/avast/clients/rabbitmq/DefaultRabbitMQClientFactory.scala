@@ -99,6 +99,14 @@ private[rabbitmq] object DefaultRabbitMQClientFactory extends LazyLogging {
                                                       blockingScheduler: Scheduler,
                                                       monitor: Monitor)(implicit scheduler: Scheduler): DefaultRabbitMQProducer[F, A] = {
       val producerConfig = providedConfig.wrapped.as[ProducerConfig]("root")
+      create[F, A](producerConfig, channel, factoryInfo, blockingScheduler, monitor)
+    }
+
+    def create[F[_]: Effect, A: ProductConverter](producerConfig: ProducerConfig,
+                                                  channel: ServerChannel,
+                                                  factoryInfo: RabbitMQConnectionInfo,
+                                                  blockingScheduler: Scheduler,
+                                                  monitor: Monitor)(implicit scheduler: Scheduler): DefaultRabbitMQProducer[F, A] = {
       prepareProducer[F, A](producerConfig, channel, factoryInfo, blockingScheduler, monitor)
     }
 
