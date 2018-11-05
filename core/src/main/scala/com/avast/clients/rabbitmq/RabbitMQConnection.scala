@@ -4,7 +4,7 @@ import java.nio.file.{Path, Paths}
 import java.time.Duration
 import java.util.concurrent.ExecutorService
 
-import cats.effect.Effect
+import cats.effect.{Effect, Sync}
 import com.avast.clients.rabbitmq.api._
 import com.avast.clients.rabbitmq.ssl.{KeyStoreTypes, SSLBuilder}
 import com.avast.metrics.scalaapi.Monitor
@@ -20,12 +20,12 @@ import scala.concurrent.ExecutionContext
 import scala.language.higherKinds
 import scala.util.control.NonFatal
 
-trait RabbitMQConnection[F[_]] extends AutoCloseable {
+trait RabbitMQConnection[F[_]] extends FAutoCloseable[F] {
 
   /** Creates new channel inside this connection. Usable for some applications-specific actions which are not supported by the library.<br>
     * The caller is responsible for closing the created channel - it's closed automatically only when the whole connection is closed.
     */
-  def newChannel(): ServerChannel
+  def newChannel(): F[ServerChannel]
 
   /** Creates new instance of consumer, using the TypeSafe configuration passed to the factory and consumer name.
     *
@@ -34,15 +34,14 @@ trait RabbitMQConnection[F[_]] extends AutoCloseable {
     * @param readAction Action executed for each delivered message. You should never return a failed future.
     */
   def newConsumer[A: DeliveryConverter](configName: String, monitor: Monitor)(readAction: DeliveryReadAction[F, A])(
-      implicit ec: ExecutionContext): RabbitMQConsumer with AutoCloseable
+      implicit ec: ExecutionContext): F[RabbitMQConsumer[F]]
 
   /** Creates new instance of producer, using the TypeSafe configuration passed to the factory and producer name.
     *
     * @param configName Name of configuration of the producer.
     * @param monitor    Monitor for metrics.F
     */
-  def newProducer[A: ProductConverter](configName: String, monitor: Monitor)(
-      implicit ec: ExecutionContext): RabbitMQProducer[F, A] with AutoCloseable
+  def newProducer[A: ProductConverter](configName: String, monitor: Monitor)(implicit ec: ExecutionContext): F[RabbitMQProducer[F, A]]
 
   /** Creates new instance of pull consumer, using the TypeSafe configuration passed to the factory and consumer name.
     *
@@ -50,7 +49,7 @@ trait RabbitMQConnection[F[_]] extends AutoCloseable {
     * @param monitor    Monitor for metrics.
     */
   def newPullConsumer[A: DeliveryConverter](configName: String, monitor: Monitor)(
-      implicit ec: ExecutionContext): RabbitMQPullConsumer[F, A] with AutoCloseable
+      implicit ec: ExecutionContext): F[RabbitMQPullConsumer[F, A]]
 
   /**
     * Declares and additional exchange, using the TypeSafe configuration passed to the factory and config name.
@@ -112,7 +111,7 @@ object RabbitMQConnection extends StrictLogging {
       blockingExecutor: ExecutorService,
       connectionListener: ConnectionListener = DefaultListeners.DefaultConnectionListener,
       channelListener: ChannelListener = DefaultListeners.DefaultChannelListener,
-      consumerListener: ConsumerListener = DefaultListeners.DefaultConsumerListener): DefaultRabbitMQConnection[F] = {
+      consumerListener: ConsumerListener = DefaultListeners.DefaultConsumerListener): F[DefaultRabbitMQConnection[F]] = Sync[F].delay {
     // we need to wrap it with one level, to be able to parse it with Ficus
     val config = ConfigFactory
       .empty()

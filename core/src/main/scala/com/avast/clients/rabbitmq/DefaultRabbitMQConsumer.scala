@@ -3,7 +3,7 @@ package com.avast.clients.rabbitmq
 import java.util.concurrent.RejectedExecutionException
 import java.util.concurrent.atomic.AtomicInteger
 
-import cats.effect.{Effect, IO}
+import cats.effect.{Effect, IO, Sync}
 import cats.implicits._
 import com.avast.bytes.Bytes
 import com.avast.clients.rabbitmq.api._
@@ -29,9 +29,8 @@ class DefaultRabbitMQConsumer[F[_]: Effect](
     consumerListener: ConsumerListener,
     override protected val blockingScheduler: Scheduler)(readAction: DeliveryReadAction[F, Bytes])(implicit scheduler: Scheduler)
     extends DefaultConsumer(channel)
-    with RabbitMQConsumer
+    with RabbitMQConsumer[F]
     with ConsumerBase[F]
-    with AutoCloseable
     with StrictLogging {
 
   import DefaultRabbitMQConsumer._
@@ -146,7 +145,7 @@ class DefaultRabbitMQConsumer[F[_]: Effect](
     handleResult(messageId, deliveryTag, properties, routingKey, body)(failureAction)
   }
 
-  override def close(): Unit = {
+  override def close(): F[Unit] = Sync[F].delay {
     channel.close()
   }
 

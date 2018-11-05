@@ -2,7 +2,7 @@ package com.avast.clients.rabbitmq
 
 import java.util.concurrent.atomic.AtomicInteger
 
-import cats.effect.Effect
+import cats.effect.{Effect, Sync}
 import cats.implicits._
 import com.avast.bytes.Bytes
 import com.avast.clients.rabbitmq.api._
@@ -15,6 +15,7 @@ import monix.execution.Scheduler
 
 import scala.language.higherKinds
 import scala.util.control.NonFatal
+
 class DefaultRabbitMQPullConsumer[F[_]: Effect, A: DeliveryConverter](
     override val name: String,
     protected override val channel: ServerChannel,
@@ -24,7 +25,6 @@ class DefaultRabbitMQPullConsumer[F[_]: Effect, A: DeliveryConverter](
     protected override val blockingScheduler: Scheduler)(implicit sch: Scheduler)
     extends RabbitMQPullConsumer[F, A]
     with ConsumerBase[F]
-    with AutoCloseable
     with StrictLogging {
 
   private val tasksMonitor = monitor.named("tasks")
@@ -111,7 +111,7 @@ class DefaultRabbitMQPullConsumer[F[_]: Effect, A: DeliveryConverter](
     }
   }
 
-  override def close(): Unit = {
+  override def close(): F[Unit] = Sync[F].delay {
     channel.close()
   }
 }

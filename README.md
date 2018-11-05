@@ -29,6 +29,7 @@ some optional functionality:
 
 There is a [migration guide](Migration-5-6.md) between versions 5 and 6.0.x.  
 There is a [migration guide](Migration-6-6_1.md) between versions 6.0.x and 6.1.x.
+There is a [migration guide](Migration-6_1-7.md) between versions 6.1.x and 7.0.x.
 
 ## Usage
 
@@ -171,37 +172,66 @@ The library uses two types of executors - one is for blocking (IO) operations an
 1. Callback executor as `scala.concurrent.ExecutionContext`
 
 ```scala
-import com.typesafe.config.ConfigFactory
-import com.avast.metrics.api.Monitor
-import com.avast.clients.rabbitmq._ // for generic types support
+import java.util.concurrent.{ExecutorService, Executors}
+
 import com.avast.bytes.Bytes
+import com.avast.clients.rabbitmq._
+import com.avast.clients.rabbitmq.api.{Delivery, DeliveryResult, RabbitMQConsumer, RabbitMQProducer}
+import com.avast.metrics.scalaapi.Monitor
+import com.typesafe.config.ConfigFactory
 import monix.eval._
+import monix.execution.Scheduler
+
+import scala.concurrent.duration._
 
 val config = ConfigFactory.load().getConfig("myRabbitConfig")
 
-implicit val ec: ExecutionContext = ???
-val blockingExecutor: ExecutorService = Executors.newCachedThreadPool()
-
+implicit val sch: Scheduler = ???
 val monitor: Monitor = ???
 
-// here you create the connection; it's shared for all producers/consumers amongst one RabbitMQ server - they will share a single TCP connection
-// but have separated channels
-// if you expect very high load, you can use separate connections for each producer/consumer, but it's usually not needed
-val rabbitConnection = RabbitMQConnection.fromConfig[Task](config, blockingExecutor) // DefaultRabbitMQConnection[Task]
+val blockingExecutor: ExecutorService = ???
 
-val consumer = rabbitConnection.newConsumer[Bytes]("consumer", monitor) { 
+// the "FP" way:
+
+val consumerAndProducer: Task[(RabbitMQConsumer[Task], RabbitMQProducer[Task, Bytes])] = RabbitMQConnection
+  .fromConfig[Task](config, blockingExecutor)
+  .flatMap { connection =>
+    /*
+      Here you have created the connection; it's shared for all producers/consumers amongst one RabbitMQ server - they will share a single
+      TCP connection but have separated channels.
+      If you expect very high load, you can use separate connections for each producer/consumer, however it's usually not needed.
+    */
+
+    for {
+      consumer <- connection.newConsumer[Bytes]("consumer", monitor) {
+        case delivery: Delivery.Ok[Bytes] =>
+          println(delivery)
+          Task.now(DeliveryResult.Ack)
+
+        case _: Delivery.MalformedContent =>
+          Task.now(DeliveryResult.Reject)
+      }
+
+      producer <- connection.newProducer("producer", monitor)
+    } yield (consumer, producer)
+  }
+
+// the "common" way:
+
+val rabbitConnection = RabbitMQConnection.fromConfig[Task](config, blockingExecutor).runSyncUnsafe(10.seconds) // DefaultRabbitMQConnection[Task]
+
+val consumer = rabbitConnection.newConsumer[Bytes]("consumer", monitor) {
   case delivery: Delivery.Ok[Bytes] =>
-      println(delivery)
-      Task.now(DeliveryResult.Ack)
-      
-    case _: Delivery.MalformedContent =>
-      Task.now(DeliveryResult.Reject)
-} // DefaultRabbitMQConsumer[Task]
+    println(delivery)
+    Task.now(DeliveryResult.Ack)
 
-val sender = rabbitConnection.newProducer("producer", monitor) // DefaultRabbitMQProducer[Task]
+  case _: Delivery.MalformedContent =>
+    Task.now(DeliveryResult.Reject)
+}.runSyncUnsafe(10.seconds) // RabbitMQConsumer[Task]
+
+val sender = rabbitConnection.newProducer("producer", monitor).runSyncUnsafe(10.seconds) // RabbitMQProducer[Task, Bytes]
 
 sender.send(...).runAsync // because it's Task, don't forget to run it ;-)
-
 ```
 
 or with `scala.concurrent.Future` (and other _strict_ types):
@@ -210,7 +240,7 @@ or with `scala.concurrent.Future` (and other _strict_ types):
 implicit val fkToTask: FunctionK[Future, Task] = ???
 implicit val fkFromTask: FunctionK[Task, Future] = ???
 
-val rabbitConnection = RabbitMQConnection.fromConfig[Task](config, blockingExecutor).imapK[Future] // DefaultRabbitMQConnection[Future]
+val rabbitConnection = RabbitMQConnection.fromConfig[Task](config, blockingExecutor).runSyncUnsafe(10.seconds).imapK[Future] // DefaultRabbitMQConnection[Future]
 
 val consumer = rabbitConnection.newConsumer[Bytes]("consumer", monitor) { 
   case delivery: Delivery.Ok[Bytes] =>
@@ -219,12 +249,14 @@ val consumer = rabbitConnection.newConsumer[Bytes]("consumer", monitor) {
     
   case _: Delivery.MalformedContent =>
     Future.successful(DeliveryResult.Reject)
-} // DefaultRabbitMQConsumer[Future]
+}.await // RabbitMQConsumer[Future]
 
-val sender = rabbitConnection.newProducer("producer", monitor) // DefaultRabbitMQProducer[Future]
+val sender = rabbitConnection.newProducer("producer", monitor).await // RabbitMQProducer[Future]
 
 sender.send(...) // Future[Unit]
 ```
+
+_Note: `await` used in the example is kind of a pseudo-code. In real code, you will probably use `Await.result`._
 
 #### Using own non-Effect F
 
@@ -238,7 +270,7 @@ However there exists a workaround:
 implicit val fkToFuture: cats.arrow.FunctionK[Task, Future] = ???
 implicit val fkFromFuture: cats.arrow.FunctionK[Future, Task] = ???
 
-val rabbitConnection: RabbitMQConnection[Future] = RabbitMQConnection.fromConfig[Task].imapK[Future]
+val rabbitConnection: RabbitMQConnection[Future] = RabbitMQConnection.fromConfig[Task].map(_.imapK[Future]).runSyncUnsafe(10.seconds)
 ```
 
 #### Providing converters for producer/consumer

@@ -7,9 +7,10 @@ import com.avast.clients.rabbitmq.api.{PullResult => ScalaResult, RabbitMQPullCo
 import com.avast.clients.rabbitmq.javaapi.JavaConverters._
 import com.typesafe.scalalogging.StrictLogging
 
-import scala.concurrent.{ExecutionContext, Future}
+import scala.concurrent.duration.Duration
+import scala.concurrent.{Await, ExecutionContext, Future}
 
-class DefaultRabbitMQPullConsumer(scalaConsumer: ScalaConsumer[Future, Bytes] with AutoCloseable)(implicit ec: ExecutionContext)
+class DefaultRabbitMQPullConsumer(scalaConsumer: ScalaConsumer[Future, Bytes], initTimeout: Duration)(implicit ec: ExecutionContext)
     extends RabbitMQPullConsumer
     with StrictLogging {
   override def pull(): CompletableFuture[PullResult] = {
@@ -22,5 +23,5 @@ class DefaultRabbitMQPullConsumer(scalaConsumer: ScalaConsumer[Future, Bytes] wi
       .asJava
   }
 
-  override def close(): Unit = scalaConsumer.close()
+  override def close(): Unit = Await.result(scalaConsumer.close(), initTimeout)
 }

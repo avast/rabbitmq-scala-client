@@ -8,7 +8,7 @@ import org.scalatest.concurrent.Eventually
 import org.scalatest.junit.JUnitRunner
 import org.scalatest.mockito.MockitoSugar
 
-import scala.concurrent.duration.Duration
+import scala.concurrent.duration._
 import scala.language.implicitConversions
 
 @RunWith(classOf[JUnitRunner])
@@ -18,5 +18,5 @@ class TestBase extends FunSuite with MockitoSugar with Eventually with StrictLog
 
 class TaskOps[A](t: Task[A]) {
   def await(duration: Duration): A = t.runSyncUnsafe(duration)
-  def await: A = await(Duration.Inf)
+  def await: A = await(10.seconds)
 }

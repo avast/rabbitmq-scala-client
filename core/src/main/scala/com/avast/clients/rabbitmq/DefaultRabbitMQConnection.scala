@@ -1,6 +1,8 @@
 package com.avast.clients.rabbitmq
 
 import cats.effect.Effect
+import cats.syntax.all._
+import com.avast.clients.rabbitmq.api.{FAutoCloseable, RabbitMQConsumer, RabbitMQProducer, RabbitMQPullConsumer}
 import com.avast.metrics.scalaapi.Monitor
 import com.rabbitmq.client.ShutdownSignalException
 import com.typesafe.config.Config
@@ -12,25 +14,29 @@ import scala.concurrent.ExecutionContext
 import scala.language.higherKinds
 import scala.util.control.NonFatal
 
-class DefaultRabbitMQConnection[F[_]: Effect](connection: ServerConnection,
-                                              info: RabbitMQConnectionInfo,
-                                              config: Config,
-                                              override val connectionListener: ConnectionListener,
-                                              override val channelListener: ChannelListener,
-                                              override val consumerListener: ConsumerListener,
-                                              blockingScheduler: Scheduler)
+class DefaultRabbitMQConnection[F[_]](connection: ServerConnection,
+                                      info: RabbitMQConnectionInfo,
+                                      config: Config,
+                                      override val connectionListener: ConnectionListener,
+                                      override val channelListener: ChannelListener,
+                                      override val consumerListener: ConsumerListener,
+                                      blockingScheduler: Scheduler)(implicit F: Effect[F])
     extends RabbitMQConnection[F]
     with StrictLogging {
   // scalastyle:off
   private val closeablesLock = new Object
-  private var closeables = Seq[AutoCloseable]()
+  private var closeables = Seq[FAutoCloseable[F]]()
   // scalastyle:on
 
-  def newChannel(): ServerChannel = addAutoCloseable {
-    createChannel()
+  def newChannel(): F[ServerChannel] = {
+    createChannel().flatMap { channel =>
+      addAutoCloseable {
+        F.delay { (() => F.delay(channel.close())): FAutoCloseable[F] }
+      }.map(_ => channel)
+    }
   }
 
-  private def createChannel(): ServerChannel = {
+  private def createChannel(): F[ServerChannel] = F.delay {
     try {
       connection.createChannel() match {
         case channel: ServerChannel =>
@@ -49,33 +55,37 @@ class DefaultRabbitMQConnection[F[_]: Effect](connection: ServerConnection,
   }
 
   def newConsumer[A: DeliveryConverter](configName: String, monitor: Monitor)(readAction: DeliveryReadAction[F, A])(
-      implicit ec: ExecutionContext): DefaultRabbitMQConsumer[F] = {
-
-    implicit val scheduler = Scheduler(ses, ec)
-
+      implicit ec: ExecutionContext): F[RabbitMQConsumer[F]] = {
     addAutoCloseable {
-      DefaultRabbitMQClientFactory.Consumer
-        .fromConfig[F, A](config.getConfig(configName), createChannel(), info, blockingScheduler, monitor, consumerListener, readAction)
+      createChannel().map { channel =>
+        implicit val scheduler = Scheduler(ses, ec)
+
+        DefaultRabbitMQClientFactory.Consumer
+          .fromConfig[F, A](config.getConfig(configName), channel, info, blockingScheduler, monitor, consumerListener, readAction)
+      }
     }
   }
 
   def newPullConsumer[A: DeliveryConverter](configName: String, monitor: Monitor)(
-      implicit ec: ExecutionContext): DefaultRabbitMQPullConsumer[F, A] = {
-    implicit val scheduler = Scheduler(ses, ec)
-
+      implicit ec: ExecutionContext): F[RabbitMQPullConsumer[F, A]] = {
     addAutoCloseable {
-      DefaultRabbitMQClientFactory.PullConsumer
-        .fromConfig[F, A](config.getConfig(configName), createChannel(), info, blockingScheduler, monitor)
+      createChannel().map { channel =>
+        implicit val scheduler = Scheduler(ses, ec)
+
+        DefaultRabbitMQClientFactory.PullConsumer
+          .fromConfig[F, A](config.getConfig(configName), channel, info, blockingScheduler, monitor)
+      }
     }
   }
 
-  def newProducer[A: ProductConverter](configName: String, monitor: Monitor)(
-      implicit ec: ExecutionContext): DefaultRabbitMQProducer[F, A] = {
-    implicit val scheduler = Scheduler(ses, ec)
-
+  def newProducer[A: ProductConverter](configName: String, monitor: Monitor)(implicit ec: ExecutionContext): F[RabbitMQProducer[F, A]] = {
     addAutoCloseable {
-      DefaultRabbitMQClientFactory.Producer
-        .fromConfig[F, A](config.getConfig(configName), createChannel(), info, blockingScheduler, monitor)
+      createChannel().map { channel =>
+        implicit val scheduler = Scheduler(ses, ec)
+
+        DefaultRabbitMQClientFactory.Producer
+          .fromConfig[F, A](config.getConfig(configName), channel, info, blockingScheduler, monitor)
+      }
     }
   }
 
@@ -103,7 +113,7 @@ class DefaultRabbitMQConnection[F[_]: Effect](connection: ServerConnection,
     }
   }
 
-  protected def addAutoCloseable[A <: AutoCloseable](a: A): A = {
+  protected def addAutoCloseable[A <: FAutoCloseable[F]](a: F[A]): F[A] = a.map { a =>
     closeablesLock.synchronized {
       closeables = a +: closeables
     }
@@ -117,31 +127,35 @@ class DefaultRabbitMQConnection[F[_]: Effect](connection: ServerConnection,
   }
 
   private def taskWithChannel[A](f: ServerChannel => Task[A]): Task[A] = {
-    Task {
-      val ch = createChannel()
-
-      try {
-        f(ch)
-          .doOnFinish { e =>
-            e.foreach(logger.debug(s"Error while executing action with channel $ch", _))
-            Task(ch.close()).executeOn(blockingScheduler)
+    Task
+      .fromEffect(createChannel())
+      .map { channel =>
+        try {
+          f(channel).doOnFinish { e =>
+            e.foreach(logger.debug(s"Error while executing action with channel $channel", _))
+            Task(channel.close()).executeOn(blockingScheduler)
           }
-      } catch {
-        case NonFatal(e) =>
-          logger.debug(s"Error while executing action with channel $ch", e)
+        } catch {
+          case NonFatal(e) =>
+            logger.debug(s"Error while executing action with channel $channel", e)
 
-          Task(ch.close())
-            .executeOn(blockingScheduler)
-            .flatMap(_ => Task.raiseError(e))
+            Task(channel.close()).executeOn(blockingScheduler).flatMap(_ => Task.raiseError(e))
+        }
       }
-    }.flatten // surrounded with Task.apply to catch possible errors when creating the channel
-    .asyncBoundary
+      .flatten // surrounded with Task.apply to catch possible errors when creating the channel
+      .asyncBoundary
   }
 
   /** Closes this factory and all created consumers and producers.
     */
-  override def close(): Unit = {
-    closeables.foreach(_.close())
+  override def close(): F[Unit] = F.delay {
+    closeables.foreach { cl =>
+      try {
+        cl.close()
+      } catch {
+        case NonFatal(e) => logger.error(s"Could not close some resource: $cl", e)
+      }
+    }
     connection.close()
   }
 

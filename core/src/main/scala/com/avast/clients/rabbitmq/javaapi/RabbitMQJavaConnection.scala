@@ -1,6 +1,7 @@
 package com.avast.clients.rabbitmq.javaapi
 
 import java.io.IOException
+import java.time.{Duration => JavaDuration}
 import java.util.concurrent.{CompletableFuture, ExecutorService}
 
 import com.avast.clients.rabbitmq.RabbitMQConnection.DefaultListeners
@@ -11,6 +12,7 @@ import monix.eval.Task
 import monix.execution.Scheduler
 
 import scala.concurrent.Future
+import scala.concurrent.duration._
 
 trait RabbitMQJavaConnection extends AutoCloseable {
 
@@ -80,6 +82,7 @@ object RabbitMQJavaConnection {
     private var connectionListener: ConnectionListener = DefaultListeners.DefaultConnectionListener
     private var channelListener: ChannelListener = DefaultListeners.DefaultChannelListener
     private var consumerListener: ConsumerListener = DefaultListeners.DefaultConsumerListener
+    private var initTimeout: Duration = 10.seconds
 
     def withConnectionListener(connectionListener: ConnectionListener): Builder = {
       this.connectionListener = connectionListener
@@ -93,6 +96,11 @@ object RabbitMQJavaConnection {
 
     def withConsumerListener(consumerListener: ConsumerListener): Builder = {
       this.consumerListener = consumerListener
+      this
+    }
+
+    def withInitTimeout(timeout: JavaDuration): Builder = {
+      this.initTimeout = timeout.toMillis.millis
       this
     }
 
@@ -110,7 +118,9 @@ object RabbitMQJavaConnection {
             Option(channelListener).getOrElse(DefaultListeners.DefaultChannelListener),
             Option(consumerListener).getOrElse(DefaultListeners.DefaultConsumerListener)
           )
-          .imapK[Future]
+          .runSyncUnsafe(initTimeout)
+          .imapK[Future],
+        initTimeout
       )
     }
 

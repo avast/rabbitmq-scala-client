@@ -2,6 +2,9 @@ package com.avast.clients.rabbitmq.javaapi
 
 import com.avast.clients.rabbitmq.api.{RabbitMQConsumer => ScalaConsumer}
 
-class DefaultRabbitMQConsumer(scalaConsumer: ScalaConsumer with AutoCloseable) extends RabbitMQConsumer {
-  override def close(): Unit = scalaConsumer.close()
+import scala.concurrent.duration.Duration
+import scala.concurrent.{Await, Future}
+
+class DefaultRabbitMQConsumer(scalaConsumer: ScalaConsumer[Future], initTimeout: Duration) extends RabbitMQConsumer {
+  override def close(): Unit = Await.result(scalaConsumer.close(), initTimeout)
 }
