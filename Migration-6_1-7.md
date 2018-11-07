@@ -1,4 +1,6 @@
-## Migration from 6.1.x to 6.2.x
+## Migration from 6.1.x to 7.0.x
+
+Additional declarations: `bindQueue` now has more consistent API. The only change is `bindArguments` were renamed to `arguments`.
 
 Changes in Scala API:
 

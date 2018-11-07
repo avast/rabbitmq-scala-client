@@ -33,6 +33,9 @@ private[rabbitmq] object DefaultRabbitMQClientFactory extends LazyLogging {
   private[rabbitmq] final val DeclareQueueRootConfigKey = "avastRabbitMQDeclareQueueDefaults"
   private[rabbitmq] final val DeclareQueueDefaultConfig = ConfigFactory.defaultReference().getConfig(DeclareQueueRootConfigKey)
 
+  private[rabbitmq] final val BindQueueRootConfigKey = "avastRabbitMQBindQueueDefaults"
+  private[rabbitmq] final val BindQueueDefaultConfig = ConfigFactory.defaultReference().getConfig(BindQueueRootConfigKey)
+
   private[rabbitmq] final val BindExchangeRootConfigKey = "avastRabbitMQBindExchangeDefaults"
   private[rabbitmq] final val BindExchangeDefaultConfig = ConfigFactory.defaultReference().getConfig(BindExchangeRootConfigKey)
 
@@ -203,7 +206,7 @@ private[rabbitmq] object DefaultRabbitMQClientFactory extends LazyLogging {
     }
 
     def bindQueue(config: Config, channel: ServerChannel, channelFactoryInfo: RabbitMQConnectionInfo): Task[Unit] = {
-      bindQueue(config.withFallback(ConsumerBindingDefaultConfig).as[BindQueue], channel, channelFactoryInfo)
+      bindQueue(config.withFallback(BindQueueDefaultConfig).as[BindQueue], channel, channelFactoryInfo)
     }
 
     def bindExchange(config: Config, channel: ServerChannel, channelFactoryInfo: RabbitMQConnectionInfo): Task[Unit] = {
@@ -228,7 +231,7 @@ private[rabbitmq] object DefaultRabbitMQClientFactory extends LazyLogging {
       import config._
 
       routingKeys.foreach {
-        DefaultRabbitMQClientFactory.this.bindQueue(channelFactoryInfo)(channel, queueName)(exchangeName, _, bindArguments.value)
+        DefaultRabbitMQClientFactory.this.bindQueue(channelFactoryInfo)(channel, queueName)(exchangeName, _, arguments.value)
       }
     }
 

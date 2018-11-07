@@ -63,6 +63,6 @@ case class DeclareExchange(name: String, `type`: String, durable: Boolean, autoD
 
 case class DeclareQueue(name: String, durable: Boolean, exclusive: Boolean, autoDelete: Boolean, arguments: DeclareArguments)
 
-case class BindQueue(queueName: String, exchangeName: String, routingKeys: immutable.Seq[String], bindArguments: BindArguments)
+case class BindQueue(queueName: String, exchangeName: String, routingKeys: immutable.Seq[String], arguments: BindArguments)
 
 case class BindExchange(sourceExchangeName: String, destExchangeName: String, routingKeys: immutable.Seq[String], arguments: BindArguments)
