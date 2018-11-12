@@ -11,6 +11,7 @@ import com.avast.metrics.scalaapi.Monitor
 import com.rabbitmq.client._
 import com.typesafe.config.{Config, ConfigFactory}
 import com.typesafe.scalalogging.StrictLogging
+import javax.net.ssl.SSLContext
 import monix.execution.Scheduler
 import net.ceedubs.ficus.Ficus._
 import net.ceedubs.ficus.readers.ArbitraryTypeReader._
@@ -208,7 +209,7 @@ object RabbitMQConnection extends StrictLogging {
 
         factory.useSslProtocol(sslContext)
       } else {
-        factory.useSslProtocol()
+        factory.useSslProtocol(SSLContext.getDefault)
       }
     }
 
