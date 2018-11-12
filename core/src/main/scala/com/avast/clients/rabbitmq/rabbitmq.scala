@@ -27,6 +27,7 @@ package object rabbitmq {
   type FromTask[A[_]] = FunctionK[Task, A]
   type ToTask[A[_]] = FunctionK[A, Task]
 
+  // these two implicit vals below are here just because of usage in Java API (com.avast.clients.rabbitmq.javaapi.RabbitMQJavaConnection)
   private[rabbitmq] implicit def fkToFuture(implicit ec: ExecutionContext): FromTask[Future] = new FunctionK[Task, Future] {
     override def apply[A](fa: Task[A]): Future[A] = fa.runAsync(Scheduler(ses, ec))
   }
