@@ -230,9 +230,7 @@ private[rabbitmq] object DefaultRabbitMQClientFactory extends LazyLogging {
     private def bindQueue(config: BindQueue, channel: ServerChannel, channelFactoryInfo: RabbitMQConnectionInfo): Task[Unit] = Task {
       import config._
 
-      routingKeys.foreach {
-        DefaultRabbitMQClientFactory.this.bindQueue(channelFactoryInfo)(channel, queueName)(exchangeName, _, arguments.value)
-      }
+      bindQueues(channel, queueName, exchangeName, routingKeys, arguments, channelFactoryInfo)
     }
 
     private def bindExchange(config: BindExchange, channel: ServerChannel, channelFactoryInfo: RabbitMQConnectionInfo): Task[Unit] = Task {
@@ -396,15 +394,24 @@ private[rabbitmq] object DefaultRabbitMQClientFactory extends LazyLogging {
       import bind._
       val exchangeName = bind.exchange.name
 
-      if (routingKeys.nonEmpty) {
-        routingKeys.foreach { routingKey =>
-          bindQueue(channelFactoryInfo)(channel, queueName)(exchangeName, routingKey, bindArguments.value)
-        }
-      } else {
-        // binding without routing key, possibly to fanout exchange
+      bindQueues(channel, queueName, exchangeName, routingKeys, bindArguments, channelFactoryInfo)
+    }
+  }
 
-        bindQueue(channelFactoryInfo)(channel, queueName)(exchangeName, "", bindArguments.value)
+  private def bindQueues(channel: ServerChannel,
+                         queueName: String,
+                         exchangeName: String,
+                         routingKeys: immutable.Seq[String],
+                         bindArguments: BindArguments,
+                         channelFactoryInfo: RabbitMQConnectionInfo): Unit = {
+    if (routingKeys.nonEmpty) {
+      routingKeys.foreach { routingKey =>
+        bindQueue(channelFactoryInfo)(channel, queueName)(exchangeName, routingKey, bindArguments.value)
       }
+    } else {
+      // binding without routing key, possibly to fanout exchange
+
+      bindQueue(channelFactoryInfo)(channel, queueName)(exchangeName, "", bindArguments.value)
     }
   }
 
