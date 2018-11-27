@@ -386,7 +386,7 @@ There is an option to specify bind/declare arguments for queues/exchanges as you
 Check [reference.conf](core/src/main/resources/reference.conf) or following example for usage:
 ```hocon
   producer {
-    name = "Testing" // this is used for metrics, logging etc.
+    name = "Testing" // this is used for logging etc.
 
     exchange = "myclient"
 
