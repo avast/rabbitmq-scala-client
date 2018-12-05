@@ -3,6 +3,7 @@ package com.avast.clients
 import java.util.concurrent.Executors
 
 import cats.arrow.FunctionK
+import cats.effect.{Effect, IO}
 import cats.~>
 import com.avast.bytes.Bytes
 import com.avast.clients.rabbitmq.api._
@@ -12,6 +13,7 @@ import mainecoon.FunctorK
 import monix.eval.Task
 import monix.execution.Scheduler
 
+import scala.concurrent.duration._
 import scala.concurrent.{ExecutionContext, Future}
 import scala.language.{higherKinds, implicitConversions}
 
@@ -183,6 +185,15 @@ package object rabbitmq {
     def toMalformed(ce: ConversionException): Delivery.MalformedContent = d match {
       case ok: Delivery.Ok[Bytes] => Delivery.MalformedContent(ok.body, ok.properties, ok.routingKey, ce)
       case m: Delivery.MalformedContent => m.copy(ce = ce)
+    }
+  }
+
+  implicit class FAutoCloseableOps[F[_]](val fac: FAutoCloseable[F]) extends AnyVal {
+    def toAutoCloseable(timeout: Duration = 1.minute)(implicit F: Effect[F]): AutoCloseable = () => {
+      IO.async[Unit] { cb =>
+          F.runAsync(fac.close())(cb2 => IO(cb(cb2)))
+        }
+        .unsafeRunTimed(timeout)
     }
   }
 
