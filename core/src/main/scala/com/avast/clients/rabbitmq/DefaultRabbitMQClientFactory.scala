@@ -510,6 +510,7 @@ private[rabbitmq] object DefaultRabbitMQClientFactory extends LazyLogging {
 
       } catch {
         case NonFatal(e) =>
+          fatalFailuresMeter.mark()
           logger.error(s"[$name] Error while executing callback, applying DeliveryResult.${consumerConfig.failureAction}", e)
           Effect[F].pure(consumerConfig.failureAction)
       }
