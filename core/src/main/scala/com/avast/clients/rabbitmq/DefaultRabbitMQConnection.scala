@@ -2,6 +2,7 @@ package com.avast.clients.rabbitmq
 
 import cats.effect.Effect
 import cats.syntax.all._
+import com.avast.clients.rabbitmq.DefaultRabbitMQClientFactory.FakeConfigRootName
 import com.avast.clients.rabbitmq.api.{FAutoCloseable, RabbitMQConsumer, RabbitMQProducer, RabbitMQPullConsumer}
 import com.avast.metrics.scalaapi.Monitor
 import com.rabbitmq.client.ShutdownSignalException
@@ -61,7 +62,14 @@ class DefaultRabbitMQConnection[F[_]](connection: ServerConnection,
         implicit val scheduler = Scheduler(ses, ec)
 
         DefaultRabbitMQClientFactory.Consumer
-          .fromConfig[F, A](config.getConfig(configName), channel, info, blockingScheduler, monitor, consumerListener, readAction)
+          .fromConfig[F, A](config.getConfig(configName),
+                            s"$FakeConfigRootName.$configName",
+                            channel,
+                            info,
+                            blockingScheduler,
+                            monitor,
+                            consumerListener,
+                            readAction)
       }
     }
   }
@@ -73,7 +81,7 @@ class DefaultRabbitMQConnection[F[_]](connection: ServerConnection,
         implicit val scheduler = Scheduler(ses, ec)
 
         DefaultRabbitMQClientFactory.Consumer
-          .create[F, A](consumerConfig, channel, info, blockingScheduler, monitor, consumerListener, readAction)
+          .create[F, A](consumerConfig, "_manually_provided_", channel, info, blockingScheduler, monitor, consumerListener, readAction)
       }
     }
   }
@@ -85,7 +93,7 @@ class DefaultRabbitMQConnection[F[_]](connection: ServerConnection,
         implicit val scheduler = Scheduler(ses, ec)
 
         DefaultRabbitMQClientFactory.PullConsumer
-          .fromConfig[F, A](config.getConfig(configName), channel, info, blockingScheduler, monitor)
+          .fromConfig[F, A](config.getConfig(configName), s"$FakeConfigRootName.$configName", channel, info, blockingScheduler, monitor)
       }
     }
   }
@@ -97,7 +105,7 @@ class DefaultRabbitMQConnection[F[_]](connection: ServerConnection,
         implicit val scheduler = Scheduler(ses, ec)
 
         DefaultRabbitMQClientFactory.PullConsumer
-          .create[F, A](pullConsumerConfig, channel, info, blockingScheduler, monitor)
+          .create[F, A](pullConsumerConfig, "_manually_provided_", channel, info, blockingScheduler, monitor)
       }
     }
   }
@@ -108,7 +116,7 @@ class DefaultRabbitMQConnection[F[_]](connection: ServerConnection,
         implicit val scheduler = Scheduler(ses, ec)
 
         DefaultRabbitMQClientFactory.Producer
-          .fromConfig[F, A](config.getConfig(configName), channel, info, blockingScheduler, monitor)
+          .fromConfig[F, A](config.getConfig(configName), s"$FakeConfigRootName.$configName", channel, info, blockingScheduler, monitor)
       }
     }
   }
@@ -120,7 +128,7 @@ class DefaultRabbitMQConnection[F[_]](connection: ServerConnection,
         implicit val scheduler = Scheduler(ses, ec)
 
         DefaultRabbitMQClientFactory.Producer
-          .create[F, A](producerConfig, channel, info, blockingScheduler, monitor)
+          .create[F, A](producerConfig, "_manually_provided_", channel, info, blockingScheduler, monitor)
       }
     }
   }

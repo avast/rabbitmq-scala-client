@@ -5,6 +5,7 @@ import java.time.Duration
 import java.util.concurrent.ExecutorService
 
 import cats.effect.{Effect, Sync}
+import com.avast.clients.rabbitmq.DefaultRabbitMQClientFactory.FakeConfigRootName
 import com.avast.clients.rabbitmq.api._
 import com.avast.clients.rabbitmq.ssl.{KeyStoreTypes, SSLBuilder}
 import com.avast.metrics.scalaapi.Monitor
@@ -141,9 +142,9 @@ object RabbitMQConnection extends StrictLogging {
     // we need to wrap it with one level, to be able to parse it with Ficus
     val config = ConfigFactory
       .empty()
-      .withValue("root", providedConfig.withFallback(DefaultConfig).root())
+      .withValue(FakeConfigRootName, providedConfig.withFallback(DefaultConfig).root())
 
-    val connectionConfig = config.as[RabbitMQConnectionConfig]("root")
+    val connectionConfig = config.as[RabbitMQConnectionConfig](FakeConfigRootName)
 
     val connection = createConnection(connectionConfig, blockingExecutor, connectionListener, channelListener, consumerListener)
 
