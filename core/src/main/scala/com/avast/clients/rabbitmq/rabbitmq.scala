@@ -3,7 +3,7 @@ package com.avast.clients
 import java.util.concurrent.Executors
 
 import cats.arrow.FunctionK
-import cats.effect.{Effect, IO}
+import cats.effect.Effect
 import cats.~>
 import com.avast.bytes.Bytes
 import com.avast.clients.rabbitmq.api._
@@ -189,11 +189,9 @@ package object rabbitmq {
   }
 
   implicit class FAutoCloseableOps[F[_]](val fac: FAutoCloseable[F]) extends AnyVal {
-    def toAutoCloseable(timeout: Duration = 1.minute)(implicit F: Effect[F]): AutoCloseable = () => {
-      IO.async[Unit] { cb =>
-          F.runAsync(fac.close())(cb2 => IO(cb(cb2)))
-        }
-        .unsafeRunTimed(timeout)
+    def toAutoCloseable(timeout: Duration = 1.minute)(implicit F: Effect[F], ec: ExecutionContext): AutoCloseable = () => {
+      implicit val scheduler = Scheduler(ec)
+      Task.fromEffect(fac.close()).runSyncUnsafe(timeout)
     }
   }
 
