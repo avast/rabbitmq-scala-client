@@ -520,8 +520,13 @@ private[rabbitmq] object DefaultRabbitMQClientFactory extends LazyLogging {
           .map(Task.fromEffect[F, DeliveryResult])
           .flatten
 
-        action
-          .timeout(ScalaDuration(processTimeout.toMillis, TimeUnit.MILLISECONDS))
+        val timedOutAction = if (processTimeout == Duration.ZERO) {
+          action
+        } else {
+          action.timeout(ScalaDuration(processTimeout.toMillis, TimeUnit.MILLISECONDS))
+        }
+
+        timedOutAction
           .onErrorRecoverWith {
             case e: TimeoutException =>
               timeoutsMeter.mark()
