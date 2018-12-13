@@ -523,16 +523,18 @@ private[rabbitmq] object DefaultRabbitMQClientFactory extends LazyLogging {
         val timedOutAction = if (processTimeout == Duration.ZERO) {
           action
         } else {
-          action.timeout(ScalaDuration(processTimeout.toMillis, TimeUnit.MILLISECONDS))
+          action
+            .timeout(ScalaDuration(processTimeout.toMillis, TimeUnit.MILLISECONDS))
+            .onErrorRecoverWith {
+              case e: TimeoutException =>
+                timeoutsMeter.mark()
+                logger.warn(s"[$name] Task timed-out, applying DeliveryResult.${consumerConfig.timeoutAction}", e)
+                Task.now(consumerConfig.timeoutAction)
+            }
         }
 
         timedOutAction
           .onErrorRecoverWith {
-            case e: TimeoutException =>
-              timeoutsMeter.mark()
-              logger.warn(s"[$name] Task timed-out, applying DeliveryResult.${consumerConfig.timeoutAction}", e)
-              Task.now(consumerConfig.timeoutAction)
-
             case NonFatal(e) =>
               fatalFailuresMeter.mark()
               logger.warn(s"[$name] Error while executing callback, applying DeliveryResult.${consumerConfig.failureAction}", e)
