@@ -33,6 +33,9 @@ There is a [migration guide](Migration-6_1-7.md) between versions 6.1.x and 7.0.
 
 ## Usage
 
+Note: this is documentation for current (7.x) releases. For an older documentation, go to [releases](https://github.com/avast/rabbitmq-scala-client/releases)
+and select tag associated with required client version.
+
 ### Configuration
 
 #### Structured config
