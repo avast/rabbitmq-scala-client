@@ -498,6 +498,7 @@ private[rabbitmq] object DefaultRabbitMQClientFactory extends LazyLogging {
     val finalConsumerTag = if (consumerTag == "Default") "" else consumerTag
 
     channel.basicConsume(queueName, false, finalConsumerTag, consumer)
+    channel.setDefaultConsumer(consumer) // see `setDefaultConsumer` javadoc; this is possible because the channel is here exclusively for this consumer
 
     consumer
   }
