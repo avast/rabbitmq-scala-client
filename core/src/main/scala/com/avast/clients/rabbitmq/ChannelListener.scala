@@ -12,9 +12,6 @@ trait ChannelListener {
 
   def onRecoveryStarted(channel: Channel): Unit
 
-  @deprecated("6.0.0", "This method is never called")
-  def onRecovery(channel: Channel): Unit = ()
-
   def onRecoveryCompleted(channel: Channel): Unit
 
   def onRecoveryFailure(channel: Channel, failure: Throwable): Unit

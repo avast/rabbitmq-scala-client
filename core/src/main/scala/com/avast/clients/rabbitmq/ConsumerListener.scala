@@ -4,22 +4,7 @@ import com.rabbitmq.client.{Channel, Consumer, ShutdownSignalException}
 import com.typesafe.scalalogging.StrictLogging
 
 trait ConsumerListener {
-  @deprecated("6.0.0", "Use onError(Consumer, String, Channel, Throwable) instead. This method is never called.")
-  def onError(consumer: Consumer, channel: Channel, failure: Throwable): Unit = ()
-
   def onError(consumer: Consumer, consumerName: String, channel: Channel, failure: Throwable): Unit
-
-  @deprecated("6.0.0", "This method is never called")
-  def onRecoveryStarted(consumer: Consumer, channel: Channel): Unit = ()
-
-  @deprecated("6.0.0", "This method is never called")
-  def onRecoveryCompleted(consumer: Consumer, channel: Channel): Unit = ()
-
-  @deprecated("6.0.0", "This method is never called")
-  def onRecoveryFailure(consumer: Consumer, channel: Channel, failure: Throwable): Unit = ()
-
-  @deprecated("6.0.0", "Use onShutdown(Consumer, Channel, String, String, ShutdownSignalException) instead. This method is never called.")
-  def onShutdown(consumer: Consumer, channel: Channel, consumerTag: String, sig: ShutdownSignalException): Unit = ()
 
   def onShutdown(consumer: Consumer, channel: Channel, consumerName: String, consumerTag: String, sig: ShutdownSignalException): Unit
 }

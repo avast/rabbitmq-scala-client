@@ -10,9 +10,6 @@ trait ConnectionListener {
 
   def onRecoveryStarted(connection: Connection): Unit
 
-  @deprecated("6.0.0", "This method is never called")
-  def onRecovery(connection: Connection): Unit = ()
-
   def onRecoveryCompleted(connection: Connection): Unit
 
   def onRecoveryFailure(connection: Connection, failure: Throwable): Unit
