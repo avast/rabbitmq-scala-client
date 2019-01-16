@@ -7,7 +7,7 @@ import cats.effect.Effect
 import com.avast.bytes.Bytes
 import com.avast.clients.rabbitmq.api.DeliveryResult.{Ack, Reject, Republish, Retry}
 import com.avast.clients.rabbitmq.api._
-import com.avast.metrics.scalaapi.Monitor
+import com.avast.metrics.scalaapi.{Meter, Monitor}
 import com.rabbitmq.client.AMQP
 import com.rabbitmq.client.AMQP.Queue
 import com.typesafe.config.{Config, ConfigFactory, ConfigValueFactory}
@@ -17,6 +17,7 @@ import monix.execution.Scheduler
 import net.ceedubs.ficus.Ficus._
 import net.ceedubs.ficus.readers.ArbitraryTypeReader._
 import net.ceedubs.ficus.readers.ValueReader
+import org.slf4j.event.Level
 
 import scala.collection.JavaConverters._
 import scala.collection.generic.CanBuildFrom
@@ -96,6 +97,8 @@ private[rabbitmq] object DefaultRabbitMQClientFactory extends LazyLogging {
 
     BindArguments(argumentsMap)
   }
+
+  private implicit final val logLevelReader: ValueReader[Level] = ValueReader[String].map(Level.valueOf)
 
   // this overrides Ficus's default reader and pass better path into possible exception
   private implicit def traversableReader[C[_], A](implicit entryReader: ValueReader[A],
@@ -527,10 +530,7 @@ private[rabbitmq] object DefaultRabbitMQClientFactory extends LazyLogging {
           action
             .timeout(ScalaDuration(processTimeout.toMillis, TimeUnit.MILLISECONDS))
             .onErrorRecoverWith {
-              case e: TimeoutException =>
-                timeoutsMeter.mark()
-                logger.warn(s"[$name] Task timed-out, applying DeliveryResult.${consumerConfig.timeoutAction}", e)
-                Task.now(consumerConfig.timeoutAction)
+              case e: TimeoutException => doTimeoutAction(consumerConfig, timeoutsMeter, e)
             }
         }
 
@@ -549,6 +549,24 @@ private[rabbitmq] object DefaultRabbitMQClientFactory extends LazyLogging {
           logger.error(s"[$name] Error while executing callback, applying DeliveryResult.${consumerConfig.failureAction}", e)
           Effect[F].pure(consumerConfig.failureAction)
       }
+  }
+
+  private def doTimeoutAction[A, F[_]: Effect](consumerConfig: ConsumerConfig,
+                                               timeoutsMeter: Meter,
+                                               e: TimeoutException): Task[DeliveryResult] = Task {
+    import consumerConfig._
+
+    timeoutsMeter.mark()
+
+    timeoutLogLevel match {
+      case Level.ERROR => logger.error(s"[$name] Task timed-out, applying DeliveryResult.${consumerConfig.timeoutAction}", e)
+      case Level.WARN => logger.warn(s"[$name] Task timed-out, applying DeliveryResult.${consumerConfig.timeoutAction}", e)
+      case Level.INFO => logger.info(s"[$name] Task timed-out, applying DeliveryResult.${consumerConfig.timeoutAction}", e)
+      case Level.DEBUG => logger.debug(s"[$name] Task timed-out, applying DeliveryResult.${consumerConfig.timeoutAction}", e)
+      case Level.TRACE => logger.trace(s"[$name] Task timed-out, applying DeliveryResult.${consumerConfig.timeoutAction}", e)
+    }
+
+    consumerConfig.timeoutAction
   }
 
   implicit class WrapConfig(val c: Config) extends AnyVal {
