@@ -558,12 +558,14 @@ private[rabbitmq] object DefaultRabbitMQClientFactory extends LazyLogging {
 
     timeoutsMeter.mark()
 
+    lazy val msg = s"[$name] Task timed-out, applying DeliveryResult.${consumerConfig.timeoutAction}"
+
     timeoutLogLevel match {
-      case Level.ERROR => logger.error(s"[$name] Task timed-out, applying DeliveryResult.${consumerConfig.timeoutAction}", e)
-      case Level.WARN => logger.warn(s"[$name] Task timed-out, applying DeliveryResult.${consumerConfig.timeoutAction}", e)
-      case Level.INFO => logger.info(s"[$name] Task timed-out, applying DeliveryResult.${consumerConfig.timeoutAction}", e)
-      case Level.DEBUG => logger.debug(s"[$name] Task timed-out, applying DeliveryResult.${consumerConfig.timeoutAction}", e)
-      case Level.TRACE => logger.trace(s"[$name] Task timed-out, applying DeliveryResult.${consumerConfig.timeoutAction}", e)
+      case Level.ERROR => logger.error(msg, e)
+      case Level.WARN => logger.warn(msg, e)
+      case Level.INFO => logger.info(msg, e)
+      case Level.DEBUG => logger.debug(msg, e)
+      case Level.TRACE => logger.trace(msg, e)
     }
 
     consumerConfig.timeoutAction
