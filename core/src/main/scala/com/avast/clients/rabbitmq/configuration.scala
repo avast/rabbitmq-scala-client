@@ -5,6 +5,7 @@ import java.time.Duration
 
 import com.avast.clients.rabbitmq.api.DeliveryResult
 import com.typesafe.config.Config
+import org.slf4j.event.Level
 
 import scala.collection.immutable
 
@@ -32,6 +33,7 @@ case class ConsumerConfig(queueName: String,
                           processTimeout: Duration,
                           failureAction: DeliveryResult,
                           timeoutAction: DeliveryResult,
+                          timeoutLogLevel: Level,
                           prefetchCount: Int,
                           declare: AutoDeclareQueue,
                           bindings: immutable.Seq[AutoBindQueue],
