@@ -94,12 +94,12 @@ subprojects {
     ext {
         scalaVersion = "2.12"
         scalaVersionFull = "2.12.7"
-        metricsVersion = "2.4.4"
-        bytesVersion = "2.0.4"
+        metricsVersion = "2.5.3"
+        bytesVersion = "2.0.5"
         circeVersion = "0.10.1"
         cactusVersion = "0.12.5"
         monixVersion = "3.0.0-RC1"
-        catsVersion = "1.2.0"
+        catsVersion = "1.5.0"
     }
 
     dependencies {
