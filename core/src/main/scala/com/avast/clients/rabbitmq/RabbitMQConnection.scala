@@ -122,8 +122,12 @@ object RabbitMQConnection extends StrictLogging {
   }
 
   private[rabbitmq] final val RootConfigKey = "avastRabbitMQConnectionDefaults"
-
   private[rabbitmq] final val DefaultConfig = ConfigFactory.defaultReference().getConfig(RootConfigKey)
+  private[rabbitmq] final val RootConfigKeyRecoveryLinear = "avastRabbitMQRecoveryLinearDefaults"
+  private[rabbitmq] final val DefaultConfigRecoveryLinear = ConfigFactory.defaultReference().getConfig(RootConfigKeyRecoveryLinear)
+  private[rabbitmq] final val RootConfigKeyRecoveryExponential = "avastRabbitMQRecoveryExponentialDefaults"
+  private[rabbitmq] final val DefaultConfigRecoveryExponential =
+    ConfigFactory.defaultReference().getConfig(RootConfigKeyRecoveryExponential)
 
   private implicit final val JavaDurationReader: ValueReader[Duration] = (config: Config, path: String) => config.getDuration(path)
 
@@ -134,17 +138,21 @@ object RabbitMQConnection extends StrictLogging {
 
     rdhConfig.getString("type").toLowerCase match {
       case "linear" =>
+        val finalConfig = rdhConfig.withFallback(DefaultConfigRecoveryLinear)
+
         RecoveryDelayHandlers.Linear(
-          delay = rdhConfig.getDuration("initialDelay"),
-          period = rdhConfig.getDuration("period")
+          delay = finalConfig.getDuration("initialDelay"),
+          period = finalConfig.getDuration("period")
         )
 
       case "exponential" =>
+        val finalConfig = rdhConfig.withFallback(DefaultConfigRecoveryExponential)
+
         RecoveryDelayHandlers.Exponential(
-          delay = rdhConfig.getDuration(s"initialDelay"),
-          period = rdhConfig.getDuration("period"),
-          factor = rdhConfig.getDouble("factor"),
-          maxLength = rdhConfig.getDuration("maxLength"),
+          delay = finalConfig.getDuration("initialDelay"),
+          period = finalConfig.getDuration("period"),
+          factor = finalConfig.getDouble("factor"),
+          maxLength = finalConfig.getDuration("maxLength"),
         )
     }
   }
