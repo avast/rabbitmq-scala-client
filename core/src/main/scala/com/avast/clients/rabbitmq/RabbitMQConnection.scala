@@ -128,6 +128,26 @@ object RabbitMQConnection extends StrictLogging {
 
   private implicit final val JavaPathReader: ValueReader[Path] = (config: Config, path: String) => Paths.get(config.getString(path))
 
+  private implicit final val RecoveryDelayHandlerReader: ValueReader[RecoveryDelayHandler] = (config: Config, path: String) => {
+    val rdhConfig = config.getConfig(path.split('.').dropRight(1).mkString("."))
+
+    rdhConfig.getString("type").toLowerCase match {
+      case "linear" =>
+        RecoveryDelayHandlers.Linear(
+          delay = rdhConfig.getDuration("initialDelay"),
+          period = rdhConfig.getDuration("period")
+        )
+
+      case "exponential" =>
+        RecoveryDelayHandlers.Exponential(
+          delay = rdhConfig.getDuration(s"initialDelay"),
+          period = rdhConfig.getDuration("period"),
+          factor = rdhConfig.getDouble("factor"),
+          maxLength = rdhConfig.getDuration("maxLength"),
+        )
+    }
+  }
+
   /** Creates new instance of channel factory, using the passed configuration.
     *
     * @param providedConfig   The configuration.
@@ -209,10 +229,11 @@ object RabbitMQConnection extends StrictLogging {
     factory.setVirtualHost(virtualHost)
 
     factory.setTopologyRecoveryEnabled(topologyRecovery)
-    factory.setAutomaticRecoveryEnabled(true)
-    factory.setNetworkRecoveryInterval(networkRecovery.period.toMillis)
+    factory.setAutomaticRecoveryEnabled(networkRecovery.enabled)
     factory.setExceptionHandler(exceptionHandler)
     factory.setRequestedHeartbeat(heartBeatInterval.getSeconds.toInt)
+
+    if (networkRecovery.enabled) factory.setRecoveryDelayHandler(networkRecovery.handler)
 
     factory.setSharedExecutor(executor)
 

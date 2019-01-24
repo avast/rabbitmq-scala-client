@@ -52,7 +52,7 @@ class DefaultRabbitMQProducer[F[_], A: ProductConverter](name: String,
 
   private def send(routingKey: String, body: Bytes, properties: MessageProperties): Task[Unit] = {
     Task {
-      logger.debug(s"Sending message with ${body.size()} B to exchange $exchangeName with routing key $routingKey and $properties")
+      logger.debug(s"Sending message with ${body.size()} B to exchange $exchangeName with routing key '$routingKey' and $properties")
 
       try {
         sendLock.synchronized {
