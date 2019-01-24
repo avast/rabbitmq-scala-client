@@ -41,9 +41,9 @@ object ChannelListener {
 
     override def onShutdown(cause: ShutdownSignalException, channel: Channel): Unit = {
       if (cause.isInitiatedByApplication) {
-        logger.info(s"Channel shutdown: $channel")
+        logger.debug(s"Channel shutdown: $channel")
       } else {
-        logger.warn(s"Channel shutdown: $channel", cause)
+        logger.info(s"Channel shutdown: $channel", cause)
       }
     }
   }

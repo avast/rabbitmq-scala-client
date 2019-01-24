@@ -22,9 +22,9 @@ object ConsumerListener {
                             consumerTag: String,
                             cause: ShutdownSignalException): Unit = {
       if (cause.isInitiatedByApplication) {
-        logger.info(s"[$consumerName] Shutdown of consumer on channel $channel")
+        logger.debug(s"[$consumerName] Shutdown of consumer on channel $channel")
       } else {
-        logger.warn(s"[$consumerName] Shutdown of consumer on channel $channel", cause)
+        logger.info(s"[$consumerName] Shutdown of consumer on channel $channel", cause)
       }
     }
   }

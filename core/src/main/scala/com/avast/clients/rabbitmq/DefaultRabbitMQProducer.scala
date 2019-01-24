@@ -4,11 +4,11 @@ import java.util.UUID
 
 import cats.effect.{Effect, Sync}
 import com.avast.bytes.Bytes
-import com.avast.clients.rabbitmq.api.{MessageProperties, RabbitMQProducer}
+import com.avast.clients.rabbitmq.api.{ChannelNotRecoveredException, MessageProperties, RabbitMQProducer}
 import com.avast.clients.rabbitmq.javaapi.JavaConverters._
 import com.avast.metrics.scalaapi.Monitor
 import com.rabbitmq.client.AMQP.BasicProperties
-import com.rabbitmq.client.ReturnListener
+import com.rabbitmq.client.{AlreadyClosedException, ReturnListener}
 import com.typesafe.scalalogging.StrictLogging
 import monix.eval.Task
 import monix.execution.Scheduler
@@ -63,6 +63,11 @@ class DefaultRabbitMQProducer[F[_], A: ProductConverter](name: String,
         // ok!
         sentMeter.mark()
       } catch {
+        case ce: AlreadyClosedException =>
+          logger.debug(s"[$name] Failed to send message with routing key '$routingKey' to exchange '$exchangeName'", ce)
+          sentFailedMeter.mark()
+          throw ChannelNotRecoveredException("Channel closed, wait for recovery", ce)
+
         case NonFatal(e) =>
           logger.debug(s"[$name] Failed to send message with routing key '$routingKey' to exchange '$exchangeName'", e)
           sentFailedMeter.mark()
