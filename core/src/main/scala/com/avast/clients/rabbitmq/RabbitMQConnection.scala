@@ -1,5 +1,6 @@
 package com.avast.clients.rabbitmq
 
+import java.io.IOException
 import java.nio.file.{Path, Paths}
 import java.time.Duration
 import java.util.concurrent.ExecutorService
@@ -268,16 +269,19 @@ object RabbitMQConnection extends StrictLogging {
                                      consumerListener: ConsumerListener): ExceptionHandler with RecoveryListener =
     new ExceptionHandler with RecoveryListener {
       override def handleReturnListenerException(channel: Channel, exception: Throwable): Unit = {
-        logger.info(s"Return listener error on channel $channel", exception)
+        logger.info(
+          s"Return listener error on channel $channel (on connection ${channel.getConnection}, name ${channel.getConnection.getClientProvidedName})",
+          exception
+        )
       }
 
       override def handleConnectionRecoveryException(conn: Connection, exception: Throwable): Unit = {
-        logger.debug(s"Recovery error on connection $conn", exception)
+        logger.debug(s"Recovery error on connection $conn (name ${conn.getClientProvidedName})", exception)
         connectionListener.onRecoveryFailure(conn, exception)
       }
 
-      override def handleBlockedListenerException(connection: Connection, exception: Throwable): Unit = {
-        logger.info(s"Recovery error on connection $connection", exception)
+      override def handleBlockedListenerException(conn: Connection, exception: Throwable): Unit = {
+        logger.info(s"Recovery error on connection $conn (name ${conn.getClientProvidedName})", exception)
       }
 
       override def handleChannelRecoveryException(ch: Channel, exception: Throwable): Unit = {
@@ -286,7 +290,10 @@ object RabbitMQConnection extends StrictLogging {
       }
 
       override def handleUnexpectedConnectionDriverException(conn: Connection, exception: Throwable): Unit = {
-        logger.info("RabbitMQ driver exception", exception)
+        exception match {
+          case ioe: IOException => logger.info(s"RabbitMQ IO exception on $conn (name ${conn.getClientProvidedName})", ioe)
+          case e => logger.debug(s"RabbitMQ unexpected exception on $conn (name ${conn.getClientProvidedName})", e)
+        }
       }
 
       override def handleConsumerException(channel: Channel,
@@ -305,7 +312,7 @@ object RabbitMQConnection extends StrictLogging {
       }
 
       override def handleTopologyRecoveryException(conn: Connection, ch: Channel, exception: TopologyRecoveryException): Unit = {
-        logger.debug(s"Topology recovery error on channel $ch (connection $conn)", exception)
+        logger.debug(s"Topology recovery error on channel $ch (on connection $conn, name ${conn.getClientProvidedName})", exception)
         channelListener.onRecoveryFailure(ch, exception)
       }
 
