@@ -28,7 +28,7 @@ some optional functionality:
 ## Migration
 
 There is a [migration guide](Migration-5-6.md) between versions 5 and 6.0.x.  
-There is a [migration guide](Migration-6-6_1.md) between versions 6.0.x and 6.1.x.
+There is a [migration guide](Migration-6-6_1.md) between versions 6.0.x and 6.1.x.  
 There is a [migration guide](Migration-6_1-7.md) between versions 6.1.x and 7.0.x.
 
 ## Usage
@@ -270,6 +270,11 @@ However there exists a workaround:
 1. Convert it to your `F[_]` by providing `cats.arrow.FunctionK[Task, A]` and `cats.arrow.FunctionK[A, Task]`
 
 ```scala
+import monix.eval.Task
+import scala.concurrent.Future
+import scala.concurrent.duration._
+import com.avast.clients.rabbitmq._
+
 implicit val fkToFuture: cats.arrow.FunctionK[Task, Future] = ???
 implicit val fkFromFuture: cats.arrow.FunctionK[Future, Task] = ???
 
