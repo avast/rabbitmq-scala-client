@@ -28,7 +28,7 @@ some optional functionality:
 ## Migration
 
 There is a [migration guide](Migration-5-6.md) between versions 5 and 6.0.x.  
-There is a [migration guide](Migration-6-6_1.md) between versions 6.0.x and 6.1.x.
+There is a [migration guide](Migration-6-6_1.md) between versions 6.0.x and 6.1.x.  
 There is a [migration guide](Migration-6_1-7.md) between versions 6.1.x and 7.0.x.
 
 ## Usage
@@ -270,6 +270,11 @@ However there exists a workaround:
 1. Convert it to your `F[_]` by providing `cats.arrow.FunctionK[Task, A]` and `cats.arrow.FunctionK[A, Task]`
 
 ```scala
+import monix.eval.Task
+import scala.concurrent.Future
+import scala.concurrent.duration._
+import com.avast.clients.rabbitmq._
+
 implicit val fkToFuture: cats.arrow.FunctionK[Task, Future] = ???
 implicit val fkFromFuture: cats.arrow.FunctionK[Future, Task] = ???
 
@@ -368,6 +373,18 @@ See [full example](core/src/test/java/ExampleJava.java)
 
 ### Extras
 There is a module with some optional functionality called [extras](extras/README.md).
+
+### Network recovery
+The library offers configurable network recovery, with the functionality itself backed by RabbitMQ client's one (ready in 5+).  
+You can either disable the recovery or select (and configure one of following types):
+1. Linear  
+    The client will wait `initialDelay` for first recovery attempt and if it fails, will try it again each `period` until it succeeds.
+1. Exponential  
+    The client will wait `initialDelay` for first recovery attempt and if it fails, will try it again until it succeeds and prolong the
+    delay between each two attempts exponentially (based on `period`, `factor`, attempt number), up to `maxLength`.  
+    Example:  
+    For `initialDelay = 3s, period = 2s, factor = 2.0, maxLength = 1 minute`, produced delays will be 3, 2, 4, 8, 16, 32, 60 seconds
+    (and it will never go higher).
 
 ### DeliveryResult
 The consumers `readAction` returns `Future` of [`DeliveryResult`](api/src/main/scala/com/avast/clients/rabbitmq/api/DeliveryResult.scala). The `DeliveryResult` has 4 possible values

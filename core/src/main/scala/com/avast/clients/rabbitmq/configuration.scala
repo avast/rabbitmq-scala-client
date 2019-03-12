@@ -4,6 +4,7 @@ import java.nio.file.Path
 import java.time.Duration
 
 import com.avast.clients.rabbitmq.api.DeliveryResult
+import com.rabbitmq.client.RecoveryDelayHandler
 import com.typesafe.config.Config
 import org.slf4j.event.Level
 
@@ -19,7 +20,7 @@ case class RabbitMQConnectionConfig(hosts: Array[String],
                                     credentials: Credentials,
                                     ssl: Ssl)
 
-case class NetworkRecovery(enabled: Boolean, period: Duration)
+case class NetworkRecovery(enabled: Boolean, handler: RecoveryDelayHandler)
 
 case class Credentials(enabled: Boolean, username: String, password: String)
 

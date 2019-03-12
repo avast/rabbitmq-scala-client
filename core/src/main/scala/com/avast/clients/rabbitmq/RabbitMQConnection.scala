@@ -122,12 +122,40 @@ object RabbitMQConnection extends StrictLogging {
   }
 
   private[rabbitmq] final val RootConfigKey = "avastRabbitMQConnectionDefaults"
-
   private[rabbitmq] final val DefaultConfig = ConfigFactory.defaultReference().getConfig(RootConfigKey)
+  private[rabbitmq] final val RootConfigKeyRecoveryLinear = "avastRabbitMQRecoveryLinearDefaults"
+  private[rabbitmq] final val DefaultConfigRecoveryLinear = ConfigFactory.defaultReference().getConfig(RootConfigKeyRecoveryLinear)
+  private[rabbitmq] final val RootConfigKeyRecoveryExponential = "avastRabbitMQRecoveryExponentialDefaults"
+  private[rabbitmq] final val DefaultConfigRecoveryExponential =
+    ConfigFactory.defaultReference().getConfig(RootConfigKeyRecoveryExponential)
 
   private implicit final val JavaDurationReader: ValueReader[Duration] = (config: Config, path: String) => config.getDuration(path)
 
   private implicit final val JavaPathReader: ValueReader[Path] = (config: Config, path: String) => Paths.get(config.getString(path))
+
+  private implicit final val RecoveryDelayHandlerReader: ValueReader[RecoveryDelayHandler] = (config: Config, path: String) => {
+    val rdhConfig = config.getConfig(path.split('.').dropRight(1).mkString("."))
+
+    rdhConfig.getString("type").toLowerCase match {
+      case "linear" =>
+        val finalConfig = rdhConfig.withFallback(DefaultConfigRecoveryLinear)
+
+        RecoveryDelayHandlers.Linear(
+          delay = finalConfig.getDuration("initialDelay"),
+          period = finalConfig.getDuration("period")
+        )
+
+      case "exponential" =>
+        val finalConfig = rdhConfig.withFallback(DefaultConfigRecoveryExponential)
+
+        RecoveryDelayHandlers.Exponential(
+          delay = finalConfig.getDuration("initialDelay"),
+          period = finalConfig.getDuration("period"),
+          factor = finalConfig.getDouble("factor"),
+          maxLength = finalConfig.getDuration("maxLength"),
+        )
+    }
+  }
 
   /** Creates new instance of channel factory, using the passed configuration.
     *
@@ -210,10 +238,11 @@ object RabbitMQConnection extends StrictLogging {
     factory.setVirtualHost(virtualHost)
 
     factory.setTopologyRecoveryEnabled(topologyRecovery)
-    factory.setAutomaticRecoveryEnabled(true)
-    factory.setNetworkRecoveryInterval(networkRecovery.period.toMillis)
+    factory.setAutomaticRecoveryEnabled(networkRecovery.enabled)
     factory.setExceptionHandler(exceptionHandler)
     factory.setRequestedHeartbeat(heartBeatInterval.getSeconds.toInt)
+
+    if (networkRecovery.enabled) factory.setRecoveryDelayHandler(networkRecovery.handler)
 
     factory.setSharedExecutor(executor)
 

@@ -1,6 +1,10 @@
 ## Migration from 6.1.x to 7.0.x
 
-Additional declarations: `bindQueue` now has more consistent API. The only change is `bindArguments` were renamed to `arguments`.
+Common changes:
+
+1. Additional declarations: `bindQueue` now has more consistent API. The only change is `bindArguments` were renamed to `arguments`.
+1. You are able to specify network recovery strategy.
+1. You are able to specify timeout log level.
 
 Changes in Scala API:
 
