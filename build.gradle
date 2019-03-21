@@ -97,7 +97,7 @@ subprojects {
         metricsVersion = "2.5.3"
         bytesVersion = "2.0.5"
         circeVersion = "0.10.1"
-        cactusVersion = "0.12.5"
+        cactusVersion = "0.14.3"
         monixVersion = "3.0.0-RC1"
         catsVersion = "1.5.0"
     }
