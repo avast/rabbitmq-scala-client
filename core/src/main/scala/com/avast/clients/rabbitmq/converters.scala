@@ -21,6 +21,8 @@ trait CheckedDeliveryConverter[A] extends DeliveryConverter[A] {
 
 object DeliveryConverter {
   implicit val identity: DeliveryConverter[Bytes] = (b: Bytes) => Right(b)
+  implicit val bytesArray: DeliveryConverter[Array[Byte]] = (b: Bytes) => Right(b.toByteArray)
+  implicit val utf8String: DeliveryConverter[String] = (b: Bytes) => Right(b.toStringUtf8)
 }
 
 @implicitNotFound("Could not find ProductConverter for ${A}, try to import or define some")
@@ -35,7 +37,14 @@ trait ProductConverter[A] {
 object ProductConverter {
   implicit val identity: ProductConverter[Bytes] = new ProductConverter[Bytes] {
     override def convert(p: Bytes): Either[ConversionException, Bytes] = Right(p)
-
+    override def fillProperties(properties: MessageProperties): MessageProperties = properties
+  }
+  implicit val bytesArray: ProductConverter[Array[Byte]] = new ProductConverter[Array[Byte]] {
+    override def convert(p: Array[Byte]): Either[ConversionException, Bytes] = Right(Bytes.copyFrom(p))
+    override def fillProperties(properties: MessageProperties): MessageProperties = properties
+  }
+  implicit val utf8String: ProductConverter[String] = new ProductConverter[String] {
+    override def convert(p: String): Either[ConversionException, Bytes] = Right(Bytes.copyFromUtf8(p))
     override def fillProperties(properties: MessageProperties): MessageProperties = properties
   }
 }
