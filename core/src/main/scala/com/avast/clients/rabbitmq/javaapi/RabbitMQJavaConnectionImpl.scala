@@ -5,7 +5,7 @@ import java.util.function
 
 import com.avast.bytes.Bytes
 import com.avast.clients.rabbitmq.javaapi.JavaConverters._
-import com.avast.clients.rabbitmq.{RabbitMQConnection => ScalaConnection}
+import com.avast.clients.rabbitmq.{DeliveryConverter, RabbitMQConnection => ScalaConnection}
 import com.avast.metrics.api.Monitor
 import com.avast.metrics.scalaapi.{Monitor => ScalaMonitor}
 import monix.execution.Scheduler
@@ -33,7 +33,7 @@ private class RabbitMQJavaConnectionImpl(scalaConnection: ScalaConnection[Future
     implicit val sch: SchedulerService = Scheduler(executor)
 
     Await.result(
-      scalaConnection.newPullConsumer(configName, ScalaMonitor(monitor)).map(new DefaultRabbitMQPullConsumer(_, initTimeout)),
+      scalaConnection.newPullConsumer(configName, ScalaMonitor(monitor))(DeliveryConverter.identity, sch).map(new DefaultRabbitMQPullConsumer(_, initTimeout)),
       initTimeout
     )
   }
