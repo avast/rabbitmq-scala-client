@@ -37,23 +37,14 @@ trait ProductConverter[A] {
 object ProductConverter {
   implicit val identity: ProductConverter[Bytes] = new ProductConverter[Bytes] {
     override def convert(p: Bytes): Either[ConversionException, Bytes] = Right(p)
-    override def fillProperties(properties: MessageProperties): MessageProperties = properties.contentType match {
-      case None => properties.copy(contentType = Some("application/octet-stream"))
-      case _ => properties
-    }
+    override def fillProperties(properties: MessageProperties): MessageProperties = properties
   }
   implicit val bytesArray: ProductConverter[Array[Byte]] = new ProductConverter[Array[Byte]] {
     override def convert(p: Array[Byte]): Either[ConversionException, Bytes] = Right(Bytes.copyFrom(p))
-    override def fillProperties(properties: MessageProperties): MessageProperties = properties.contentType match {
-      case None => properties.copy(contentType = Some("application/octet-stream"))
-      case _ => properties
-    }
+    override def fillProperties(properties: MessageProperties): MessageProperties = properties
   }
   implicit val utf8String: ProductConverter[String] = new ProductConverter[String] {
     override def convert(p: String): Either[ConversionException, Bytes] = Right(Bytes.copyFromUtf8(p))
-    override def fillProperties(properties: MessageProperties): MessageProperties = properties.contentType match {
-      case None => properties.copy(contentType = Some("text/plain; charset=utf-8"))
-      case _ => properties
-    }
+    override def fillProperties(properties: MessageProperties): MessageProperties = properties
   }
 }
