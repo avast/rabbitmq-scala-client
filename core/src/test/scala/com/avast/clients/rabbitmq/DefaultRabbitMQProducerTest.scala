@@ -32,7 +32,6 @@ class DefaultRabbitMQProducerTest extends TestBase {
     )
 
     val properties = new AMQP.BasicProperties.Builder()
-      .contentType("application/octet-stream")
       .build()
 
     val body = Bytes.copyFromUtf8(Random.nextString(10))
