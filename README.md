@@ -254,7 +254,7 @@ val consumer = rabbitConnection.newConsumer[Bytes]("consumer", monitor) {
     Future.successful(DeliveryResult.Reject)
 }.await // RabbitMQConsumer[Future]
 
-val sender = rabbitConnection.newProducer[Bytes]("producer", monitor).await // RabbitMQProducer[Future]
+val sender = rabbitConnection.newProducer[Bytes]("producer", monitor).await // RabbitMQProducer[Future, Bytes]
 
 sender.send(...) // Future[Unit]
 ```
