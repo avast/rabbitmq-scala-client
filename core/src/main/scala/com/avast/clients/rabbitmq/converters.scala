@@ -45,6 +45,9 @@ object ProductConverter {
   }
   implicit val utf8String: ProductConverter[String] = new ProductConverter[String] {
     override def convert(p: String): Either[ConversionException, Bytes] = Right(Bytes.copyFromUtf8(p))
-    override def fillProperties(properties: MessageProperties): MessageProperties = properties
+    override def fillProperties(properties: MessageProperties): MessageProperties = properties.contentType match {
+      case None => properties.copy(contentType = Some("text/plain; charset=utf-8"))
+      case _ => properties
+    }
   }
 }
