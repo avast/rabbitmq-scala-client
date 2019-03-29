@@ -24,10 +24,9 @@ object DeliveryConverter {
   implicit val bytesArray: DeliveryConverter[Array[Byte]] = (b: Bytes) => Right(b.toByteArray)
   implicit val utf8String: CheckedDeliveryConverter[String] = new CheckedDeliveryConverter[String] {
     override def canConvert(d: Delivery[Bytes]): Boolean = d.properties.contentType match {
-      case Some(contentType) => {
+      case Some(contentType) =>
         val ct = contentType.toLowerCase
-        ct.startsWith("text") && (!ct.contains("charset=") || ct.contains("charset=utf-8") || ct.contains("charset=\"utf-8\""))
-      }
+        ct.startsWith("text") || ct.contains("charset=utf-8") || ct.contains("charset=\"utf-8\"")
       case None => true
     }
     override def convert(b: Bytes): Either[ConversionException, String] = Right(b.toStringUtf8)
