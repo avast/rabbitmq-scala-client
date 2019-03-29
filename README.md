@@ -215,7 +215,7 @@ val consumerAndProducer: Task[(RabbitMQConsumer[Task], RabbitMQProducer[Task, By
           Task.now(DeliveryResult.Reject)
       }
 
-      producer <- connection.newProducer("producer", monitor)
+      producer <- connection.newProducer[Bytes]("producer", monitor)
     } yield (consumer, producer)
   }
 
@@ -232,7 +232,7 @@ val consumer = rabbitConnection.newConsumer[Bytes]("consumer", monitor) {
     Task.now(DeliveryResult.Reject)
 }.runSyncUnsafe(10.seconds) // RabbitMQConsumer[Task]
 
-val sender = rabbitConnection.newProducer("producer", monitor).runSyncUnsafe(10.seconds) // RabbitMQProducer[Task, Bytes]
+val sender = rabbitConnection.newProducer[Bytes]("producer", monitor).runSyncUnsafe(10.seconds) // RabbitMQProducer[Task, Bytes]
 
 sender.send(...).runAsync // because it's Task, don't forget to run it ;-)
 ```
@@ -254,7 +254,7 @@ val consumer = rabbitConnection.newConsumer[Bytes]("consumer", monitor) {
     Future.successful(DeliveryResult.Reject)
 }.await // RabbitMQConsumer[Future]
 
-val sender = rabbitConnection.newProducer("producer", monitor).await // RabbitMQProducer[Future]
+val sender = rabbitConnection.newProducer[Bytes]("producer", monitor).await // RabbitMQProducer[Future, Bytes]
 
 sender.send(...) // Future[Unit]
 ```

@@ -21,6 +21,16 @@ trait CheckedDeliveryConverter[A] extends DeliveryConverter[A] {
 
 object DeliveryConverter {
   implicit val identity: DeliveryConverter[Bytes] = (b: Bytes) => Right(b)
+  implicit val bytesArray: DeliveryConverter[Array[Byte]] = (b: Bytes) => Right(b.toByteArray)
+  implicit val utf8Text: CheckedDeliveryConverter[String] = new CheckedDeliveryConverter[String] {
+    override def canConvert(d: Delivery[Bytes]): Boolean = d.properties.contentType match {
+      case Some(contentType) =>
+        val ct = contentType.toLowerCase
+        ct.startsWith("text") && (ct.contains("charset=utf-8") || ct.contains("charset=\"utf-8\""))
+      case None => true
+    }
+    override def convert(b: Bytes): Either[ConversionException, String] = Right(b.toStringUtf8)
+  }
 }
 
 @implicitNotFound("Could not find ProductConverter for ${A}, try to import or define some")
@@ -35,7 +45,23 @@ trait ProductConverter[A] {
 object ProductConverter {
   implicit val identity: ProductConverter[Bytes] = new ProductConverter[Bytes] {
     override def convert(p: Bytes): Either[ConversionException, Bytes] = Right(p)
-
-    override def fillProperties(properties: MessageProperties): MessageProperties = properties
+    override def fillProperties(properties: MessageProperties): MessageProperties = properties.contentType match {
+      case None => properties.copy(contentType = Some("application/octet-stream"))
+      case _ => properties
+    }
+  }
+  implicit val bytesArray: ProductConverter[Array[Byte]] = new ProductConverter[Array[Byte]] {
+    override def convert(p: Array[Byte]): Either[ConversionException, Bytes] = Right(Bytes.copyFrom(p))
+    override def fillProperties(properties: MessageProperties): MessageProperties = properties.contentType match {
+      case None => properties.copy(contentType = Some("application/octet-stream"))
+      case _ => properties
+    }
+  }
+  implicit val utf8Text: ProductConverter[String] = new ProductConverter[String] {
+    override def convert(p: String): Either[ConversionException, Bytes] = Right(Bytes.copyFromUtf8(p))
+    override def fillProperties(properties: MessageProperties): MessageProperties = properties.contentType match {
+      case None => properties.copy(contentType = Some("text/plain; charset=utf-8"))
+      case _ => properties
+    }
   }
 }

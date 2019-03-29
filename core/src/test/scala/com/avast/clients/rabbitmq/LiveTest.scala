@@ -85,7 +85,7 @@ class LiveTest extends TestBase with ScalaFutures {
       }
       .await
 
-    val sender = rabbitConnection.newProducer("producer", Monitor.noOp()).await
+    val sender = rabbitConnection.newProducer[Bytes]("producer", Monitor.noOp()).await
 
     sender.send("test", Bytes.copyFromUtf8(Random.nextString(10))).await
 
@@ -124,7 +124,7 @@ class LiveTest extends TestBase with ScalaFutures {
       }
       .await
 
-    val sender = rabbitConnection.newProducer("producer", Monitor.noOp()).await
+    val sender = rabbitConnection.newProducer[Bytes]("producer", Monitor.noOp()).await
 
     for (_ <- 1 to count) {
       sender.send("test", Bytes.copyFromUtf8(Random.nextString(10))).await
@@ -151,8 +151,8 @@ class LiveTest extends TestBase with ScalaFutures {
       }
       .await
 
-    val sender1 = rabbitConnection.newProducer("producer", Monitor.noOp()).await
-    val sender2 = rabbitConnection.newProducer("producer2", Monitor.noOp()).await
+    val sender1 = rabbitConnection.newProducer[Bytes]("producer", Monitor.noOp()).await
+    val sender2 = rabbitConnection.newProducer[Bytes]("producer2", Monitor.noOp()).await
 
     for (_ <- 1 to 10) {
       sender1.send("test", Bytes.copyFromUtf8(Random.nextString(10))).await
@@ -182,7 +182,7 @@ class LiveTest extends TestBase with ScalaFutures {
       }
       .await
 
-    val sender = rabbitConnection.newProducer("producer", Monitor.noOp()).await
+    val sender = rabbitConnection.newProducer[Bytes]("producer", Monitor.noOp()).await
 
     for (_ <- 1 to 10) {
       sender.send("test", Bytes.copyFromUtf8(Random.nextString(10))).await
@@ -210,7 +210,7 @@ class LiveTest extends TestBase with ScalaFutures {
       }
       .getOrElse(fail())
 
-    val sender = rabbitConnection.newProducer("producer", Monitor.noOp()).getOrElse(fail())
+    val sender = rabbitConnection.newProducer[Bytes]("producer", Monitor.noOp()).getOrElse(fail())
 
     for (_ <- 1 to 10) {
       sender.send("test", Bytes.copyFromUtf8(Random.nextString(10))).getOrElse(fail())
@@ -230,7 +230,7 @@ class LiveTest extends TestBase with ScalaFutures {
 
     val rabbitConnection = RabbitMQConnection.fromConfig[Task](config, ex).await.imapK[Try]
 
-    val sender = rabbitConnection.newProducer("producer", Monitor.noOp()).getOrElse(fail())
+    val sender = rabbitConnection.newProducer[Bytes]("producer", Monitor.noOp()).getOrElse(fail())
 
     // additional declarations
 
@@ -281,7 +281,7 @@ class LiveTest extends TestBase with ScalaFutures {
 
     rabbitConnection.newConsumer("consumer", Monitor.noOp())(h).await
 
-    val sender = rabbitConnection.newProducer("producer", Monitor.noOp()).await
+    val sender = rabbitConnection.newProducer[Bytes]("producer", Monitor.noOp()).await
 
     for (_ <- 1 to 10) {
       sender.send("test", Bytes.copyFromUtf8(Random.nextString(10))).await
@@ -302,7 +302,7 @@ class LiveTest extends TestBase with ScalaFutures {
 
     val consumer = rabbitConnection.newPullConsumer[Bytes]("consumer", Monitor.noOp()).futureValue
 
-    val sender = rabbitConnection.newProducer("producer", Monitor.noOp()).futureValue
+    val sender = rabbitConnection.newProducer[Bytes]("producer", Monitor.noOp()).futureValue
 
     for (_ <- 1 to 10) {
       sender.send("test", Bytes.copyFromUtf8(Random.nextString(10))).futureValue
@@ -365,7 +365,7 @@ class LiveTest extends TestBase with ScalaFutures {
           })
     }
 
-    val sender = rabbitConnection.newProducer("producer", Monitor.noOp()).futureValue
+    val sender = rabbitConnection.newProducer[Bytes]("producer", Monitor.noOp()).futureValue
 
     sender.send("test", Bytes.copyFromUtf8(randomString(10))).futureValue
 
