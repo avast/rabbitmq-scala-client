@@ -5,16 +5,17 @@ import com.avast.clients.rabbitmq.{FromTask, ToTask}
 import monix.eval.Task
 import monix.execution.{ExecutionModel, Scheduler}
 
+import scala.concurrent.ExecutionContext
 import scala.concurrent.duration.Duration
-import scala.concurrent.{Await, ExecutionContext}
 import scala.util.Try
 
 object TestImplicits {
   def fkTaskToTry(timeout: Duration)(implicit ec: ExecutionContext): FromTask[Try] = new FunctionK[Task, Try] {
     override def apply[A](task: Task[A]): Try[A] = Try {
-      task.coeval(Scheduler(ec).withExecutionModel(ExecutionModel.SynchronousExecution))() match {
+      implicit val scheduler = Scheduler(ec).withExecutionModel(ExecutionModel.SynchronousExecution)
+      task.runSyncStep match {
         case Right(a) => a
-        case Left(fa) => Await.result(fa, timeout)
+        case Left(fa) => fa.runSyncUnsafe(timeout)
       }
     }
   }
