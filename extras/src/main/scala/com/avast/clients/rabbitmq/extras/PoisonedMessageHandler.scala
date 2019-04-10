@@ -96,7 +96,7 @@ object PoisonedMessageHandler {
     private val handler = new DefaultPoisonedMessageHandler[Task, Bytes](maxAttempts)(d => Task.deferFuture(wrapped.asScala.apply(d)))
 
     override def apply(t: javaapi.Delivery): CompletableFuture[javaapi.DeliveryResult] = {
-      handler(t.asScala).map(_.asJava).runAsync.asJava
+      handler(t.asScala).map(_.asJava).runToFuture.asJava
     }
   }
 
@@ -116,7 +116,7 @@ object PoisonedMessageHandler {
       }
 
       override def apply(t: javaapi.Delivery): CompletableFuture[javaapi.DeliveryResult] = {
-        handler(t.asScala).map(_.asJava).runAsync.asJava
+        handler(t.asScala).map(_.asJava).runToFuture.asJava
       }
     }
 

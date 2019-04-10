@@ -8,7 +8,7 @@ import com.avast.metrics.scalaapi.Monitor
 import com.rabbitmq.client.ShutdownSignalException
 import com.typesafe.config.Config
 import com.typesafe.scalalogging.StrictLogging
-import monix.eval.Task
+import monix.eval.{Task, TaskLift}
 import monix.execution.Scheduler
 
 import scala.concurrent.ExecutionContext
@@ -208,7 +208,8 @@ class DefaultRabbitMQConnection[F[_]](connection: ServerConnection,
   }
 
   private def convertToF[A](task: Task[A]): F[A] = {
-    task.to[F](Effect[F], blockingScheduler)
+    implicit val ec = blockingScheduler
+    task.to[F](TaskLift[F])
   }
 
 }
