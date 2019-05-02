@@ -11,7 +11,7 @@ import com.typesafe.config.Config
 import monix.eval.Task
 import monix.execution.Scheduler
 
-import scala.concurrent.Future
+import scala.concurrent.Await
 import scala.concurrent.duration._
 
 trait RabbitMQJavaConnection extends AutoCloseable {
@@ -82,7 +82,7 @@ object RabbitMQJavaConnection {
     private var connectionListener: ConnectionListener = DefaultListeners.DefaultConnectionListener
     private var channelListener: ChannelListener = DefaultListeners.DefaultChannelListener
     private var consumerListener: ConsumerListener = DefaultListeners.DefaultConsumerListener
-    private var initTimeout: Duration = 10.seconds
+    private var timeout: Duration = 10.seconds
 
     def withConnectionListener(connectionListener: ConnectionListener): Builder = {
       this.connectionListener = connectionListener
@@ -99,17 +99,16 @@ object RabbitMQJavaConnection {
       this
     }
 
-    def withInitTimeout(timeout: JavaDuration): Builder = {
-      this.initTimeout = timeout.toMillis.millis
+    def withTimeout(timeout: JavaDuration): Builder = {
+      this.timeout = timeout.toMillis.millis
       this
     }
 
     def build(): RabbitMQJavaConnection = {
-      import com.avast.clients.rabbitmq._
 
       implicit val sch: Scheduler = Scheduler(executorService)
 
-      new RabbitMQJavaConnectionImpl(
+      val (conn, connClose) = Await.result(
         ScalaConnection
           .fromConfig[Task](
             config,
@@ -118,10 +117,14 @@ object RabbitMQJavaConnection {
             Option(channelListener).getOrElse(DefaultListeners.DefaultChannelListener),
             Option(consumerListener).getOrElse(DefaultListeners.DefaultConsumerListener)
           )
-          .runSyncUnsafe(initTimeout)
-          .imapK[Future],
-        initTimeout
+          .allocated
+          .runToFuture,
+        timeout
       )
+
+      new RabbitMQJavaConnectionImpl(conn, timeout) {
+        override def close(): Unit = connClose.runSyncUnsafe(timeout)
+      }
     }
 
   }

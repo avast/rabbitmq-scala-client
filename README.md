@@ -162,10 +162,9 @@ For full list of options please see [reference.conf](core/src/main/resources/ref
 
 ### Scala usage
 
-The Scala API is now _finally tagless_ (read more e.g. [here](https://www.beyondthelines.net/programming/introduction-to-tagless-final/))
-meaning it can use whatever [`F[_]: cats.effect.Effect`](https://typelevel.org/cats-effect/typeclasses/effect.html)
-(e.g. `cats.effect.IO`, `monix.eval.Task`).
-Alternatively you are able to use any `F[_]` which is convertible to/from `monix.eval.Task` (see [Using own F](#using-own-non-effect-f))
+The Scala API is _finally tagless_ (read more e.g. [here](https://www.beyondthelines.net/programming/introduction-to-tagless-final/)) with
+[`cats.effect.Resource`](https://typelevel.org/cats-effect/datatypes/resource.html) which is convenient way how to
+[manage resources in your app](https://typelevel.org/cats-effect/tutorial/tutorial.html#acquiring-and-releasing-resources).
 
 The Scala API uses types-conversions for both consumer and producer, that means you don't have to work directly with `Bytes` (however you
 still can, if you want) and you touch only your business class which is then (de)serialized using provided converter.
@@ -175,17 +174,16 @@ The library uses two types of executors - one is for blocking (IO) operations an
 1. Callback executor as `scala.concurrent.ExecutionContext`
 
 ```scala
-import java.util.concurrent.{ExecutorService, Executors}
+import java.util.concurrent.ExecutorService
 
+import cats.effect.Resource
 import com.avast.bytes.Bytes
 import com.avast.clients.rabbitmq._
-import com.avast.clients.rabbitmq.api.{Delivery, DeliveryResult, RabbitMQConsumer, RabbitMQProducer}
+import com.avast.clients.rabbitmq.api.{Delivery, DeliveryResult, RabbitMQProducer}
 import com.avast.metrics.scalaapi.Monitor
 import com.typesafe.config.ConfigFactory
 import monix.eval._
 import monix.execution.Scheduler
-
-import scala.concurrent.duration._
 
 val config = ConfigFactory.load().getConfig("myRabbitConfig")
 
@@ -194,21 +192,19 @@ val monitor: Monitor = ???
 
 val blockingExecutor: ExecutorService = ???
 
-// the "FP" way:
+// see https://typelevel.org/cats-effect/tutorial/tutorial.html#acquiring-and-releasing-resources
 
-val consumerAndProducer: Task[(RabbitMQConsumer[Task], RabbitMQProducer[Task, Bytes])] = RabbitMQConnection
-  .fromConfig[Task](config, blockingExecutor)
-  .flatMap { connection =>
-    /*
+val rabbitMQProducer: Resource[Task, RabbitMQProducer[Task, Bytes]] = {
+    for {
+      connection <- RabbitMQConnection.fromConfig[Task](config, blockingExecutor)
+      /*
       Here you have created the connection; it's shared for all producers/consumers amongst one RabbitMQ server - they will share a single
       TCP connection but have separated channels.
       If you expect very high load, you can use separate connections for each producer/consumer, however it's usually not needed.
-    */
+       */
 
-    for {
       consumer <- connection.newConsumer[Bytes]("consumer", monitor) {
         case delivery: Delivery.Ok[Bytes] =>
-          println(delivery)
           Task.now(DeliveryResult.Ack)
 
         case _: Delivery.MalformedContent =>
@@ -216,69 +212,10 @@ val consumerAndProducer: Task[(RabbitMQConsumer[Task], RabbitMQProducer[Task, By
       }
 
       producer <- connection.newProducer[Bytes]("producer", monitor)
-    } yield (consumer, producer)
+    } yield {
+      producer
+    }
   }
-
-// the "common" way:
-
-val rabbitConnection = RabbitMQConnection.fromConfig[Task](config, blockingExecutor).runSyncUnsafe(10.seconds) // DefaultRabbitMQConnection[Task]
-
-val consumer = rabbitConnection.newConsumer[Bytes]("consumer", monitor) {
-  case delivery: Delivery.Ok[Bytes] =>
-    println(delivery)
-    Task.now(DeliveryResult.Ack)
-
-  case _: Delivery.MalformedContent =>
-    Task.now(DeliveryResult.Reject)
-}.runSyncUnsafe(10.seconds) // RabbitMQConsumer[Task]
-
-val sender = rabbitConnection.newProducer[Bytes]("producer", monitor).runSyncUnsafe(10.seconds) // RabbitMQProducer[Task, Bytes]
-
-sender.send(...).runAsync // because it's Task, don't forget to run it ;-)
-```
-
-or with `scala.concurrent.Future` (and other _strict_ types):
-
-```scala
-implicit val fkToTask: FunctionK[Future, Task] = ???
-implicit val fkFromTask: FunctionK[Task, Future] = ???
-
-val rabbitConnection = RabbitMQConnection.fromConfig[Task](config, blockingExecutor).runSyncUnsafe(10.seconds).imapK[Future] // DefaultRabbitMQConnection[Future]
-
-val consumer = rabbitConnection.newConsumer[Bytes]("consumer", monitor) { 
-  case delivery: Delivery.Ok[Bytes] =>
-    println(delivery)
-    Future.successful(DeliveryResult.Ack)
-    
-  case _: Delivery.MalformedContent =>
-    Future.successful(DeliveryResult.Reject)
-}.await // RabbitMQConsumer[Future]
-
-val sender = rabbitConnection.newProducer[Bytes]("producer", monitor).await // RabbitMQProducer[Future, Bytes]
-
-sender.send(...) // Future[Unit]
-```
-
-_Note: `await` used in the example is kind of a pseudo-code. In real code, you will probably use `Await.result`._
-
-#### Using own non-Effect F
-
-By default only `F[_]: cats.effect.Effect` can be used when creating new connection which makes some commonly used
-([_strict_](https://stackoverflow.com/questions/27454798/is-future-in-scala-a-monad)) types like `scala.cuncurrent.Future` impossible to use.  
-However there exists a workaround:
-1. Create `RabbitMQConnection[Task]`
-1. Convert it to your `F[_]` by providing `cats.arrow.FunctionK[Task, A]` and `cats.arrow.FunctionK[A, Task]`
-
-```scala
-import monix.eval.Task
-import scala.concurrent.Future
-import scala.concurrent.duration._
-import com.avast.clients.rabbitmq._
-
-implicit val fkToFuture: cats.arrow.FunctionK[Task, Future] = ???
-implicit val fkFromFuture: cats.arrow.FunctionK[Future, Task] = ???
-
-val rabbitConnection: RabbitMQConnection[Future] = RabbitMQConnection.fromConfig[Task].map(_.imapK[Future]).runSyncUnsafe(10.seconds)
 ```
 
 #### Providing converters for producer/consumer
@@ -450,34 +387,36 @@ The pull consumer uses `PullResult` as return type:
 
 Additionally you can call `.toOption` method on the `PullResult`.
 
-
 A simplified example:
+
 ```scala
+import cats.effect.Resource
 import com.avast.bytes.Bytes
-import scala.concurrent.Future
 import com.avast.clients.rabbitmq._
 import com.avast.clients.rabbitmq.api._
+import monix.eval.Task
+import monix.execution.Scheduler
 
 implicit val sch: Scheduler = ???
 
-val connection: RabbitMQConnection[Future] = ???
+val consumer: Resource[Task, RabbitMQPullConsumer[Task, Bytes]] = {
+    for {
+      connection <- RabbitMQConnection.fromConfig[Task](???, ???)
+      consumer <- connection.newPullConsumer[Bytes](??? : String, ???)
+    } yield {
+      consumer
+    }
+  }
 
-val consumer = connection.newPullConsumer[Bytes](???, ???)
+val program: Task[Unit] = consumer.use { consumer =>
+    Task
+      .sequence { (1 to 100).map(_ => consumer.pull()) } // receive "up to" 100 deliveries
+      .flatMap { ds =>
+        // do your stuff!
 
-
-// receive "up to" 100 deliveries
-val deliveries: Future[Seq[PullResult[Future, Bytes]]] = Future.sequence { (1 to 100).map(_ => consumer.pull()) }
-
-// do your stuff!
-
-???
-
-// "handle" all deliveries, ignore failures and "empty queue" results
-val handleResult: Future[Unit] = deliveries.flatMap(s => Future.sequence(s.flatMap(_.toOption).map(_.handle(DeliveryResult.Ack))).map(_ => Unit))
-
-consumer.close()
-connection.close()
-
+        Task.unit
+      }
+  }
 ```
 
 ### MultiFormatConsumer

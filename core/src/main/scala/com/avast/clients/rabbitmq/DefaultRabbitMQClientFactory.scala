@@ -3,7 +3,7 @@ package com.avast.clients.rabbitmq
 import java.time.Duration
 import java.util.concurrent.{TimeUnit, TimeoutException}
 
-import cats.effect.Effect
+import cats.effect.{Effect, Sync}
 import com.avast.bytes.Bytes
 import com.avast.clients.rabbitmq.api.DeliveryResult.{Ack, Reject, Republish, Retry}
 import com.avast.clients.rabbitmq.api._
@@ -225,43 +225,50 @@ private[rabbitmq] object DefaultRabbitMQClientFactory extends LazyLogging {
   }
 
   object Declarations {
-    def declareExchange(config: Config, channel: ServerChannel, channelFactoryInfo: RabbitMQConnectionInfo): Task[Unit] = {
+    def declareExchange[F[_]: Sync](config: Config, channel: ServerChannel, channelFactoryInfo: RabbitMQConnectionInfo): F[Unit] = {
       declareExchange(config.withFallback(DeclareExchangeDefaultConfig).as[DeclareExchange], channel, channelFactoryInfo)
     }
 
-    def declareQueue(config: Config, channel: ServerChannel, channelFactoryInfo: RabbitMQConnectionInfo): Task[Unit] = {
+    def declareQueue[F[_]: Sync](config: Config, channel: ServerChannel, channelFactoryInfo: RabbitMQConnectionInfo): F[Unit] = {
       declareQueue(config.withFallback(DeclareQueueDefaultConfig).as[DeclareQueue], channel, channelFactoryInfo)
     }
 
-    def bindQueue(config: Config, channel: ServerChannel, channelFactoryInfo: RabbitMQConnectionInfo): Task[Unit] = {
+    def bindQueue[F[_]: Sync](config: Config, channel: ServerChannel, channelFactoryInfo: RabbitMQConnectionInfo): F[Unit] = {
       bindQueue(config.withFallback(BindQueueDefaultConfig).as[BindQueue], channel, channelFactoryInfo)
     }
 
-    def bindExchange(config: Config, channel: ServerChannel, channelFactoryInfo: RabbitMQConnectionInfo): Task[Unit] = {
+    def bindExchange[F[_]: Sync](config: Config, channel: ServerChannel, channelFactoryInfo: RabbitMQConnectionInfo): F[Unit] = {
       bindExchange(config.withFallback(BindExchangeDefaultConfig).as[BindExchange], channel, channelFactoryInfo)
     }
 
-    private def declareExchange(config: DeclareExchange, channel: ServerChannel, channelFactoryInfo: RabbitMQConnectionInfo): Task[Unit] =
-      Task {
+    private def declareExchange[F[_]: Sync](config: DeclareExchange,
+                                            channel: ServerChannel,
+                                            channelFactoryInfo: RabbitMQConnectionInfo): F[Unit] =
+      Sync[F].delay {
         import config._
 
         DefaultRabbitMQClientFactory.this.declareExchange(name, `type`, durable, autoDelete, arguments, channel, channelFactoryInfo)
       }
 
-    private def declareQueue(config: DeclareQueue, channel: ServerChannel, channelFactoryInfo: RabbitMQConnectionInfo): Task[Unit] = Task {
+    private def declareQueue[F[_]: Sync](config: DeclareQueue,
+                                         channel: ServerChannel,
+                                         channelFactoryInfo: RabbitMQConnectionInfo): F[Unit] = Sync[F].delay {
       import config._
 
       DefaultRabbitMQClientFactory.this.declareQueue(channel, name, durable, exclusive, autoDelete, arguments)
       ()
     }
 
-    private def bindQueue(config: BindQueue, channel: ServerChannel, channelFactoryInfo: RabbitMQConnectionInfo): Task[Unit] = Task {
-      import config._
+    private def bindQueue[F[_]: Sync](config: BindQueue, channel: ServerChannel, channelFactoryInfo: RabbitMQConnectionInfo): F[Unit] =
+      Sync[F].delay {
+        import config._
 
-      bindQueues(channel, queueName, exchangeName, routingKeys, arguments, channelFactoryInfo)
-    }
+        bindQueues(channel, queueName, exchangeName, routingKeys, arguments, channelFactoryInfo)
+      }
 
-    private def bindExchange(config: BindExchange, channel: ServerChannel, channelFactoryInfo: RabbitMQConnectionInfo): Task[Unit] = Task {
+    private def bindExchange[F[_]: Sync](config: BindExchange,
+                                         channel: ServerChannel,
+                                         channelFactoryInfo: RabbitMQConnectionInfo): F[Unit] = Sync[F].delay {
       import config._
 
       routingKeys.foreach {

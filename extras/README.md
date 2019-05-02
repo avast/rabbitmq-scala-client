@@ -19,29 +19,30 @@ _Note: it works ONLY for `Republish` and not for `Retry`!_
 The `PoisonedMessageHandler` is _finally tagless_ for Scala (see [related info](../README.md#scala-usage)) and bound to `CompletableFuture` for Java.
 
 Scala:
-```scala
-import cats.instances.future._ // imports `MonadError[Future, Throwable]`
 
-val newReadAction = PoisonedMessageHandler[Future, MyDeliveryType](3)(myReadAction)
+```scala
+val newReadAction = PoisonedMessageHandler[Task, MyDeliveryType](3)(myReadAction)
 ```
 
-Please note that unlike the RabbitMQConnection, just `F[_]: MonadError` is required here -> `Future` etc. works!
-
 Java:
+
 ```java
 newReadAction = PoisonedMessageHandler.forJava(3, myReadAction, executor);
 ```
+
 You can even pretend lower number of attempts when you want to rise the republishing count (for some special message):
+
 ```scala
 Republish(Map(PoisonedMessageHandler.RepublishCountHeaderName -> 1.asInstanceOf[AnyRef]))
 ```
-Note you can provide your custom poisoned-message handle action:
-```scala
-import cats.instances.future._ // imports `MonadError[Future, Throwable]`
 
-val newReadAction = PoisonedMessageHandler.withCustomPoisonedAction[Future, MyDeliveryType](3)(myReadAction) { delivery =>
+Note you can provide your custom poisoned-message handle action:
+
+```scala
+val newReadAction = PoisonedMessageHandler.withCustomPoisonedAction[Task, MyDeliveryType](3)(myReadAction) { delivery =>
   logger.warn(s"Delivery $delivery is poisoned!")
-  Future.successful(())
+  Task.unit
 }
 ```
+
 After the execution of the poisoned-message action (no matter whether default or custom one), the delivery is REJECTed.
