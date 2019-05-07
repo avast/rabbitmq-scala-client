@@ -93,7 +93,7 @@ object PoisonedMessageHandler {
   def forJava(maxAttempts: Int, wrapped: JavaAction, ex: ExecutorService): JavaAction = new JavaAction {
     private implicit val sch: Scheduler = Scheduler(ses, ExecutionContext.fromExecutor(ex))
 
-    private val handler = new DefaultPoisonedMessageHandler[Task, Bytes](maxAttempts)(d => Task.deferFuture(wrapped.asScala.apply(d)))
+    private val handler = new DefaultPoisonedMessageHandler[Task, Bytes](maxAttempts)(d => wrapped.asScala.apply(d))
 
     override def apply(t: javaapi.Delivery): CompletableFuture[javaapi.DeliveryResult] = {
       handler(t.asScala).map(_.asJava).runToFuture.asJava
@@ -107,7 +107,7 @@ object PoisonedMessageHandler {
     new JavaAction {
       private implicit val sch: Scheduler = Scheduler(ses, ExecutionContext.fromExecutor(ex))
 
-      private val handler = new DefaultPoisonedMessageHandler[Task, Bytes](maxAttempts)(d => Task.deferFuture(wrapped.asScala.apply(d))) {
+      private val handler = new DefaultPoisonedMessageHandler[Task, Bytes](maxAttempts)(d => wrapped.asScala.apply(d)) {
         override protected def handlePoisonedMessage(delivery: Delivery[Bytes]): Task[Unit] = {
           Task.deferFuture {
             customPoisonedAction(delivery.asJava).asScala.map(_ => ())

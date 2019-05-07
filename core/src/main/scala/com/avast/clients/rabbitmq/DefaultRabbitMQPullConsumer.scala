@@ -2,7 +2,7 @@ package com.avast.clients.rabbitmq
 
 import java.util.concurrent.atomic.AtomicInteger
 
-import cats.effect.{Effect, Sync}
+import cats.effect.Effect
 import cats.implicits._
 import com.avast.bytes.Bytes
 import com.avast.clients.rabbitmq.api._
@@ -109,9 +109,5 @@ class DefaultRabbitMQPullConsumer[F[_]: Effect, A: DeliveryConverter](
 
       override def handle(result: DeliveryResult): F[Unit] = handleResult(result)
     }
-  }
-
-  override def close(): F[Unit] = Sync[F].delay {
-    channel.close()
   }
 }

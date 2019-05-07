@@ -145,10 +145,6 @@ class DefaultRabbitMQConsumer[F[_]: Effect](
     handleResult(messageId, deliveryTag, properties, routingKey, body)(failureAction)
   }
 
-  override def close(): F[Unit] = Sync[F].delay {
-    channel.close()
-  }
-
   private def toIO[A](f: F[A]): IO[A] =
     IO.async { cb =>
       Effect[F].runAsync(f)(r => IO(cb(r))).unsafeRunSync()

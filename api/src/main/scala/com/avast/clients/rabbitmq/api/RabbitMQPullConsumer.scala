@@ -2,7 +2,7 @@ package com.avast.clients.rabbitmq.api
 
 import scala.language.higherKinds
 
-trait RabbitMQPullConsumer[F[_], A] extends FAutoCloseable[F] {
+trait RabbitMQPullConsumer[F[_], A] {
 
   /** Retrieves one message from the queue, if there is any.
     */

@@ -2,7 +2,7 @@ package com.avast.clients.rabbitmq
 
 import java.util.UUID
 
-import cats.effect.{Effect, Sync}
+import cats.effect.Effect
 import com.avast.bytes.Bytes
 import com.avast.clients.rabbitmq.api.{ChannelNotRecoveredException, MessageProperties, RabbitMQProducer}
 import com.avast.clients.rabbitmq.javaapi.JavaConverters._
@@ -74,10 +74,6 @@ class DefaultRabbitMQProducer[F[_], A: ProductConverter](name: String,
           throw e
       }
     }.executeOn(blockingScheduler).asyncBoundary
-  }
-
-  override def close(): F[Unit] = Sync[F].delay {
-    channel.close()
   }
 
   // scalastyle:off

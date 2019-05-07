@@ -93,13 +93,14 @@ subprojects {
 
     ext {
         scalaVersion = "2.12"
-        scalaVersionFull = "2.12.7"
+        scalaVersionFull = "2.12.8"
         metricsVersion = "2.5.3"
-        bytesVersion = "2.0.5"
-        circeVersion = "0.10.1"
-        cactusVersion = "0.14.3"
+        bytesVersion = "2.0.6"
+        circeVersion = "0.11.1"
+        cactusVersion = "0.16.0"
         monixVersion = "3.0.0-RC2"
-        catsVersion = "1.5.0"
+        catsVersion = "1.6.0"
+        catsEffectVersion = "1.3.0"
     }
 
     dependencies {
@@ -113,7 +114,7 @@ subprojects {
         testCompile "io.circe:circe-parser_$scalaVersion:$circeVersion"
 
         testCompile 'junit:junit:4.12'
-        testCompile "org.scalatest:scalatest_$scalaVersion:3.0.1"
+        testCompile "org.scalatest:scalatest_$scalaVersion:3.0.7"
         testCompile 'org.mockito:mockito-all:1.10.19'
         testCompile 'ch.qos.logback:logback-classic:1.2.3'
 
