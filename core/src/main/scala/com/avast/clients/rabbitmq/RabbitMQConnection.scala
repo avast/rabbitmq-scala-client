@@ -183,7 +183,8 @@ object RabbitMQConnection extends StrictLogging {
       connection = connection,
       info = RabbitMQConnectionInfo(
         hosts = connectionConfig.hosts.toVector,
-        virtualHost = connectionConfig.virtualHost
+        virtualHost = connectionConfig.virtualHost,
+        username = if (connectionConfig.credentials.enabled) Option(connectionConfig.credentials.username) else None
       ),
       config = providedConfig,
       connectionListener = connectionListener,

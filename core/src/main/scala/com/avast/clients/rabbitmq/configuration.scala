@@ -28,7 +28,7 @@ case class Ssl(enabled: Boolean, trustStore: TrustStore)
 
 case class TrustStore(path: Path, password: String)
 
-private[rabbitmq] case class RabbitMQConnectionInfo(hosts: immutable.Seq[String], virtualHost: String)
+private[rabbitmq] case class RabbitMQConnectionInfo(hosts: immutable.Seq[String], virtualHost: String, username: Option[String])
 
 case class ConsumerConfig(queueName: String,
                           processTimeout: Duration,
