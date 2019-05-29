@@ -24,6 +24,7 @@ class DefaultRabbitMQConsumer[F[_]: Effect](
     override val name: String,
     override protected val channel: ServerChannel,
     override protected val queueName: String,
+    override protected val connectionInfo: RabbitMQConnectionInfo,
     override protected val monitor: Monitor,
     failureAction: DeliveryResult,
     consumerListener: ConsumerListener,
@@ -153,4 +154,5 @@ class DefaultRabbitMQConsumer[F[_]: Effect](
 
 object DefaultRabbitMQConsumer {
   final val RepublishOriginalRoutingKeyHeaderName = "X-Original-Routing-Key"
+  final val RepublishOriginalUserId = "X-Original-User-Id"
 }

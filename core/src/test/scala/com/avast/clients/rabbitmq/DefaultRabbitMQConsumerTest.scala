@@ -12,16 +12,21 @@ import com.rabbitmq.client.impl.recovery.AutorecoveringChannel
 import monix.eval.Task
 import monix.execution.Scheduler
 import monix.execution.Scheduler.Implicits.global
-import org.mockito.Matchers
-import org.mockito.Matchers.any
+import org.mockito.{ArgumentCaptor, Matchers}
 import org.mockito.Mockito._
 import org.scalatest.time.{Seconds, Span}
 
 import scala.collection.mutable
+import scala.collection.immutable
 import scala.concurrent.{ExecutionContext, Future}
 import scala.util.{Failure, Random, Success}
 
+import scala.collection.JavaConverters._
+
 class DefaultRabbitMQConsumerTest extends TestBase {
+
+  private val connectionInfo = RabbitMQConnectionInfo(immutable.Seq("localhost"), "/", None)
+
   test("should ACK") {
     val messageId = UUID.randomUUID().toString
 
@@ -39,6 +44,7 @@ class DefaultRabbitMQConsumerTest extends TestBase {
       "test",
       channel,
       "queueName",
+      connectionInfo,
       Monitor.noOp,
       DeliveryResult.Reject,
       DefaultListeners.DefaultConsumerListener,
@@ -77,6 +83,7 @@ class DefaultRabbitMQConsumerTest extends TestBase {
       "test",
       channel,
       "queueName",
+      connectionInfo,
       Monitor.noOp,
       DeliveryResult.Reject,
       DefaultListeners.DefaultConsumerListener,
@@ -115,6 +122,7 @@ class DefaultRabbitMQConsumerTest extends TestBase {
       "test",
       channel,
       "queueName",
+      connectionInfo,
       Monitor.noOp,
       DeliveryResult.Reject,
       DefaultListeners.DefaultConsumerListener,
@@ -144,7 +152,8 @@ class DefaultRabbitMQConsumerTest extends TestBase {
     val envelope = mock[Envelope]
     when(envelope.getDeliveryTag).thenReturn(deliveryTag)
 
-    val properties = new BasicProperties.Builder().messageId(messageId).build()
+    val originalUserId = "OriginalUserId"
+    val properties = new BasicProperties.Builder().messageId(messageId).userId(originalUserId).build()
 
     val channel = mock[AutorecoveringChannel]
 
@@ -152,6 +161,7 @@ class DefaultRabbitMQConsumerTest extends TestBase {
       "test",
       channel,
       "queueName",
+      connectionInfo,
       Monitor.noOp,
       DeliveryResult.Reject,
       DefaultListeners.DefaultConsumerListener,
@@ -169,7 +179,9 @@ class DefaultRabbitMQConsumerTest extends TestBase {
       verify(channel, times(1)).basicAck(deliveryTag, false)
       verify(channel, times(0)).basicReject(deliveryTag, true)
       verify(channel, times(0)).basicReject(deliveryTag, false)
-      verify(channel, times(1)).basicPublish(Matchers.eq(""), Matchers.eq("queueName"), any(), Matchers.eq(body))
+      val propertiesCaptor = ArgumentCaptor.forClass(classOf[BasicProperties])
+      verify(channel, times(1)).basicPublish(Matchers.eq(""), Matchers.eq("queueName"), propertiesCaptor.capture(), Matchers.eq(body))
+      assertResult(Some(originalUserId))(propertiesCaptor.getValue.getHeaders.asScala.get(DefaultRabbitMQConsumer.RepublishOriginalUserId))
     }
   }
 
@@ -190,6 +202,7 @@ class DefaultRabbitMQConsumerTest extends TestBase {
       "test",
       channel,
       "queueName",
+      connectionInfo,
       Monitor.noOp,
       DeliveryResult.Retry,
       DefaultListeners.DefaultConsumerListener,
@@ -225,6 +238,7 @@ class DefaultRabbitMQConsumerTest extends TestBase {
       "test",
       channel,
       "queueName",
+      connectionInfo,
       Monitor.noOp,
       DeliveryResult.Retry,
       DefaultListeners.DefaultConsumerListener,
@@ -288,6 +302,7 @@ class DefaultRabbitMQConsumerTest extends TestBase {
         "test",
         channel,
         "queueName",
+        connectionInfo,
         monitor,
         DeliveryResult.Retry,
         DefaultListeners.DefaultConsumerListener,
@@ -315,6 +330,7 @@ class DefaultRabbitMQConsumerTest extends TestBase {
         "test",
         channel,
         "queueName",
+        connectionInfo,
         monitor,
         DeliveryResult.Retry,
         DefaultListeners.DefaultConsumerListener,
@@ -381,6 +397,7 @@ class DefaultRabbitMQConsumerTest extends TestBase {
         "test",
         channel,
         "queueName",
+        connectionInfo,
         monitor,
         DeliveryResult.Retry,
         DefaultListeners.DefaultConsumerListener,
@@ -408,6 +425,7 @@ class DefaultRabbitMQConsumerTest extends TestBase {
         "test",
         channel,
         "queueName",
+        connectionInfo,
         monitor,
         DeliveryResult.Retry,
         DefaultListeners.DefaultConsumerListener,
