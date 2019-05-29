@@ -20,6 +20,7 @@ class DefaultRabbitMQPullConsumer[F[_]: Effect, A: DeliveryConverter](
     override val name: String,
     protected override val channel: ServerChannel,
     protected override val queueName: String,
+    protected override val connectionInfo: RabbitMQConnectionInfo,
     failureAction: DeliveryResult,
     protected override val monitor: Monitor,
     protected override val blockingScheduler: Scheduler)(implicit sch: Scheduler)

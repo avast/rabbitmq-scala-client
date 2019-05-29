@@ -1,7 +1,7 @@
 package com.avast.clients.rabbitmq
 
 import cats.effect.Effect
-import com.avast.clients.rabbitmq.DefaultRabbitMQConsumer.RepublishOriginalRoutingKeyHeaderName
+import com.avast.clients.rabbitmq.DefaultRabbitMQConsumer._
 import com.avast.clients.rabbitmq.api.DeliveryResult
 import com.avast.metrics.scalaapi.Monitor
 import com.rabbitmq.client.AMQP.BasicProperties
@@ -18,6 +18,7 @@ private[rabbitmq] trait ConsumerBase[F[_]] extends StrictLogging {
   protected def queueName: String
   protected def channel: ServerChannel
   protected def blockingScheduler: Scheduler
+  protected def connectionInfo: RabbitMQConnectionInfo
   protected def monitor: Monitor
 
   protected val resultsMonitor: Monitor = monitor.named("results")
@@ -35,7 +36,7 @@ private[rabbitmq] trait ConsumerBase[F[_]] extends StrictLogging {
       case Reject => reject(messageId, deliveryTag)
       case Retry => retry(messageId, deliveryTag)
       case Republish(newHeaders) =>
-        republish(messageId, deliveryTag, mergeHeadersForRepublish(newHeaders, properties, routingKey), body)
+        republish(messageId, deliveryTag, createPropertiesForRepublish(newHeaders, properties, routingKey), body)
     }
 
     task.to[F]
@@ -86,12 +87,21 @@ private[rabbitmq] trait ConsumerBase[F[_]] extends StrictLogging {
       }
     }.executeOn(blockingScheduler).asyncBoundary
 
-  protected def mergeHeadersForRepublish(newHeaders: Map[String, AnyRef],
-                                         properties: BasicProperties,
-                                         routingKey: String): BasicProperties = {
+  protected def createPropertiesForRepublish(newHeaders: Map[String, AnyRef],
+                                             properties: BasicProperties,
+                                             routingKey: String): BasicProperties = {
     // values in newHeaders will overwrite values in original headers
-    val h = newHeaders + (RepublishOriginalRoutingKeyHeaderName -> routingKey)
+    // we must also ensure that UserID will be the same as current username (or nothing): https://www.rabbitmq.com/validated-user-id.html
+    val originalUserId = Option(properties.getUserId).filter(_.nonEmpty)
+    val h = originalUserId match {
+      case Some(uid) => newHeaders + (RepublishOriginalRoutingKeyHeaderName -> routingKey) + (RepublishOriginalUserId -> uid)
+      case None => newHeaders + (RepublishOriginalRoutingKeyHeaderName -> routingKey)
+    }
     val headers = Option(properties.getHeaders).map(_.asScala ++ h).getOrElse(h)
-    properties.builder().headers(headers.asJava).build()
+    val newUserId = originalUserId match {
+      case Some(_) => connectionInfo.username.orNull
+      case None => null
+    }
+    properties.builder().headers(headers.asJava).userId(newUserId).build()
   }
 }

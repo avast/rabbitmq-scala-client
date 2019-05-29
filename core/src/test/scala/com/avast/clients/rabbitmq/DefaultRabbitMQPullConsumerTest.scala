@@ -16,9 +16,12 @@ import org.mockito.Matchers.any
 import org.mockito.Mockito._
 import org.scalatest.time.{Seconds, Span}
 
+import scala.collection.immutable
 import scala.util.Random
 
 class DefaultRabbitMQPullConsumerTest extends TestBase {
+
+  private val connectionInfo = RabbitMQConnectionInfo(immutable.Seq("localhost"), "/", None)
 
   test("should ACK") {
     val messageId = UUID.randomUUID().toString
@@ -43,6 +46,7 @@ class DefaultRabbitMQPullConsumerTest extends TestBase {
       "test",
       channel,
       "queueName",
+      connectionInfo,
       DeliveryResult.Reject,
       Monitor.noOp,
       Scheduler.global
@@ -85,6 +89,7 @@ class DefaultRabbitMQPullConsumerTest extends TestBase {
       "test",
       channel,
       "queueName",
+      connectionInfo,
       DeliveryResult.Reject,
       Monitor.noOp,
       Scheduler.global
@@ -127,6 +132,7 @@ class DefaultRabbitMQPullConsumerTest extends TestBase {
       "test",
       channel,
       "queueName",
+      connectionInfo,
       DeliveryResult.Ack,
       Monitor.noOp,
       Scheduler.global
@@ -168,6 +174,7 @@ class DefaultRabbitMQPullConsumerTest extends TestBase {
       "test",
       channel,
       "queueName",
+      connectionInfo,
       DeliveryResult.Reject,
       Monitor.noOp,
       Scheduler.global
@@ -216,6 +223,7 @@ class DefaultRabbitMQPullConsumerTest extends TestBase {
       "test",
       channel,
       "queueName",
+      connectionInfo,
       DeliveryResult.Retry,
       Monitor.noOp,
       Scheduler.global
@@ -260,6 +268,7 @@ class DefaultRabbitMQPullConsumerTest extends TestBase {
       "test",
       channel,
       "queueName",
+      connectionInfo,
       DeliveryResult.Ack,
       Monitor.noOp,
       Scheduler.global

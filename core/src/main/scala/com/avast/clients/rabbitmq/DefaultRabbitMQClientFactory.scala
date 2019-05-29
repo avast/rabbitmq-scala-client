@@ -313,13 +313,13 @@ private[rabbitmq] object DefaultRabbitMQClientFactory extends LazyLogging {
   }
 
   private[rabbitmq] def declareExchange(name: String,
-                                        channelFactoryInfo: RabbitMQConnectionInfo,
+                                        connectionInfo: RabbitMQConnectionInfo,
                                         channel: ServerChannel,
                                         autoDeclareExchange: AutoDeclareExchange): Unit = {
     import autoDeclareExchange._
 
     if (enabled) {
-      declareExchange(name, `type`, durable, autoDelete, arguments, channel, channelFactoryInfo)
+      declareExchange(name, `type`, durable, autoDelete, arguments, channel, connectionInfo)
     }
     ()
   }
@@ -330,8 +330,8 @@ private[rabbitmq] object DefaultRabbitMQClientFactory extends LazyLogging {
                               autoDelete: Boolean,
                               arguments: DeclareArguments,
                               channel: ServerChannel,
-                              channelFactoryInfo: RabbitMQConnectionInfo): Unit = {
-    logger.info(s"Declaring exchange '$name' of type ${`type`} in virtual host '${channelFactoryInfo.virtualHost}'")
+                              connectionInfo: RabbitMQConnectionInfo): Unit = {
+    logger.info(s"Declaring exchange '$name' of type ${`type`} in virtual host '${connectionInfo.virtualHost}'")
     val javaArguments = argsAsJava(arguments.value)
     channel.exchangeDeclare(name, `type`, durable, autoDelete, javaArguments)
     ()
@@ -365,7 +365,7 @@ private[rabbitmq] object DefaultRabbitMQClientFactory extends LazyLogging {
   private def preparePullConsumer[F[_]: Effect, A: DeliveryConverter](
       consumerConfig: PullConsumerConfig,
       configName: String,
-      channelFactoryInfo: RabbitMQConnectionInfo,
+      connectionInfo: RabbitMQConnectionInfo,
       channel: ServerChannel,
       blockingScheduler: Scheduler,
       monitor: Monitor)(implicit scheduler: Scheduler): DefaultRabbitMQPullConsumer[F, A] = {
@@ -373,25 +373,25 @@ private[rabbitmq] object DefaultRabbitMQClientFactory extends LazyLogging {
     import consumerConfig._
 
     // auto declare exchanges
-    declareExchangesFromBindings(configName, channelFactoryInfo, channel, consumerConfig.bindings)
+    declareExchangesFromBindings(configName, connectionInfo, channel, consumerConfig.bindings)
 
     // auto declare queue
-    declareQueue(queueName, channelFactoryInfo, channel, declare)
+    declareQueue(queueName, connectionInfo, channel, declare)
 
     // auto bind
-    bindQueues(channelFactoryInfo, channel, consumerConfig.queueName, consumerConfig.bindings)
+    bindQueues(connectionInfo, channel, consumerConfig.queueName, consumerConfig.bindings)
 
-    new DefaultRabbitMQPullConsumer[F, A](name, channel, queueName, failureAction, monitor, blockingScheduler)
+    new DefaultRabbitMQPullConsumer[F, A](name, channel, queueName, connectionInfo, failureAction, monitor, blockingScheduler)
   }
 
   private def declareQueue(queueName: String,
-                           channelFactoryInfo: RabbitMQConnectionInfo,
+                           connectionInfo: RabbitMQConnectionInfo,
                            channel: ServerChannel,
                            declare: AutoDeclareQueue): Unit = {
     import declare._
 
     if (enabled) {
-      logger.info(s"Declaring queue '$queueName' in virtual host '${channelFactoryInfo.virtualHost}'")
+      logger.info(s"Declaring queue '$queueName' in virtual host '${connectionInfo.virtualHost}'")
       declareQueue(channel, queueName, durable, exclusive, autoDelete, arguments)
     }
   }
@@ -405,7 +405,7 @@ private[rabbitmq] object DefaultRabbitMQClientFactory extends LazyLogging {
     channel.queueDeclare(queueName, durable, exclusive, autoDelete, arguments.value)
   }
 
-  private def bindQueues(channelFactoryInfo: RabbitMQConnectionInfo,
+  private def bindQueues(connectionInfo: RabbitMQConnectionInfo,
                          channel: ServerChannel,
                          queueName: String,
                          bindings: immutable.Seq[AutoBindQueue]): Unit = {
@@ -413,7 +413,7 @@ private[rabbitmq] object DefaultRabbitMQClientFactory extends LazyLogging {
       import bind._
       val exchangeName = bind.exchange.name
 
-      bindQueues(channel, queueName, exchangeName, routingKeys, bindArguments, channelFactoryInfo)
+      bindQueues(channel, queueName, exchangeName, routingKeys, bindArguments, connectionInfo)
     }
   }
 
@@ -422,22 +422,22 @@ private[rabbitmq] object DefaultRabbitMQClientFactory extends LazyLogging {
                          exchangeName: String,
                          routingKeys: immutable.Seq[String],
                          bindArguments: BindArguments,
-                         channelFactoryInfo: RabbitMQConnectionInfo): Unit = {
+                         connectionInfo: RabbitMQConnectionInfo): Unit = {
     if (routingKeys.nonEmpty) {
       routingKeys.foreach { routingKey =>
-        bindQueue(channelFactoryInfo)(channel, queueName)(exchangeName, routingKey, bindArguments.value)
+        bindQueue(connectionInfo)(channel, queueName)(exchangeName, routingKey, bindArguments.value)
       }
     } else {
       // binding without routing key, possibly to fanout exchange
 
-      bindQueue(channelFactoryInfo)(channel, queueName)(exchangeName, "", bindArguments.value)
+      bindQueue(connectionInfo)(channel, queueName)(exchangeName, "", bindArguments.value)
     }
   }
 
-  private[rabbitmq] def bindQueue(channelFactoryInfo: RabbitMQConnectionInfo)(
+  private[rabbitmq] def bindQueue(connectionInfo: RabbitMQConnectionInfo)(
       channel: ServerChannel,
       queueName: String)(exchangeName: String, routingKey: String, arguments: ArgumentsMap): AMQP.Queue.BindOk = {
-    logger.info(s"Binding exchange $exchangeName($routingKey) -> queue '$queueName' in virtual host '${channelFactoryInfo.virtualHost}'")
+    logger.info(s"Binding exchange $exchangeName($routingKey) -> queue '$queueName' in virtual host '${connectionInfo.virtualHost}'")
 
     channel.queueBind(queueName, exchangeName, routingKey, arguments)
   }
@@ -455,7 +455,7 @@ private[rabbitmq] object DefaultRabbitMQClientFactory extends LazyLogging {
   }
 
   private def declareExchangesFromBindings(configName: String,
-                                           channelFactoryInfo: RabbitMQConnectionInfo,
+                                           connectionInfo: RabbitMQConnectionInfo,
                                            channel: ServerChannel,
                                            bindings: Seq[AutoBindQueue]): Unit = {
     bindings.zipWithIndex.foreach {
@@ -467,13 +467,13 @@ private[rabbitmq] object DefaultRabbitMQClientFactory extends LazyLogging {
           val path = s"$configName.bindings.$i.exchange.declare"
           val d = declare.wrapped(path).as[AutoDeclareExchange](path)
 
-          declareExchange(name, channelFactoryInfo, channel, d)
+          declareExchange(name, connectionInfo, channel, d)
         }
     }
   }
 
   private def prepareConsumer[F[_]: Effect, A: DeliveryConverter](consumerConfig: ConsumerConfig,
-                                                                  channelFactoryInfo: RabbitMQConnectionInfo,
+                                                                  connectionInfo: RabbitMQConnectionInfo,
                                                                   channel: ServerChannel,
                                                                   userReadAction: DeliveryReadAction[F, A],
                                                                   consumerListener: ConsumerListener,
@@ -502,7 +502,7 @@ private[rabbitmq] object DefaultRabbitMQClientFactory extends LazyLogging {
     }
 
     val consumer = {
-      new DefaultRabbitMQConsumer(name, channel, queueName, monitor, failureAction, consumerListener, blockingScheduler)(readAction)
+      new DefaultRabbitMQConsumer(name, channel, queueName, connectionInfo, monitor, failureAction, consumerListener, blockingScheduler)(readAction)
     }
 
     val finalConsumerTag = if (consumerTag == "Default") "" else consumerTag
