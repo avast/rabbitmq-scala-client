@@ -3,7 +3,7 @@
 This is an extra module with some optional functionality dependent on [Cactus](https://github.com/avast/cactus) (library for converting
 between GPBs and Scala case classes).  
 ```groovy
-compile 'com.avast.clients:rabbitmq-client-extras-cactus_$scalaVersion:x.x.x'
+compile 'com.avast.clients.rabbitmq:rabbitmq-client-extras-cactus_$scalaVersion:x.x.x'
 ```
 
 ## GpbDeliveryConverter

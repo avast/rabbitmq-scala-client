@@ -3,7 +3,7 @@
 This is an extra module with some optional functionality dependent on [Circe](https://github.com/circe/circe) (library for decoding JSON into
 Scala case classes).  
 ```groovy
-compile 'com.avast.clients:rabbitmq-client-extras-circe_$scalaVersion:x.x.x'
+compile 'com.avast.clients.rabbitmq:rabbitmq-client-extras-circe_$scalaVersion:x.x.x'
 ```
 
 ## JsonDeliveryConverter

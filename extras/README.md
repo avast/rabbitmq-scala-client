@@ -2,7 +2,7 @@
 
 This is an extra module with some optional functionality.  
 ```groovy
-compile 'com.avast.clients:rabbitmq-client-extras_$scalaVersion:x.x.x'
+compile 'com.avast.clients.rabbitmq:rabbitmq-client-extras_$scalaVersion:x.x.x'
 ```
 
 ## HealthCheck
