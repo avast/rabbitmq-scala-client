@@ -28,7 +28,7 @@ class DefaultRabbitMQProducerTest extends TestBase {
       monitor = Monitor.noOp,
       defaultProperties = MessageProperties.empty,
       reportUnroutable = false,
-      blockingScheduler = Scheduler.Implicits.global
+      blocker = TestBase.testBlocker
     )
 
     val properties = new AMQP.BasicProperties.Builder()

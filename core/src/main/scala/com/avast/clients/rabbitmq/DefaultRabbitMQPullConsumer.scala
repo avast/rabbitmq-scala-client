@@ -2,7 +2,7 @@ package com.avast.clients.rabbitmq
 
 import java.util.concurrent.atomic.AtomicInteger
 
-import cats.effect.Effect
+import cats.effect._
 import cats.implicits._
 import com.avast.bytes.Bytes
 import com.avast.clients.rabbitmq.api._
@@ -10,9 +10,8 @@ import com.avast.clients.rabbitmq.javaapi.JavaConverters._
 import com.avast.metrics.scalaapi.Monitor
 import com.rabbitmq.client.{AMQP, GetResponse}
 import com.typesafe.scalalogging.StrictLogging
-import monix.eval.Task
-import monix.execution.Scheduler
 
+import scala.concurrent.ExecutionContext
 import scala.language.higherKinds
 import scala.util.control.NonFatal
 
@@ -23,10 +22,12 @@ class DefaultRabbitMQPullConsumer[F[_]: Effect, A: DeliveryConverter](
     protected override val connectionInfo: RabbitMQConnectionInfo,
     failureAction: DeliveryResult,
     protected override val monitor: Monitor,
-    protected override val blockingScheduler: Scheduler)(implicit sch: Scheduler)
+    protected override val blocker: Blocker)(implicit ec: ExecutionContext, override protected val cs: ContextShift[F])
     extends RabbitMQPullConsumer[F, A]
     with ConsumerBase[F]
     with StrictLogging {
+
+  override protected implicit val F: Sync[F] = Sync[F]
 
   private val tasksMonitor = monitor.named("tasks")
 
@@ -37,11 +38,10 @@ class DefaultRabbitMQPullConsumer[F[_]: Effect, A: DeliveryConverter](
   private def convertMessage(b: Bytes): Either[ConversionException, A] = implicitly[DeliveryConverter[A]].convert(b)
 
   override def pull(): F[PullResult[F, A]] = {
-    Task {
-      Option(channel.basicGet(queueName, false))
-    }.executeOn(blockingScheduler, forceAsync = true) // blocking operation!
-      .asyncBoundary
-      .to[F]
+    blocker
+      .delay {
+        Option(channel.basicGet(queueName, false))
+      }
       .flatMap {
         case Some(response) =>
           processingCount.incrementAndGet()

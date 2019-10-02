@@ -1,20 +1,21 @@
 package com.avast.clients.rabbitmq
 
+import java.util.concurrent._
 import java.util.concurrent.atomic.AtomicInteger
-import java.util.concurrent.{CountDownLatch, Executors, Semaphore, TimeUnit}
 
+import cats.effect.SyncIO
 import com.avast.bytes.Bytes
 import com.avast.clients.rabbitmq.api._
 import com.avast.clients.rabbitmq.extras.PoisonedMessageHandler
 import com.avast.clients.rabbitmq.extras.format.JsonDeliveryConverter
 import com.avast.clients.rabbitmq.extras.testing._
 import com.avast.metrics.scalaapi.Monitor
-import com.typesafe.config.{Config, ConfigFactory, ConfigValueFactory}
-import monix.eval.{Coeval, Task}
+import com.typesafe.config._
+import monix.eval.Task
 import monix.execution.Scheduler
 import net.ceedubs.ficus.Ficus._
 import org.scalatest.concurrent.ScalaFutures
-import org.scalatest.time.{Milliseconds, Seconds, Span}
+import org.scalatest.time._
 
 import scala.collection.JavaConverters._
 import scala.concurrent.ExecutionContext
@@ -29,20 +30,20 @@ class LiveTest extends TestBase with ScalaFutures {
 
   private def createConfig() = new {
 
-    val queueName = randomString(10)
-    val exchange1 = randomString(10)
-    val exchange2 = randomString(10)
+    val queueName: String = randomString(10)
+    val exchange1: String = randomString(10)
+    val exchange2: String = randomString(10)
 
-    val queueName2 = randomString(10)
-    val exchange3 = randomString(10)
+    val queueName2: String = randomString(10)
+    val exchange3: String = randomString(10)
 
     private val original = ConfigFactory.load().getConfig("myConfig")
 
-    val bindConfigs = original.as[Array[Config]]("consumer.bindings")
+    val bindConfigs: Array[Config] = original.as[Array[Config]]("consumer.bindings")
     bindConfigs(0) = bindConfigs(0).withValue("exchange.name", ConfigValueFactory.fromAnyRef(exchange1))
     bindConfigs(1) = bindConfigs(1).withValue("exchange.name", ConfigValueFactory.fromAnyRef(exchange2))
 
-    val config = original
+    val config: Config = original
       .withValue("consumer.queueName", ConfigValueFactory.fromAnyRef(queueName))
       .withValue("consumer.bindings", ConfigValueFactory.fromIterable(bindConfigs.toSeq.map(_.root()).asJava))
       .withValue("consumer.processTimeout", ConfigValueFactory.fromAnyRef("500ms"))
@@ -59,41 +60,42 @@ class LiveTest extends TestBase with ScalaFutures {
       Random.alphanumeric.take(length).mkString("")
     }
 
-    val ex = ExecutionContext.fromExecutorService(Executors.newCachedThreadPool())
+    val ex: ExecutorService = ExecutionContext.fromExecutorService(Executors.newCachedThreadPool())
 
     implicit val sched: Scheduler = Scheduler(Executors.newCachedThreadPool())
   }
 
-  val testHelper = new TestHelper(System.getProperty("rabbit.host"), System.getProperty("rabbit.tcp.15672").toInt)
+  val testHelper = new TestHelper(System.getProperty("rabbit.host", System.getenv("rabbit.host")),
+                                  System.getProperty("rabbit.tcp.15672", System.getenv("rabbit.tcp.15672")).toInt)
 
   test("basic") {
     val c = createConfig()
     import c._
 
-    val counter = new AtomicInteger(0)
-    val processed = new Semaphore(0)
+    RabbitMQConnection.fromConfig[Task](config, ex).withResource { rabbitConnection =>
+      val counter = new AtomicInteger(0)
+      val processed = new Semaphore(0)
 
-    val rabbitConnection = RabbitMQConnection.fromConfig[Task](config, ex).await
-
-    rabbitConnection
-      .newConsumer("consumer", Monitor.noOp()) { _: Delivery[Bytes] =>
+      val cons = rabbitConnection.newConsumer("consumer", Monitor.noOp()) { _: Delivery[Bytes] =>
         counter.incrementAndGet()
         Task {
           processed.release()
           DeliveryResult.Ack
         }
       }
-      .await
 
-    val sender = rabbitConnection.newProducer[Bytes]("producer", Monitor.noOp()).await
+      cons.withResource { _ =>
+        rabbitConnection.newProducer[Bytes]("producer", Monitor.noOp()).withResource { sender =>
+          sender.send("test", Bytes.copyFromUtf8(Random.nextString(10))).await
 
-    sender.send("test", Bytes.copyFromUtf8(Random.nextString(10))).await
+          assert(processed.tryAcquire(1, TimeUnit.SECONDS)) // this is to prevent bug where the event was processed multiple times
 
-    assert(processed.tryAcquire(1, TimeUnit.SECONDS)) // this is to prevent bug where the event was processed multiple times
-
-    eventually {
-      assertResult(1)(counter.get())
-      assertResult(0)(testHelper.getMessagesCount(queueName))
+          eventually {
+            assertResult(1)(counter.get())
+            assertResult(0)(testHelper.getMessagesCount(queueName))
+          }
+        }
+      }
     }
   }
 
@@ -101,17 +103,15 @@ class LiveTest extends TestBase with ScalaFutures {
     val c = createConfig()
     import c._
 
-    val cnt = Random.nextInt(100)
-    val count = cnt + 100 // random 100 - 300 messages
+    RabbitMQConnection.fromConfig[Task](config, ex).withResource { rabbitConnection =>
+      val cnt = Random.nextInt(100)
+      val count = cnt + 100 // random 100 - 300 messages
 
-    val latch = new CountDownLatch(count + 5)
+      val latch = new CountDownLatch(count + 5)
 
-    val rabbitConnection = RabbitMQConnection.fromConfig[Task](config, ex).await
+      val d = new AtomicInteger(0)
 
-    val d = new AtomicInteger(0)
-
-    rabbitConnection
-      .newConsumer("consumer", Monitor.noOp()) { _: Delivery[Bytes] =>
+      val cons = rabbitConnection.newConsumer("consumer", Monitor.noOp()) { _: Delivery[Bytes] =>
         Task {
           Thread.sleep(if (d.get() % 2 == 0) 300 else 0)
           latch.countDown()
@@ -122,17 +122,19 @@ class LiveTest extends TestBase with ScalaFutures {
           }
         }
       }
-      .await
 
-    val sender = rabbitConnection.newProducer[Bytes]("producer", Monitor.noOp()).await
+      cons.withResource { _ =>
+        rabbitConnection.newProducer[Bytes]("producer", Monitor.noOp()).withResource { sender =>
+          for (_ <- 1 to count) {
+            sender.send("test", Bytes.copyFromUtf8(Random.nextString(10))).await
+          }
 
-    for (_ <- 1 to count) {
-      sender.send("test", Bytes.copyFromUtf8(Random.nextString(10))).await
-    }
-
-    eventually(timeout(Span(3, Seconds)), interval(Span(0.1, Seconds))) {
-      assertResult(true)(latch.await(1000, TimeUnit.MILLISECONDS))
-      assertResult(0)(testHelper.getMessagesCount(queueName))
+          eventually(timeout(Span(3, Seconds)), interval(Span(0.1, Seconds))) {
+            assertResult(true)(latch.await(1000, TimeUnit.MILLISECONDS))
+            assertResult(0)(testHelper.getMessagesCount(queueName))
+          }
+        }
+      }
     }
   }
 
@@ -140,57 +142,57 @@ class LiveTest extends TestBase with ScalaFutures {
     val c = createConfig()
     import c._
 
-    val latch = new CountDownLatch(20)
+    RabbitMQConnection.fromConfig[Task](config, ex).withResource { rabbitConnection =>
+      val latch = new CountDownLatch(20)
 
-    val rabbitConnection = RabbitMQConnection.fromConfig[Task](config, ex).await
-
-    rabbitConnection
-      .newConsumer("consumer", Monitor.noOp()) { _: Delivery[Bytes] =>
+      val cons = rabbitConnection.newConsumer("consumer", Monitor.noOp()) { _: Delivery[Bytes] =>
         latch.countDown()
         Task.now(Ack)
       }
-      .await
 
-    val sender1 = rabbitConnection.newProducer[Bytes]("producer", Monitor.noOp()).await
-    val sender2 = rabbitConnection.newProducer[Bytes]("producer2", Monitor.noOp()).await
+      cons.withResource { _ =>
+        rabbitConnection.newProducer[Bytes]("producer", Monitor.noOp()).withResource { sender1 =>
+          rabbitConnection.newProducer[Bytes]("producer2", Monitor.noOp()).withResource { sender2 =>
+            for (_ <- 1 to 10) {
+              sender1.send("test", Bytes.copyFromUtf8(Random.nextString(10))).await(500.millis)
+              sender2.send("test2", Bytes.copyFromUtf8(Random.nextString(10))).await(500.millis)
+            }
 
-    for (_ <- 1 to 10) {
-      sender1.send("test", Bytes.copyFromUtf8(Random.nextString(10))).await
-      sender2.send("test2", Bytes.copyFromUtf8(Random.nextString(10))).await
+            assertResult(true, latch.getCount)(latch.await(1000, TimeUnit.MILLISECONDS))
+            assertResult(0)(testHelper.getMessagesCount(queueName))
+          }
+        }
+      }
     }
-
-    assertResult(true)(latch.await(500, TimeUnit.MILLISECONDS))
-
-    assertResult(0)(testHelper.getMessagesCount(queueName))
   }
 
   test("timeouts and requeues messages") {
     val c = createConfig()
     import c._
 
-    val rabbitConnection = RabbitMQConnection.fromConfig[Task](config, ex).await
+    RabbitMQConnection.fromConfig[Task](config, ex).withResource { rabbitConnection =>
+      val cnt = new AtomicInteger(0)
 
-    val cnt = new AtomicInteger(0)
-
-    rabbitConnection
-      .newConsumer("consumer", Monitor.noOp()) { _: Delivery[Bytes] =>
+      val cons = rabbitConnection.newConsumer("consumer", Monitor.noOp()) { _: Delivery[Bytes] =>
         cnt.incrementAndGet()
 
         Task {
           Ack
         }.delayResult(800.millis) // timeout is set to 500 ms
       }
-      .await
 
-    val sender = rabbitConnection.newProducer[Bytes]("producer", Monitor.noOp()).await
+      cons.withResource { _ =>
+        rabbitConnection.newProducer[Bytes]("producer", Monitor.noOp()).withResource { sender =>
+          for (_ <- 1 to 10) {
+            sender.send("test", Bytes.copyFromUtf8(Random.nextString(10))).await
+          }
 
-    for (_ <- 1 to 10) {
-      sender.send("test", Bytes.copyFromUtf8(Random.nextString(10))).await
-    }
-
-    eventually(timeout(Span(3, Seconds)), interval(Span(0.25, Seconds))) {
-      assert(cnt.get() >= 40)
-      assert(testHelper.getMessagesCount(queueName) <= 20)
+          eventually(timeout(Span(3, Seconds)), interval(Span(0.25, Seconds))) {
+            assert(cnt.get() >= 40)
+            assert(testHelper.getMessagesCount(queueName) <= 20)
+          }
+        }
+      }
     }
   }
 
@@ -198,30 +200,27 @@ class LiveTest extends TestBase with ScalaFutures {
     val c = createConfig()
     import c._
 
-    val rabbitConnection = RabbitMQConnection
-      .fromConfig[Task](config, ex)
-      .await
-      .asBlocking
+    RabbitMQConnection.fromConfig[Task](config, ex).map(_.asBlocking).withResource { rabbitConnection =>
+      val cnt = new AtomicInteger(0)
 
-    val cnt = new AtomicInteger(0)
-
-    rabbitConnection
-      .newConsumer("consumer", Monitor.noOp()) { _: Delivery[Bytes] =>
+      val cons = rabbitConnection.newConsumer("consumer", Monitor.noOp()) { _: Delivery[Bytes] =>
         cnt.incrementAndGet()
         Thread.sleep(800) // timeout is set to 500 ms
-        Coeval(Ack)
+        SyncIO.pure(Ack)
       }
-      .unwrap
 
-    val sender = rabbitConnection.newProducer[Bytes]("producer", Monitor.noOp()).unwrap
+      cons.withResource { _ =>
+        rabbitConnection.newProducer[Bytes]("producer", Monitor.noOp()).withResource { sender =>
+          for (_ <- 1 to 10) {
+            sender.send("test", Bytes.copyFromUtf8(Random.nextString(10))).unsafeRunSync()
+          }
 
-    for (_ <- 1 to 10) {
-      sender.send("test", Bytes.copyFromUtf8(Random.nextString(10))).value()
-    }
-
-    eventually(timeout(Span(5, Seconds)), interval(Span(0.25, Seconds))) {
-      assert(cnt.get() >= 40)
-      assert(testHelper.getMessagesCount(queueName) <= 20)
+          eventually(timeout(Span(5, Seconds)), interval(Span(0.25, Seconds))) {
+            assert(cnt.get() >= 40)
+            assert(testHelper.getMessagesCount(queueName) <= 20)
+          }
+        }
+      }
     }
   }
 
@@ -229,37 +228,37 @@ class LiveTest extends TestBase with ScalaFutures {
     val c = createConfig()
     import c._
 
-    val latch = new CountDownLatch(10)
+    RabbitMQConnection.fromConfig[Task](config, ex).map(_.asBlocking).withResource { rabbitConnection =>
+      val latch = new CountDownLatch(10)
 
-    val rabbitConnection = RabbitMQConnection.fromConfig[Task](config, ex).await.asBlocking
-
-    val sender = rabbitConnection.newProducer[Bytes]("producer", Monitor.noOp()).unwrap
-
-    // additional declarations
-
-    (for {
-      _ <- rabbitConnection.declareExchange("additionalDeclarations.declareExchange")
-      _ <- rabbitConnection.bindExchange("additionalDeclarations.bindExchange")
-      _ <- rabbitConnection.declareQueue("additionalDeclarations.declareQueue")
-      _ <- rabbitConnection.bindQueue("additionalDeclarations.bindQueue")
-    } yield ()).value()
-
-    rabbitConnection
-      .newConsumer("consumer", Monitor.noOp()) { _: Delivery[Bytes] =>
+      val cons = rabbitConnection.newConsumer("consumer", Monitor.noOp()) { _: Delivery[Bytes] =>
         latch.countDown()
-        Coeval(DeliveryResult.Ack)
+        SyncIO.pure(Ack)
       }
-      .unwrap
 
-    for (_ <- 1 to 10) {
-      sender.send("test", Bytes.copyFromUtf8(Random.nextString(10))).runTry().failed.foreach(fail(_: Throwable))
-    }
+      cons.withResource { _ =>
+        rabbitConnection.newProducer[Bytes]("producer", Monitor.noOp()).withResource { sender =>
+          // additional declarations
 
-    eventually(timeout(Span(2, Seconds)), interval(Span(200, Milliseconds))) {
-      assertResult(true)(latch.await(500, TimeUnit.MILLISECONDS))
+          (for { // the order consumer -> producer -> declarations is required!
+            _ <- rabbitConnection.declareExchange("additionalDeclarations.declareExchange")
+            _ <- rabbitConnection.bindExchange("additionalDeclarations.bindExchange")
+            _ <- rabbitConnection.declareQueue("additionalDeclarations.declareQueue")
+            _ <- rabbitConnection.bindQueue("additionalDeclarations.bindQueue")
+          } yield ()).unsafeRunSync()
 
-      assertResult(0)(testHelper.getMessagesCount(queueName))
-      assertResult(10)(testHelper.getMessagesCount(queueName2))
+          for (_ <- 1 to 10) {
+            sender.send("test", Bytes.copyFromUtf8(Random.nextString(10))).unsafeRunSync()
+          }
+
+          eventually(timeout(Span(2, Seconds)), interval(Span(200, Milliseconds))) {
+            assertResult(true)(latch.await(500, TimeUnit.MILLISECONDS))
+
+            assertResult(0)(testHelper.getMessagesCount(queueName))
+            assertResult(10)(testHelper.getMessagesCount(queueName2))
+          }
+        }
+      }
     }
   }
 
@@ -267,35 +266,35 @@ class LiveTest extends TestBase with ScalaFutures {
     val c = createConfig()
     import c._
 
-    val poisoned = new AtomicInteger(0)
-    val processed = new AtomicInteger(0)
+    RabbitMQConnection.fromConfig[Task](config, ex).withResource { rabbitConnection =>
+      val poisoned = new AtomicInteger(0)
+      val processed = new AtomicInteger(0)
 
-    val rabbitConnection = RabbitMQConnection.fromConfig[Task](config, ex).await
-
-    val h = PoisonedMessageHandler.withCustomPoisonedAction[Task, Bytes](2) { _: Delivery[Bytes] =>
-      Task {
-        processed.incrementAndGet()
-        DeliveryResult.Republish()
+      val h = PoisonedMessageHandler.withCustomPoisonedAction[Task, Bytes](2) { _: Delivery[Bytes] =>
+        Task {
+          processed.incrementAndGet()
+          DeliveryResult.Republish()
+        }
+      } { _: Delivery[Bytes] =>
+        Task {
+          poisoned.incrementAndGet()
+          ()
+        }
       }
-    } { _: Delivery[Bytes] =>
-      Task {
-        poisoned.incrementAndGet()
-        ()
+
+      rabbitConnection.newConsumer("consumer", Monitor.noOp())(h).withResource { _ =>
+        rabbitConnection.newProducer[Bytes]("producer", Monitor.noOp()).withResource { sender =>
+          for (_ <- 1 to 10) {
+            sender.send("test", Bytes.copyFromUtf8(Random.nextString(10))).await
+          }
+
+          eventually(timeout(Span(2, Seconds)), interval(Span(0.25, Seconds))) {
+            assertResult(20)(processed.get())
+            assertResult(0)(testHelper.getMessagesCount(queueName))
+            assertResult(10)(poisoned.get())
+          }
+        }
       }
-    }
-
-    rabbitConnection.newConsumer("consumer", Monitor.noOp())(h).await
-
-    val sender = rabbitConnection.newProducer[Bytes]("producer", Monitor.noOp()).await
-
-    for (_ <- 1 to 10) {
-      sender.send("test", Bytes.copyFromUtf8(Random.nextString(10))).await
-    }
-
-    eventually {
-      assertResult(20)(processed.get())
-      assertResult(0)(testHelper.getMessagesCount(queueName))
-      assertResult(10)(poisoned.get())
     }
   }
 
@@ -303,40 +302,42 @@ class LiveTest extends TestBase with ScalaFutures {
     val c = createConfig()
     import c._
 
-    val rabbitConnection = RabbitMQConnection.fromConfig[Task](config, ex).await.asBlocking
+    RabbitMQConnection.fromConfig[Task](config, ex).map(_.asBlocking).withResource { rabbitConnection =>
+      val cons = rabbitConnection.newPullConsumer[Bytes]("consumer", Monitor.noOp())
 
-    val consumer = rabbitConnection.newPullConsumer[Bytes]("consumer", Monitor.noOp()).unwrap
+      cons.withResource { consumer =>
+        rabbitConnection.newProducer[Bytes]("producer", Monitor.noOp()).withResource { sender =>
+          for (_ <- 1 to 10) {
+            sender.send("test", Bytes.copyFromUtf8(Random.nextString(10))).unsafeRunSync()
+          }
 
-    val sender = rabbitConnection.newProducer[Bytes]("producer", Monitor.noOp()).unwrap
+          eventually(timeout = timeout(Span(5, Seconds))) {
+            assertResult(10)(testHelper.getMessagesCount(queueName))
+          }
 
-    for (_ <- 1 to 10) {
-      sender.send("test", Bytes.copyFromUtf8(Random.nextString(10))).value()
-    }
+          for (_ <- 1 to 3) {
+            val PullResult.Ok(dwh) = consumer.pull().unsafeRunSync()
+            dwh.handle(DeliveryResult.Ack).unsafeRunSync()
+          }
 
-    eventually(timeout = timeout(Span(5, Seconds))) {
-      assertResult(10)(testHelper.getMessagesCount(queueName))
-    }
+          eventually(timeout = timeout(Span(5, Seconds))) {
+            assertResult(7)(testHelper.getMessagesCount(queueName))
+          }
 
-    for (_ <- 1 to 3) {
-      val PullResult.Ok(dwh) = consumer.pull().value()
-      dwh.handle(DeliveryResult.Ack).value()
-    }
+          for (_ <- 1 to 7) {
+            val PullResult.Ok(dwh) = consumer.pull().unsafeRunSync()
+            dwh.handle(DeliveryResult.Ack).unsafeRunSync()
+          }
 
-    eventually(timeout = timeout(Span(5, Seconds))) {
-      assertResult(7)(testHelper.getMessagesCount(queueName))
-    }
+          eventually(timeout = timeout(Span(5, Seconds))) {
+            assertResult(0)(testHelper.getMessagesCount(queueName))
+          }
 
-    for (_ <- 1 to 7) {
-      val PullResult.Ok(dwh) = consumer.pull().value()
-      dwh.handle(DeliveryResult.Ack).value()
-    }
-
-    eventually(timeout = timeout(Span(5, Seconds))) {
-      assertResult(0)(testHelper.getMessagesCount(queueName))
-    }
-
-    for (_ <- 1 to 10) {
-      assertResult(PullResult.EmptyQueue)(consumer.pull().value())
+          for (_ <- 1 to 10) {
+            assertResult(PullResult.EmptyQueue)(consumer.pull().unsafeRunSync())
+          }
+        }
+      }
     }
   }
 
@@ -346,24 +347,22 @@ class LiveTest extends TestBase with ScalaFutures {
     import io.circe.generic.auto._
     case class Abc(str: String)
 
-    implicit val conv = JsonDeliveryConverter.derive[Abc]()
+    implicit val conv: DeliveryConverter[Abc] = JsonDeliveryConverter.derive[Abc]()
 
-    val rabbitConnection = RabbitMQConnection.fromConfig[Task](config, ex).await.asBlocking
+    RabbitMQConnection.fromConfig[Task](config, ex).map(_.asBlocking).withResource { rabbitConnection =>
+      val parsingFailures = new AtomicInteger(0)
+      val processing = new AtomicInteger(0)
 
-    val parsingFailures = new AtomicInteger(0)
-    val processing = new AtomicInteger(0)
-
-    rabbitConnection
-      .newConsumer[Abc]("consumer", Monitor.noOp()) {
+      val cons = rabbitConnection.newConsumer[Abc]("consumer", Monitor.noOp()) {
         case _: Delivery.Ok[Abc] =>
           processing.incrementAndGet()
-          Coeval(DeliveryResult.Ack)
+          SyncIO(DeliveryResult.Ack)
 
         case d: Delivery.MalformedContent =>
           assertResult(10)(d.body.size())
 
           val i = parsingFailures.incrementAndGet()
-          Coeval {
+          SyncIO {
             if (i > 3) DeliveryResult.Ack
             else {
               logger.info(s"Retrying $i", d.ce)
@@ -371,19 +370,20 @@ class LiveTest extends TestBase with ScalaFutures {
             }
           }
       }
-      .unwrap
 
-    val sender = rabbitConnection.newProducer[Bytes]("producer", Monitor.noOp()).unwrap
+      cons.withResource { _ =>
+        rabbitConnection.newProducer[Bytes]("producer", Monitor.noOp()).withResource { sender =>
+          sender.send("test", Bytes.copyFromUtf8(randomString(10))).unsafeRunSync()
 
-    sender.send("test", Bytes.copyFromUtf8(randomString(10))).value()
+          eventually(timeout = timeout(Span(5, Seconds))) {
+            assertResult(0)(testHelper.getMessagesCount(queueName))
 
-    eventually(timeout = timeout(Span(5, Seconds))) {
-      assertResult(0)(testHelper.getMessagesCount(queueName))
+            assertResult(0)(processing.get())
+            assertResult(4)(parsingFailures.get())
 
-      assertResult(0)(processing.get())
-      assertResult(4)(parsingFailures.get())
-
+          }
+        }
+      }
     }
-
   }
 }

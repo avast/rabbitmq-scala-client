@@ -5,7 +5,7 @@ import java.nio.file.{Path, Paths}
 import java.time.Duration
 import java.util.concurrent.ExecutorService
 
-import cats.effect.{Effect, Resource, Sync}
+import cats.effect._
 import com.avast.clients.rabbitmq.DefaultRabbitMQClientFactory.FakeConfigRootName
 import com.avast.clients.rabbitmq.api._
 import com.avast.clients.rabbitmq.ssl.{KeyStoreTypes, SSLBuilder}
@@ -14,7 +14,6 @@ import com.rabbitmq.client._
 import com.typesafe.config.{Config, ConfigFactory}
 import com.typesafe.scalalogging.StrictLogging
 import javax.net.ssl.SSLContext
-import monix.execution.Scheduler
 import net.ceedubs.ficus.Ficus._
 import net.ceedubs.ficus.readers.ArbitraryTypeReader._
 import net.ceedubs.ficus.readers.ValueReader
@@ -163,7 +162,7 @@ object RabbitMQConnection extends StrictLogging {
     * @param providedConfig   The configuration.
     * @param blockingExecutor [[ExecutorService]] which should be used as shared blocking pool (IO operations) for all channels from this connection.
     */
-  def fromConfig[F[_]: Effect](
+  def fromConfig[F[_]: ConcurrentEffect: Timer: ContextShift](
       providedConfig: Config,
       blockingExecutor: ExecutorService,
       connectionListener: ConnectionListener = DefaultListeners.DefaultConnectionListener,
@@ -177,10 +176,9 @@ object RabbitMQConnection extends StrictLogging {
           .withValue(FakeConfigRootName, providedConfig.withFallback(DefaultConfig).root())
 
         val connectionConfig = config.as[RabbitMQConnectionConfig](FakeConfigRootName)
-
         val connection = createConnection(connectionConfig, blockingExecutor, connectionListener, channelListener, consumerListener)
 
-        val blockingScheduler: Scheduler = Scheduler(ses, ExecutionContext.fromExecutor(blockingExecutor))
+        val blocker = Blocker.liftExecutorService(blockingExecutor)
 
         new DefaultRabbitMQConnection(
           connection = connection,
@@ -193,7 +191,7 @@ object RabbitMQConnection extends StrictLogging {
           connectionListener = connectionListener,
           channelListener = channelListener,
           consumerListener = consumerListener,
-          blockingScheduler = blockingScheduler
+          blocker = blocker
         )
       }
     }(_.close())

@@ -2,7 +2,7 @@ package com.avast.clients.rabbitmq
 
 import java.util.UUID
 
-import cats.effect.Effect
+import cats.effect.{Blocker, ContextShift, Effect, Sync}
 import com.avast.bytes.Bytes
 import com.avast.clients.rabbitmq.api.{ChannelNotRecoveredException, MessageProperties, RabbitMQProducer}
 import com.avast.clients.rabbitmq.javaapi.JavaConverters._
@@ -10,19 +10,17 @@ import com.avast.metrics.scalaapi.Monitor
 import com.rabbitmq.client.AMQP.BasicProperties
 import com.rabbitmq.client.{AlreadyClosedException, ReturnListener}
 import com.typesafe.scalalogging.StrictLogging
-import monix.eval.Task
-import monix.execution.Scheduler
 
 import scala.language.higherKinds
 import scala.util.control.NonFatal
 
-class DefaultRabbitMQProducer[F[_], A: ProductConverter](name: String,
-                                                         exchangeName: String,
-                                                         channel: ServerChannel,
-                                                         defaultProperties: MessageProperties,
-                                                         reportUnroutable: Boolean,
-                                                         blockingScheduler: Scheduler,
-                                                         monitor: Monitor)(implicit F: Effect[F], sch: Scheduler)
+class DefaultRabbitMQProducer[F[_]: Sync, A: ProductConverter](name: String,
+                                                               exchangeName: String,
+                                                               channel: ServerChannel,
+                                                               defaultProperties: MessageProperties,
+                                                               reportUnroutable: Boolean,
+                                                               blocker: Blocker,
+                                                               monitor: Monitor)(implicit F: Effect[F], cs: ContextShift[F])
     extends RabbitMQProducer[F, A]
     with StrictLogging {
 
@@ -42,16 +40,14 @@ class DefaultRabbitMQProducer[F[_], A: ProductConverter](name: String,
       converter.fillProperties(initialProperties)
     }
 
-    val task = converter.convert(body) match {
+    converter.convert(body) match {
       case Right(convertedBody) => send(routingKey, convertedBody, finalProperties)
-      case Left(ce) => Task.raiseError(ce)
+      case Left(ce) => Sync[F].raiseError(ce)
     }
-
-    task.to[F]
   }
 
-  private def send(routingKey: String, body: Bytes, properties: MessageProperties): Task[Unit] = {
-    Task {
+  private def send(routingKey: String, body: Bytes, properties: MessageProperties): F[Unit] = {
+    blocker.delay {
       logger.debug(s"Sending message with ${body.size()} B to exchange $exchangeName with routing key '$routingKey' and $properties")
 
       try {
@@ -73,7 +69,7 @@ class DefaultRabbitMQProducer[F[_], A: ProductConverter](name: String,
           sentFailedMeter.mark()
           throw e
       }
-    }.executeOn(blockingScheduler).asyncBoundary
+    }
   }
 
   // scalastyle:off

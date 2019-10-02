@@ -3,7 +3,7 @@ package com.avast.clients.rabbitmq
 import java.util.concurrent.RejectedExecutionException
 import java.util.concurrent.atomic.AtomicInteger
 
-import cats.effect.{Effect, IO, Sync}
+import cats.effect._
 import cats.implicits._
 import com.avast.bytes.Bytes
 import com.avast.clients.rabbitmq.api._
@@ -12,29 +12,31 @@ import com.avast.metrics.scalaapi.Monitor
 import com.rabbitmq.client.AMQP.BasicProperties
 import com.rabbitmq.client.{DefaultConsumer, Envelope, ShutdownSignalException}
 import com.typesafe.scalalogging.StrictLogging
-import monix.execution.Scheduler
 
 import scala.collection.JavaConverters._
-import scala.concurrent.Future
+import scala.concurrent.{ExecutionContext, Future}
 import scala.language.higherKinds
 import scala.util.control.NonFatal
 import scala.util.{Failure, Success}
 
-class DefaultRabbitMQConsumer[F[_]: Effect](
-    override val name: String,
-    override protected val channel: ServerChannel,
-    override protected val queueName: String,
-    override protected val connectionInfo: RabbitMQConnectionInfo,
-    override protected val monitor: Monitor,
-    failureAction: DeliveryResult,
-    consumerListener: ConsumerListener,
-    override protected val blockingScheduler: Scheduler)(readAction: DeliveryReadAction[F, Bytes])(implicit scheduler: Scheduler)
+class DefaultRabbitMQConsumer[F[_]: Effect](override val name: String,
+                                            override protected val channel: ServerChannel,
+                                            override protected val queueName: String,
+                                            override protected val connectionInfo: RabbitMQConnectionInfo,
+                                            override protected val monitor: Monitor,
+                                            failureAction: DeliveryResult,
+                                            consumerListener: ConsumerListener,
+                                            override protected val blocker: Blocker)(readAction: DeliveryReadAction[F, Bytes])(
+    implicit ec: ExecutionContext,
+    override protected val cs: ContextShift[F])
     extends DefaultConsumer(channel)
     with RabbitMQConsumer[F]
     with ConsumerBase[F]
     with StrictLogging {
 
   import DefaultRabbitMQConsumer._
+
+  override protected implicit val F: Sync[F] = Effect[F]
 
   private val readMeter = monitor.meter("read")
 

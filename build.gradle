@@ -93,18 +93,20 @@ subprojects {
 
     ext {
         scalaVersion = "2.12"
-        scalaVersionFull = "2.12.8"
+        scalaVersionFull = "2.12.10"
         metricsVersion = "2.6.4"
         bytesVersion = "2.0.6"
         circeVersion = "0.11.1"
-        cactusVersion = "0.16.10"
-        monixVersion = "3.0.0-RC2"
-        catsVersion = "1.6.1"
-        catsEffectVersion = "1.4.0"
+        cactusVersion = "0.16.11"
+        catsVersion = "2.0.0"
+        catsEffectVersion = "2.0.0"
+        monixVersion = "3.0.0" // just for tests!
     }
 
     dependencies {
-        scalaCompilerPlugin "org.spire-math:kind-projector_$scalaVersion:0.9.7"
+        scalaCompilerPlugin "org.typelevel:kind-projector_$scalaVersion:0.10.3"
+
+        testCompile "io.monix:monix_$scalaVersion:$monixVersion"
 
         testCompile "com.avast.metrics:metrics-jmx:${metricsVersion}"
 

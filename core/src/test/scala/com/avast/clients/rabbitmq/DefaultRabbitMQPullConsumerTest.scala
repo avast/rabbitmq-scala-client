@@ -3,22 +3,20 @@ package com.avast.clients.rabbitmq
 import java.util.UUID
 
 import com.avast.bytes.Bytes
-import com.avast.clients.rabbitmq.api.{ConversionException, Delivery, DeliveryResult, PullResult}
+import com.avast.clients.rabbitmq.api._
 import com.avast.metrics.scalaapi.Monitor
 import com.rabbitmq.client.AMQP.BasicProperties
 import com.rabbitmq.client.impl.recovery.AutorecoveringChannel
 import com.rabbitmq.client.{Envelope, GetResponse}
 import monix.eval.Task
-import monix.execution.Scheduler
 import monix.execution.Scheduler.Implicits.global
-import org.mockito.{ArgumentCaptor, Matchers}
 import org.mockito.Mockito._
+import org.mockito.{ArgumentCaptor, Matchers}
 import org.scalatest.time.{Seconds, Span}
 
+import scala.collection.JavaConverters._
 import scala.collection.immutable
 import scala.util.Random
-
-import scala.collection.JavaConverters._
 
 class DefaultRabbitMQPullConsumerTest extends TestBase {
 
@@ -50,7 +48,7 @@ class DefaultRabbitMQPullConsumerTest extends TestBase {
       connectionInfo,
       DeliveryResult.Reject,
       Monitor.noOp,
-      Scheduler.global
+      TestBase.testBlocker
     )
 
     val PullResult.Ok(dwh) = consumer.pull().await
@@ -93,7 +91,7 @@ class DefaultRabbitMQPullConsumerTest extends TestBase {
       connectionInfo,
       DeliveryResult.Reject,
       Monitor.noOp,
-      Scheduler.global
+      TestBase.testBlocker
     )
 
     val PullResult.Ok(dwh) = consumer.pull().await
@@ -136,7 +134,7 @@ class DefaultRabbitMQPullConsumerTest extends TestBase {
       connectionInfo,
       DeliveryResult.Ack,
       Monitor.noOp,
-      Scheduler.global
+      TestBase.testBlocker
     )
 
     val PullResult.Ok(dwh) = consumer.pull().await
@@ -179,7 +177,7 @@ class DefaultRabbitMQPullConsumerTest extends TestBase {
       connectionInfo,
       DeliveryResult.Reject,
       Monitor.noOp,
-      Scheduler.global
+      TestBase.testBlocker
     )
 
     val PullResult.Ok(dwh) = consumer.pull().await
@@ -230,7 +228,7 @@ class DefaultRabbitMQPullConsumerTest extends TestBase {
       connectionInfo,
       DeliveryResult.Retry,
       Monitor.noOp,
-      Scheduler.global
+      TestBase.testBlocker
     )
 
     assertThrows[IllegalArgumentException] {
@@ -275,7 +273,7 @@ class DefaultRabbitMQPullConsumerTest extends TestBase {
       connectionInfo,
       DeliveryResult.Ack,
       Monitor.noOp,
-      Scheduler.global
+      TestBase.testBlocker
     )
 
     val PullResult.Ok(dwh) = consumer.pull().await
