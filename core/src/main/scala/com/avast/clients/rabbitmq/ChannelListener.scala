@@ -1,5 +1,6 @@
 package com.avast.clients.rabbitmq
 
+import com.rabbitmq.client.impl.recovery.RecoveryAwareChannelN
 import com.rabbitmq.client.{Channel, ShutdownSignalException}
 import com.typesafe.scalalogging.StrictLogging
 
@@ -36,7 +37,16 @@ object ChannelListener {
     }
 
     override def onRecoveryFailure(channel: Channel, failure: Throwable): Unit = {
-      logger.warn(s"Channel recovery failed: $channel", failure)
+      channel match {
+        case ch: RecoveryAwareChannelN if !ch.isOpen =>
+          val initByApp = Option(ch.getCloseReason).map(_.isInitiatedByApplication).exists(identity)
+
+          if (initByApp) {
+            logger.debug(s"Channel could not be recovered, because it was manually closed: $channel", failure)
+          } else logger.warn(s"Channel recovery failed: $channel", failure)
+
+        case _ => logger.warn(s"Channel recovery failed: $channel", failure)
+      }
     }
 
     override def onShutdown(cause: ShutdownSignalException, channel: Channel): Unit = {
