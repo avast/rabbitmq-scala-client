@@ -11,7 +11,6 @@ import com.avast.metrics.scalaapi.Monitor
 import com.rabbitmq.client.{AMQP, GetResponse}
 import com.typesafe.scalalogging.StrictLogging
 
-import scala.concurrent.ExecutionContext
 import scala.language.higherKinds
 import scala.util.control.NonFatal
 
@@ -22,7 +21,7 @@ class DefaultRabbitMQPullConsumer[F[_]: Effect, A: DeliveryConverter](
     protected override val connectionInfo: RabbitMQConnectionInfo,
     failureAction: DeliveryResult,
     protected override val monitor: Monitor,
-    protected override val blocker: Blocker)(implicit ec: ExecutionContext, override protected val cs: ContextShift[F])
+    protected override val blocker: Blocker)(implicit override protected val cs: ContextShift[F])
     extends RabbitMQPullConsumer[F, A]
     with ConsumerBase[F]
     with StrictLogging {

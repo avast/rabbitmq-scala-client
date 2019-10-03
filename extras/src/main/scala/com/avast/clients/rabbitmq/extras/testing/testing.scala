@@ -21,7 +21,6 @@ import com.avast.clients.rabbitmq.{
 import com.avast.metrics.scalaapi.Monitor
 import mainecoon.FunctorK
 
-import scala.concurrent.ExecutionContext
 import scala.language.higherKinds
 
 package object testing {
@@ -39,43 +38,43 @@ package object testing {
       new RabbitMQConnection[SyncIO] {
         override def newChannel(): Resource[SyncIO, ServerChannel] = conn.newChannel()
 
-        override def newConsumer[A: DeliveryConverter](configName: String, monitor: Monitor)(readAction: DeliveryReadAction[SyncIO, A])(
-            implicit ec: ExecutionContext): Resource[SyncIO, RabbitMQConsumer[SyncIO]] = {
+        override def newConsumer[A: DeliveryConverter](configName: String, monitor: Monitor)(
+            readAction: DeliveryReadAction[SyncIO, A]): Resource[SyncIO, RabbitMQConsumer[SyncIO]] = {
           conn.newConsumer(configName, monitor)(readAction.andThen(_.to[F])).map { cons =>
             FunctorK[RabbitMQConsumer].mapK(cons)(fkFToSyncIO)
           }
         }
 
         override def newConsumer[A: DeliveryConverter](consumerConfig: ConsumerConfig, monitor: Monitor)(
-            readAction: DeliveryReadAction[SyncIO, A])(implicit ec: ExecutionContext): Resource[SyncIO, RabbitMQConsumer[SyncIO]] = {
+            readAction: DeliveryReadAction[SyncIO, A]): Resource[SyncIO, RabbitMQConsumer[SyncIO]] = {
           conn.newConsumer(consumerConfig, monitor)(readAction.andThen(_.to[F])).map { cons =>
             FunctorK[RabbitMQConsumer].mapK(cons)(fkFToSyncIO)
           }
         }
 
-        override def newProducer[A: ProductConverter](configName: String, monitor: Monitor)(
-            implicit ec: ExecutionContext): Resource[SyncIO, RabbitMQProducer[SyncIO, A]] = {
+        override def newProducer[A: ProductConverter](configName: String,
+                                                      monitor: Monitor): Resource[SyncIO, RabbitMQProducer[SyncIO, A]] = {
           conn.newProducer(configName, monitor).map { prod =>
             FunctorK[RabbitMQProducer[*[_], A]].mapK(prod)(fkFToSyncIO)
           }
         }
 
-        override def newProducer[A: ProductConverter](producerConfig: ProducerConfig, monitor: Monitor)(
-            implicit ec: ExecutionContext): Resource[SyncIO, RabbitMQProducer[SyncIO, A]] = {
+        override def newProducer[A: ProductConverter](producerConfig: ProducerConfig,
+                                                      monitor: Monitor): Resource[SyncIO, RabbitMQProducer[SyncIO, A]] = {
           conn.newProducer(producerConfig, monitor).map { prod =>
             FunctorK[RabbitMQProducer[*[_], A]].mapK(prod)(fkFToSyncIO)
           }
         }
 
-        override def newPullConsumer[A: DeliveryConverter](configName: String, monitor: Monitor)(
-            implicit ec: ExecutionContext): Resource[SyncIO, api.RabbitMQPullConsumer[SyncIO, A]] = {
+        override def newPullConsumer[A: DeliveryConverter](configName: String,
+                                                           monitor: Monitor): Resource[SyncIO, api.RabbitMQPullConsumer[SyncIO, A]] = {
           conn.newPullConsumer(configName, monitor).map { cons =>
             pullConsumerToSyncIO(cons)
           }
         }
 
-        override def newPullConsumer[A: DeliveryConverter](pullConsumerConfig: PullConsumerConfig, monitor: Monitor)(
-            implicit ec: ExecutionContext): Resource[SyncIO, api.RabbitMQPullConsumer[SyncIO, A]] = {
+        override def newPullConsumer[A: DeliveryConverter](pullConsumerConfig: PullConsumerConfig,
+                                                           monitor: Monitor): Resource[SyncIO, api.RabbitMQPullConsumer[SyncIO, A]] = {
           conn.newPullConsumer(pullConsumerConfig, monitor).map { cons =>
             pullConsumerToSyncIO(cons)
           }

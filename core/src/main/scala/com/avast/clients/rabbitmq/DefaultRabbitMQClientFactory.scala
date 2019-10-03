@@ -21,7 +21,6 @@ import org.slf4j.event.Level
 import scala.collection.JavaConverters._
 import scala.collection.generic.CanBuildFrom
 import scala.collection.immutable
-import scala.concurrent.ExecutionContext
 import scala.concurrent.duration.{Duration => ScalaDuration}
 import scala.language.{higherKinds, implicitConversions}
 import scala.util.control.NonFatal
@@ -151,7 +150,7 @@ private[rabbitmq] object DefaultRabbitMQClientFactory extends LazyLogging {
                                                                  monitor: Monitor,
                                                                  consumerListener: ConsumerListener,
                                                                  readAction: DeliveryReadAction[F, A])(
-        implicit ec: ExecutionContext,
+        implicit
         timer: Timer[F],
         cs: ContextShift[F]): DefaultRabbitMQConsumer[F] = {
 
@@ -174,17 +173,15 @@ private[rabbitmq] object DefaultRabbitMQClientFactory extends LazyLogging {
       create[F, A](consumerConfig, configName, channel, channelFactoryInfo, blocker, monitor, consumerListener, readAction)
     }
 
-    def create[F[_]: ConcurrentEffect, A: DeliveryConverter](consumerConfig: ConsumerConfig,
-                                                             configName: String,
-                                                             channel: ServerChannel,
-                                                             channelFactoryInfo: RabbitMQConnectionInfo,
-                                                             blocker: Blocker,
-                                                             monitor: Monitor,
-                                                             consumerListener: ConsumerListener,
-                                                             readAction: DeliveryReadAction[F, A])(
-        implicit ec: ExecutionContext,
-        timer: Timer[F],
-        cs: ContextShift[F]): DefaultRabbitMQConsumer[F] = {
+    def create[F[_]: ConcurrentEffect, A: DeliveryConverter](
+        consumerConfig: ConsumerConfig,
+        configName: String,
+        channel: ServerChannel,
+        channelFactoryInfo: RabbitMQConnectionInfo,
+        blocker: Blocker,
+        monitor: Monitor,
+        consumerListener: ConsumerListener,
+        readAction: DeliveryReadAction[F, A])(implicit timer: Timer[F], cs: ContextShift[F]): DefaultRabbitMQConsumer[F] = {
 
       prepareConsumer(consumerConfig, configName, readAction, channelFactoryInfo, channel, consumerListener, blocker, monitor)
     }
@@ -198,7 +195,7 @@ private[rabbitmq] object DefaultRabbitMQClientFactory extends LazyLogging {
         channel: ServerChannel,
         channelFactoryInfo: RabbitMQConnectionInfo,
         blocker: Blocker,
-        monitor: Monitor)(implicit ec: ExecutionContext, cs: ContextShift[F]): DefaultRabbitMQPullConsumer[F, A] = {
+        monitor: Monitor)(implicit cs: ContextShift[F]): DefaultRabbitMQPullConsumer[F, A] = {
 
       val mergedConfig = providedConfig.withFallback(PullConsumerDefaultConfig)
 
@@ -225,7 +222,7 @@ private[rabbitmq] object DefaultRabbitMQClientFactory extends LazyLogging {
         channel: ServerChannel,
         channelFactoryInfo: RabbitMQConnectionInfo,
         blocker: Blocker,
-        monitor: Monitor)(implicit ec: ExecutionContext, cs: ContextShift[F]): DefaultRabbitMQPullConsumer[F, A] = {
+        monitor: Monitor)(implicit cs: ContextShift[F]): DefaultRabbitMQPullConsumer[F, A] = {
 
       preparePullConsumer(consumerConfig, configName, channelFactoryInfo, channel, blocker, monitor)
     }
@@ -346,7 +343,7 @@ private[rabbitmq] object DefaultRabbitMQClientFactory extends LazyLogging {
       channel: ServerChannel,
       consumerListener: ConsumerListener,
       blocker: Blocker,
-      monitor: Monitor)(implicit ec: ExecutionContext, timer: Timer[F], cs: ContextShift[F]): DefaultRabbitMQConsumer[F] = {
+      monitor: Monitor)(implicit timer: Timer[F], cs: ContextShift[F]): DefaultRabbitMQConsumer[F] = {
 
     // auto declare exchanges
     declareExchangesFromBindings(configName, channelFactoryInfo, channel, consumerConfig.bindings)
@@ -369,7 +366,7 @@ private[rabbitmq] object DefaultRabbitMQClientFactory extends LazyLogging {
       connectionInfo: RabbitMQConnectionInfo,
       channel: ServerChannel,
       blocker: Blocker,
-      monitor: Monitor)(implicit ec: ExecutionContext, cs: ContextShift[F]): DefaultRabbitMQPullConsumer[F, A] = {
+      monitor: Monitor)(implicit cs: ContextShift[F]): DefaultRabbitMQPullConsumer[F, A] = {
 
     import consumerConfig._
 
@@ -480,7 +477,7 @@ private[rabbitmq] object DefaultRabbitMQClientFactory extends LazyLogging {
       userReadAction: DeliveryReadAction[F, A],
       consumerListener: ConsumerListener,
       blocker: Blocker,
-      monitor: Monitor)(implicit ec: ExecutionContext, timer: Timer[F], cs: ContextShift[F]): DefaultRabbitMQConsumer[F] = {
+      monitor: Monitor)(implicit timer: Timer[F], cs: ContextShift[F]): DefaultRabbitMQConsumer[F] = {
     import consumerConfig._
 
     val readAction: DefaultDeliveryReadAction[F] = {

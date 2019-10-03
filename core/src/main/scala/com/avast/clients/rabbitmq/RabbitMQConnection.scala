@@ -18,7 +18,6 @@ import net.ceedubs.ficus.Ficus._
 import net.ceedubs.ficus.readers.ArbitraryTypeReader._
 import net.ceedubs.ficus.readers.ValueReader
 
-import scala.concurrent.ExecutionContext
 import scala.language.higherKinds
 import scala.util.control.NonFatal
 
@@ -35,8 +34,8 @@ trait RabbitMQConnection[F[_]] {
     * @param monitor    Monitor for metrics.
     * @param readAction Action executed for each delivered message. You should never return a failed future.
     */
-  def newConsumer[A: DeliveryConverter](configName: String, monitor: Monitor)(readAction: DeliveryReadAction[F, A])(
-      implicit ec: ExecutionContext): Resource[F, RabbitMQConsumer[F]]
+  def newConsumer[A: DeliveryConverter](configName: String, monitor: Monitor)(
+      readAction: DeliveryReadAction[F, A]): Resource[F, RabbitMQConsumer[F]]
 
   /** Creates new instance of consumer, using the passed configuration.
     *
@@ -44,40 +43,37 @@ trait RabbitMQConnection[F[_]] {
     * @param monitor    Monitor for metrics.
     * @param readAction Action executed for each delivered message. You should never return a failed future.
     */
-  def newConsumer[A: DeliveryConverter](consumerConfig: ConsumerConfig, monitor: Monitor)(readAction: DeliveryReadAction[F, A])(
-      implicit ec: ExecutionContext): Resource[F, RabbitMQConsumer[F]]
+  def newConsumer[A: DeliveryConverter](consumerConfig: ConsumerConfig, monitor: Monitor)(
+      readAction: DeliveryReadAction[F, A]): Resource[F, RabbitMQConsumer[F]]
 
   /** Creates new instance of producer, using the TypeSafe configuration passed to the factory and producer name.
     *
     * @param configName Name of configuration of the producer.
     * @param monitor    Monitor for metrics.
     */
-  def newProducer[A: ProductConverter](configName: String, monitor: Monitor)(
-      implicit ec: ExecutionContext): Resource[F, RabbitMQProducer[F, A]]
+  def newProducer[A: ProductConverter](configName: String, monitor: Monitor): Resource[F, RabbitMQProducer[F, A]]
 
   /** Creates new instance of producer, using the passed configuration.
     *
     * @param producerConfig Configuration of the producer.
     * @param monitor    Monitor for metrics.
     */
-  def newProducer[A: ProductConverter](producerConfig: ProducerConfig, monitor: Monitor)(
-      implicit ec: ExecutionContext): Resource[F, RabbitMQProducer[F, A]]
+  def newProducer[A: ProductConverter](producerConfig: ProducerConfig, monitor: Monitor): Resource[F, RabbitMQProducer[F, A]]
 
   /** Creates new instance of pull consumer, using the TypeSafe configuration passed to the factory and consumer name.
     *
     * @param configName Name of configuration of the consumer.
     * @param monitor    Monitor for metrics.
     */
-  def newPullConsumer[A: DeliveryConverter](configName: String, monitor: Monitor)(
-      implicit ec: ExecutionContext): Resource[F, RabbitMQPullConsumer[F, A]]
+  def newPullConsumer[A: DeliveryConverter](configName: String, monitor: Monitor): Resource[F, RabbitMQPullConsumer[F, A]]
 
   /** Creates new instance of pull consumer, using the passed configuration.
     *
     * @param pullConsumerConfig Configuration of the consumer.
     * @param monitor    Monitor for metrics.
     */
-  def newPullConsumer[A: DeliveryConverter](pullConsumerConfig: PullConsumerConfig, monitor: Monitor)(
-      implicit ec: ExecutionContext): Resource[F, RabbitMQPullConsumer[F, A]]
+  def newPullConsumer[A: DeliveryConverter](pullConsumerConfig: PullConsumerConfig,
+                                            monitor: Monitor): Resource[F, RabbitMQPullConsumer[F, A]]
 
   /**
     * Declares and additional exchange, using the TypeSafe configuration passed to the factory and config name.
