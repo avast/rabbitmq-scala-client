@@ -1,27 +1,25 @@
 package com.avast.clients.rabbitmq.extras
 
-import cats.instances.future._
 import com.avast.bytes.Bytes
 import com.avast.clients.rabbitmq.api.DeliveryResult.Republish
 import com.avast.clients.rabbitmq.api.{Delivery, DeliveryResult, MessageProperties}
 import com.avast.clients.rabbitmq.extras.PoisonedMessageHandler._
+import monix.eval.Task
 import monix.execution.Scheduler.Implicits.global
 import org.scalatest.concurrent.ScalaFutures
-
-import scala.concurrent.Future
 
 class DefaultPoisonedMessageHandlerTest extends TestBase with ScalaFutures {
 
   test("basic") {
 
-    def readAction(d: Delivery[Bytes]): Future[DeliveryResult] = {
-      Future.successful(Republish())
+    def readAction(d: Delivery[Bytes]): Task[DeliveryResult] = {
+      Task.now(Republish())
     }
 
-    val handler = PoisonedMessageHandler[Future, Bytes](5)(readAction)
+    val handler = PoisonedMessageHandler[Task, Bytes](5)(readAction)
 
     def run(properties: MessageProperties): DeliveryResult = {
-      handler(Delivery(Bytes.empty(), properties, "")).futureValue
+      handler(Delivery(Bytes.empty(), properties, "")).runSyncUnsafe()
     }
 
     val properties = (1 to 4).foldLeft(MessageProperties.empty) {
@@ -42,14 +40,14 @@ class DefaultPoisonedMessageHandlerTest extends TestBase with ScalaFutures {
 
   test("pretend lower no. of attempts") {
 
-    def readAction(d: Delivery[Bytes]): Future[DeliveryResult] = {
-      Future.successful(Republish())
+    def readAction(d: Delivery[Bytes]): Task[DeliveryResult] = {
+      Task.now(Republish())
     }
 
-    val handler = PoisonedMessageHandler[Future, Bytes](5)(readAction)
+    val handler = PoisonedMessageHandler[Task, Bytes](5)(readAction)
 
     def run(properties: MessageProperties): DeliveryResult = {
-      handler(Delivery(Bytes.empty(), properties, "")).futureValue
+      handler(Delivery(Bytes.empty(), properties, "")).runSyncUnsafe()
     }
 
     val properties = (1 to 4).foldLeft(MessageProperties.empty) {

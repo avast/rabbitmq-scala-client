@@ -6,7 +6,7 @@ import cats.effect._
 import cats.implicits._
 import com.avast.bytes.Bytes
 import com.avast.clients.rabbitmq.api._
-import com.avast.clients.rabbitmq.javaapi.JavaConverters._
+import JavaConverters._
 import com.avast.metrics.scalaapi.Monitor
 import com.rabbitmq.client.{AMQP, GetResponse}
 import com.typesafe.scalalogging.StrictLogging

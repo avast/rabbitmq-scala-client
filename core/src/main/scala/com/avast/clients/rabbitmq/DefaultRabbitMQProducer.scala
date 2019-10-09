@@ -5,7 +5,7 @@ import java.util.UUID
 import cats.effect.{Blocker, ContextShift, Effect, Sync}
 import com.avast.bytes.Bytes
 import com.avast.clients.rabbitmq.api.{ChannelNotRecoveredException, MessageProperties, RabbitMQProducer}
-import com.avast.clients.rabbitmq.javaapi.JavaConverters._
+import JavaConverters._
 import com.avast.metrics.scalaapi.Monitor
 import com.rabbitmq.client.AMQP.BasicProperties
 import com.rabbitmq.client.{AlreadyClosedException, ReturnListener}
