@@ -3,17 +3,16 @@ package com.avast.clients.rabbitmq
 import java.time.Duration
 import java.util.concurrent.{TimeUnit, TimeoutException}
 
-import cats.effect.{Effect, Sync}
+import cats.effect._
+import cats.syntax.all._
 import com.avast.bytes.Bytes
-import com.avast.clients.rabbitmq.api.DeliveryResult.{Ack, Reject, Republish, Retry}
+import com.avast.clients.rabbitmq.api.DeliveryResult._
 import com.avast.clients.rabbitmq.api._
 import com.avast.metrics.scalaapi.{Meter, Monitor}
 import com.rabbitmq.client.AMQP
 import com.rabbitmq.client.AMQP.Queue
-import com.typesafe.config.{Config, ConfigFactory, ConfigValueFactory}
+import com.typesafe.config._
 import com.typesafe.scalalogging.LazyLogging
-import monix.eval.Task
-import monix.execution.Scheduler
 import net.ceedubs.ficus.Ficus._
 import net.ceedubs.ficus.readers.ArbitraryTypeReader._
 import net.ceedubs.ficus.readers.ValueReader
@@ -118,38 +117,42 @@ private[rabbitmq] object DefaultRabbitMQClientFactory extends LazyLogging {
 
   object Producer {
 
-    def fromConfig[F[_]: Effect, A: ProductConverter](providedConfig: Config,
-                                                      configName: String,
-                                                      channel: ServerChannel,
-                                                      factoryInfo: RabbitMQConnectionInfo,
-                                                      blockingScheduler: Scheduler,
-                                                      monitor: Monitor)(implicit scheduler: Scheduler): DefaultRabbitMQProducer[F, A] = {
+    def fromConfig[F[_]: ConcurrentEffect, A: ProductConverter](
+        providedConfig: Config,
+        configName: String,
+        channel: ServerChannel,
+        factoryInfo: RabbitMQConnectionInfo,
+        blocker: Blocker,
+        monitor: Monitor)(implicit cs: ContextShift[F]): DefaultRabbitMQProducer[F, A] = {
       val producerConfig = providedConfig.wrapped(configName).as[ProducerConfig](configName)
-      create[F, A](producerConfig, configName, channel, factoryInfo, blockingScheduler, monitor)
+      create[F, A](producerConfig, configName, channel, factoryInfo, blocker, monitor)
     }
 
-    def create[F[_]: Effect, A: ProductConverter](producerConfig: ProducerConfig,
-                                                  configName: String,
-                                                  channel: ServerChannel,
-                                                  factoryInfo: RabbitMQConnectionInfo,
-                                                  blockingScheduler: Scheduler,
-                                                  monitor: Monitor)(implicit scheduler: Scheduler): DefaultRabbitMQProducer[F, A] = {
-      prepareProducer[F, A](producerConfig, configName, channel, factoryInfo, blockingScheduler, monitor)
+    def create[F[_]: ConcurrentEffect, A: ProductConverter](
+        producerConfig: ProducerConfig,
+        configName: String,
+        channel: ServerChannel,
+        factoryInfo: RabbitMQConnectionInfo,
+        blocker: Blocker,
+        monitor: Monitor)(implicit cs: ContextShift[F]): DefaultRabbitMQProducer[F, A] = {
+      prepareProducer[F, A](producerConfig, configName, channel, factoryInfo, blocker, monitor)
     }
 
   }
 
   object Consumer {
 
-    def fromConfig[F[_]: Effect, A: DeliveryConverter](
-        providedConfig: Config,
-        configName: String,
-        channel: ServerChannel,
-        channelFactoryInfo: RabbitMQConnectionInfo,
-        blockingScheduler: Scheduler,
-        monitor: Monitor,
-        consumerListener: ConsumerListener,
-        readAction: DeliveryReadAction[F, A])(implicit scheduler: Scheduler): DefaultRabbitMQConsumer[F] = {
+    def fromConfig[F[_]: ConcurrentEffect, A: DeliveryConverter](providedConfig: Config,
+                                                                 configName: String,
+                                                                 channel: ServerChannel,
+                                                                 channelFactoryInfo: RabbitMQConnectionInfo,
+                                                                 blocker: Blocker,
+                                                                 monitor: Monitor,
+                                                                 consumerListener: ConsumerListener,
+                                                                 readAction: DeliveryReadAction[F, A])(
+        implicit
+        timer: Timer[F],
+        cs: ContextShift[F]): DefaultRabbitMQConsumer[F] = {
 
       val mergedConfig = providedConfig.withFallback(ConsumerDefaultConfig)
 
@@ -167,32 +170,32 @@ private[rabbitmq] object DefaultRabbitMQClientFactory extends LazyLogging {
 
       val consumerConfig = updatedConfig.wrapped(configName).as[ConsumerConfig](configName)
 
-      create[F, A](consumerConfig, configName, channel, channelFactoryInfo, blockingScheduler, monitor, consumerListener, readAction)
+      create[F, A](consumerConfig, configName, channel, channelFactoryInfo, blocker, monitor, consumerListener, readAction)
     }
 
-    def create[F[_]: Effect, A: DeliveryConverter](
+    def create[F[_]: ConcurrentEffect, A: DeliveryConverter](
         consumerConfig: ConsumerConfig,
         configName: String,
         channel: ServerChannel,
         channelFactoryInfo: RabbitMQConnectionInfo,
-        blockingScheduler: Scheduler,
+        blocker: Blocker,
         monitor: Monitor,
         consumerListener: ConsumerListener,
-        readAction: DeliveryReadAction[F, A])(implicit scheduler: Scheduler): DefaultRabbitMQConsumer[F] = {
+        readAction: DeliveryReadAction[F, A])(implicit timer: Timer[F], cs: ContextShift[F]): DefaultRabbitMQConsumer[F] = {
 
-      prepareConsumer(consumerConfig, configName, readAction, channelFactoryInfo, channel, consumerListener, blockingScheduler, monitor)
+      prepareConsumer(consumerConfig, configName, readAction, channelFactoryInfo, channel, consumerListener, blocker, monitor)
     }
   }
 
   object PullConsumer {
 
-    def fromConfig[F[_]: Effect, A: DeliveryConverter](
+    def fromConfig[F[_]: ConcurrentEffect, A: DeliveryConverter](
         providedConfig: Config,
         configName: String,
         channel: ServerChannel,
         channelFactoryInfo: RabbitMQConnectionInfo,
-        blockingScheduler: Scheduler,
-        monitor: Monitor)(implicit scheduler: Scheduler): DefaultRabbitMQPullConsumer[F, A] = {
+        blocker: Blocker,
+        monitor: Monitor)(implicit cs: ContextShift[F]): DefaultRabbitMQPullConsumer[F, A] = {
 
       val mergedConfig = providedConfig.withFallback(PullConsumerDefaultConfig)
 
@@ -210,17 +213,18 @@ private[rabbitmq] object DefaultRabbitMQClientFactory extends LazyLogging {
 
       val consumerConfig = updatedConfig.wrapped(configName).as[PullConsumerConfig](configName)
 
-      create[F, A](consumerConfig, configName, channel, channelFactoryInfo, blockingScheduler, monitor)
+      create[F, A](consumerConfig, configName, channel, channelFactoryInfo, blocker, monitor)
     }
 
-    def create[F[_]: Effect, A: DeliveryConverter](consumerConfig: PullConsumerConfig,
-                                                   configName: String,
-                                                   channel: ServerChannel,
-                                                   channelFactoryInfo: RabbitMQConnectionInfo,
-                                                   blockingScheduler: Scheduler,
-                                                   monitor: Monitor)(implicit scheduler: Scheduler): DefaultRabbitMQPullConsumer[F, A] = {
+    def create[F[_]: ConcurrentEffect, A: DeliveryConverter](
+        consumerConfig: PullConsumerConfig,
+        configName: String,
+        channel: ServerChannel,
+        channelFactoryInfo: RabbitMQConnectionInfo,
+        blocker: Blocker,
+        monitor: Monitor)(implicit cs: ContextShift[F]): DefaultRabbitMQPullConsumer[F, A] = {
 
-      preparePullConsumer(consumerConfig, configName, channelFactoryInfo, channel, blockingScheduler, monitor)
+      preparePullConsumer(consumerConfig, configName, channelFactoryInfo, channel, blocker, monitor)
     }
   }
 
@@ -278,13 +282,13 @@ private[rabbitmq] object DefaultRabbitMQClientFactory extends LazyLogging {
     }
   }
 
-  private def prepareProducer[F[_]: Effect, A: ProductConverter](
+  private def prepareProducer[F[_]: ConcurrentEffect, A: ProductConverter](
       producerConfig: ProducerConfig,
       configName: String,
       channel: ServerChannel,
       channelFactoryInfo: RabbitMQConnectionInfo,
-      blockingScheduler: Scheduler,
-      monitor: Monitor)(implicit scheduler: Scheduler): DefaultRabbitMQProducer[F, A] = {
+      blocker: Blocker,
+      monitor: Monitor)(implicit cs: ContextShift[F]): DefaultRabbitMQProducer[F, A] = {
     import producerConfig._
 
     val defaultProperties = MessageProperties(
@@ -303,13 +307,7 @@ private[rabbitmq] object DefaultRabbitMQClientFactory extends LazyLogging {
 
       declareExchange(exchange, channelFactoryInfo, channel, d)
     }
-    new DefaultRabbitMQProducer[F, A](producerConfig.name,
-                                      exchange,
-                                      channel,
-                                      defaultProperties,
-                                      reportUnroutable,
-                                      blockingScheduler,
-                                      monitor)
+    new DefaultRabbitMQProducer[F, A](producerConfig.name, exchange, channel, defaultProperties, reportUnroutable, blocker, monitor)
   }
 
   private[rabbitmq] def declareExchange(name: String,
@@ -337,15 +335,15 @@ private[rabbitmq] object DefaultRabbitMQClientFactory extends LazyLogging {
     ()
   }
 
-  private def prepareConsumer[F[_]: Effect, A: DeliveryConverter](
+  private def prepareConsumer[F[_]: ConcurrentEffect, A: DeliveryConverter](
       consumerConfig: ConsumerConfig,
       configName: String,
       readAction: DeliveryReadAction[F, A],
       channelFactoryInfo: RabbitMQConnectionInfo,
       channel: ServerChannel,
       consumerListener: ConsumerListener,
-      blockingScheduler: Scheduler,
-      monitor: Monitor)(implicit scheduler: Scheduler): DefaultRabbitMQConsumer[F] = {
+      blocker: Blocker,
+      monitor: Monitor)(implicit timer: Timer[F], cs: ContextShift[F]): DefaultRabbitMQConsumer[F] = {
 
     // auto declare exchanges
     declareExchangesFromBindings(configName, channelFactoryInfo, channel, consumerConfig.bindings)
@@ -359,16 +357,16 @@ private[rabbitmq] object DefaultRabbitMQClientFactory extends LazyLogging {
     // auto bind
     bindQueues(channelFactoryInfo, channel, consumerConfig.queueName, consumerConfig.bindings)
 
-    prepareConsumer(consumerConfig, channelFactoryInfo, channel, readAction, consumerListener, blockingScheduler, monitor)
+    prepareConsumer(consumerConfig, channelFactoryInfo, channel, readAction, consumerListener, blocker, monitor)
   }
 
-  private def preparePullConsumer[F[_]: Effect, A: DeliveryConverter](
+  private def preparePullConsumer[F[_]: ConcurrentEffect, A: DeliveryConverter](
       consumerConfig: PullConsumerConfig,
       configName: String,
       connectionInfo: RabbitMQConnectionInfo,
       channel: ServerChannel,
-      blockingScheduler: Scheduler,
-      monitor: Monitor)(implicit scheduler: Scheduler): DefaultRabbitMQPullConsumer[F, A] = {
+      blocker: Blocker,
+      monitor: Monitor)(implicit cs: ContextShift[F]): DefaultRabbitMQPullConsumer[F, A] = {
 
     import consumerConfig._
 
@@ -381,7 +379,7 @@ private[rabbitmq] object DefaultRabbitMQClientFactory extends LazyLogging {
     // auto bind
     bindQueues(connectionInfo, channel, consumerConfig.queueName, consumerConfig.bindings)
 
-    new DefaultRabbitMQPullConsumer[F, A](name, channel, queueName, connectionInfo, failureAction, monitor, blockingScheduler)
+    new DefaultRabbitMQPullConsumer[F, A](name, channel, queueName, connectionInfo, failureAction, monitor, blocker)
   }
 
   private def declareQueue(queueName: String,
@@ -472,13 +470,14 @@ private[rabbitmq] object DefaultRabbitMQClientFactory extends LazyLogging {
     }
   }
 
-  private def prepareConsumer[F[_]: Effect, A: DeliveryConverter](consumerConfig: ConsumerConfig,
-                                                                  connectionInfo: RabbitMQConnectionInfo,
-                                                                  channel: ServerChannel,
-                                                                  userReadAction: DeliveryReadAction[F, A],
-                                                                  consumerListener: ConsumerListener,
-                                                                  blockingScheduler: Scheduler,
-                                                                  monitor: Monitor)(implicit sch: Scheduler): DefaultRabbitMQConsumer[F] = {
+  private def prepareConsumer[F[_]: ConcurrentEffect, A: DeliveryConverter](
+      consumerConfig: ConsumerConfig,
+      connectionInfo: RabbitMQConnectionInfo,
+      channel: ServerChannel,
+      userReadAction: DeliveryReadAction[F, A],
+      consumerListener: ConsumerListener,
+      blocker: Blocker,
+      monitor: Monitor)(implicit timer: Timer[F], cs: ContextShift[F]): DefaultRabbitMQConsumer[F] = {
     import consumerConfig._
 
     val readAction: DefaultDeliveryReadAction[F] = {
@@ -494,15 +493,15 @@ private[rabbitmq] object DefaultRabbitMQClientFactory extends LazyLogging {
           userReadAction(devA)
         } catch {
           case NonFatal(e) =>
-            Effect[F].raiseError(e)
+            ConcurrentEffect[F].raiseError(e)
         }
       }
 
-      wrapReadAction(consumerConfig, convAction, monitor, blockingScheduler)
+      wrapReadAction(consumerConfig, convAction, monitor, blocker)
     }
 
     val consumer = {
-      new DefaultRabbitMQConsumer(name, channel, queueName, connectionInfo, monitor, failureAction, consumerListener, blockingScheduler)(readAction)
+      new DefaultRabbitMQConsumer(name, channel, queueName, connectionInfo, monitor, failureAction, consumerListener, blocker)(readAction)
     }
 
     val finalConsumerTag = if (consumerTag == "Default") "" else consumerTag
@@ -513,10 +512,11 @@ private[rabbitmq] object DefaultRabbitMQClientFactory extends LazyLogging {
     consumer
   }
 
-  private def wrapReadAction[F[_]: Effect, A](consumerConfig: ConsumerConfig,
-                                              userReadAction: DefaultDeliveryReadAction[F],
-                                              consumerMonitor: Monitor,
-                                              blockingScheduler: Scheduler)(implicit sch: Scheduler): DefaultDeliveryReadAction[F] = {
+  private def wrapReadAction[F[_]: ConcurrentEffect, A](
+      consumerConfig: ConsumerConfig,
+      userReadAction: DefaultDeliveryReadAction[F],
+      consumerMonitor: Monitor,
+      blocker: Blocker)(implicit timer: Timer[F], cs: ContextShift[F]): DefaultDeliveryReadAction[F] = {
     import consumerConfig._
 
     val timeoutsMeter = consumerMonitor.meter("timeouts")
@@ -525,42 +525,37 @@ private[rabbitmq] object DefaultRabbitMQClientFactory extends LazyLogging {
     delivery: Delivery[Bytes] =>
       try {
         // we try to catch also long-lasting synchronous work on the thread
-        val action = Task { userReadAction(delivery) }
-          .executeOn(blockingScheduler)
-          .asyncBoundary
-          .map(Task.fromEffect[F, DeliveryResult])
-          .flatten
+        val action: F[DeliveryResult] = blocker.delay { userReadAction(delivery) }.flatten
 
-        val timedOutAction = if (processTimeout == Duration.ZERO) {
+        val timedOutAction: F[DeliveryResult] = if (processTimeout == Duration.ZERO) {
           action
         } else {
-          action
-            .timeout(ScalaDuration(processTimeout.toMillis, TimeUnit.MILLISECONDS))
-            .onErrorRecoverWith {
+
+          Concurrent
+            .timeout(action, ScalaDuration(processTimeout.toMillis, TimeUnit.MILLISECONDS))
+            .recoverWith {
               case e: TimeoutException => doTimeoutAction(consumerConfig, timeoutsMeter, e)
             }
         }
 
         timedOutAction
-          .onErrorRecoverWith {
+          .recoverWith {
             case NonFatal(e) =>
               fatalFailuresMeter.mark()
               logger.warn(s"[$name] Error while executing callback, applying DeliveryResult.${consumerConfig.failureAction}", e)
-              Task.now(consumerConfig.failureAction)
+              ConcurrentEffect[F].pure(consumerConfig.failureAction)
           }
-          .to[F]
-
       } catch {
         case NonFatal(e) =>
           fatalFailuresMeter.mark()
           logger.error(s"[$name] Error while executing callback, applying DeliveryResult.${consumerConfig.failureAction}", e)
-          Effect[F].pure(consumerConfig.failureAction)
+          ConcurrentEffect[F].pure(consumerConfig.failureAction)
       }
   }
 
-  private def doTimeoutAction[A, F[_]: Effect](consumerConfig: ConsumerConfig,
-                                               timeoutsMeter: Meter,
-                                               e: TimeoutException): Task[DeliveryResult] = Task {
+  private def doTimeoutAction[A, F[_]: ConcurrentEffect](consumerConfig: ConsumerConfig,
+                                                         timeoutsMeter: Meter,
+                                                         e: TimeoutException): F[DeliveryResult] = Sync[F].delay {
     import consumerConfig._
 
     timeoutsMeter.mark()

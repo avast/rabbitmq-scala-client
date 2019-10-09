@@ -1,13 +1,11 @@
 package com.avast.clients.rabbitmq
 
-import cats.effect.Effect
+import cats.effect.{Blocker, ContextShift, Effect, Sync}
 import com.avast.clients.rabbitmq.DefaultRabbitMQConsumer._
 import com.avast.clients.rabbitmq.api.DeliveryResult
 import com.avast.metrics.scalaapi.Monitor
 import com.rabbitmq.client.AMQP.BasicProperties
 import com.typesafe.scalalogging.StrictLogging
-import monix.eval.Task
-import monix.execution.Scheduler
 
 import scala.collection.JavaConverters._
 import scala.language.higherKinds
@@ -17,7 +15,9 @@ private[rabbitmq] trait ConsumerBase[F[_]] extends StrictLogging {
   protected def name: String
   protected def queueName: String
   protected def channel: ServerChannel
-  protected def blockingScheduler: Scheduler
+  protected def blocker: Blocker
+  protected implicit def F: Sync[F] // scalastyle:ignore
+  protected implicit def cs: ContextShift[F]
   protected def connectionInfo: RabbitMQConnectionInfo
   protected def monitor: Monitor
 
@@ -28,10 +28,10 @@ private[rabbitmq] trait ConsumerBase[F[_]] extends StrictLogging {
   private val resultRepublishMeter = resultsMonitor.meter("republish")
 
   protected def handleResult(messageId: String, deliveryTag: Long, properties: BasicProperties, routingKey: String, body: Array[Byte])(
-      res: DeliveryResult)(implicit F: Effect[F], sch: Scheduler): F[Unit] = {
+      res: DeliveryResult): F[Unit] = {
     import DeliveryResult._
 
-    val task = res match {
+    res match {
       case Ack => ack(messageId, deliveryTag)
       case Reject => reject(messageId, deliveryTag)
       case Retry => retry(messageId, deliveryTag)
@@ -39,11 +39,10 @@ private[rabbitmq] trait ConsumerBase[F[_]] extends StrictLogging {
         republish(messageId, deliveryTag, createPropertiesForRepublish(newHeaders, properties, routingKey), body)
     }
 
-    task.to[F]
   }
 
-  protected def ack(messageId: String, deliveryTag: Long): Task[Unit] =
-    Task {
+  protected def ack(messageId: String, deliveryTag: Long): F[Unit] =
+    blocker.delay {
       try {
         logger.debug(s"[$name] ACK delivery ID $messageId, deliveryTag $deliveryTag")
         channel.basicAck(deliveryTag, false)
@@ -51,10 +50,10 @@ private[rabbitmq] trait ConsumerBase[F[_]] extends StrictLogging {
       } catch {
         case NonFatal(e) => logger.warn(s"[$name] Error while confirming the delivery", e)
       }
-    }.executeOn(blockingScheduler).asyncBoundary
+    }
 
-  protected def reject(messageId: String, deliveryTag: Long): Task[Unit] =
-    Task {
+  protected def reject(messageId: String, deliveryTag: Long): F[Unit] =
+    blocker.delay {
       try {
         logger.debug(s"[$name] REJECT delivery ID $messageId, deliveryTag $deliveryTag")
         channel.basicReject(deliveryTag, false)
@@ -62,10 +61,10 @@ private[rabbitmq] trait ConsumerBase[F[_]] extends StrictLogging {
       } catch {
         case NonFatal(e) => logger.warn(s"[$name] Error while rejecting the delivery", e)
       }
-    }.executeOn(blockingScheduler).asyncBoundary
+    }
 
-  protected def retry(messageId: String, deliveryTag: Long): Task[Unit] =
-    Task {
+  protected def retry(messageId: String, deliveryTag: Long): F[Unit] =
+    blocker.delay {
       try {
         logger.debug(s"[$name] REJECT (with requeue) delivery ID $messageId, deliveryTag $deliveryTag")
         channel.basicReject(deliveryTag, true)
@@ -73,10 +72,10 @@ private[rabbitmq] trait ConsumerBase[F[_]] extends StrictLogging {
       } catch {
         case NonFatal(e) => logger.warn(s"[$name] Error while rejecting (with requeue) the delivery", e)
       }
-    }.executeOn(blockingScheduler).asyncBoundary
+    }
 
-  protected def republish(messageId: String, deliveryTag: Long, properties: BasicProperties, body: Array[Byte]): Task[Unit] =
-    Task {
+  protected def republish(messageId: String, deliveryTag: Long, properties: BasicProperties, body: Array[Byte]): F[Unit] =
+    blocker.delay {
       try {
         logger.debug(s"[$name] Republishing delivery (ID $messageId, deliveryTag $deliveryTag) to end of queue '$queueName'")
         channel.basicPublish("", queueName, properties, body)
@@ -85,7 +84,7 @@ private[rabbitmq] trait ConsumerBase[F[_]] extends StrictLogging {
       } catch {
         case NonFatal(e) => logger.warn(s"[$name] Error while republishing the delivery", e)
       }
-    }.executeOn(blockingScheduler).asyncBoundary
+    }
 
   protected def createPropertiesForRepublish(newHeaders: Map[String, AnyRef],
                                              properties: BasicProperties,

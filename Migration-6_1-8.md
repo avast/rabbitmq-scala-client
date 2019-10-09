@@ -18,4 +18,4 @@ Changes in Java API.:
 
 ---
 
-The client now uses circe 0.11, Monix 3.0 RC2, cats 1+ and cats-effect 1+.
+The client now uses circe 0.11, cats 2+ and cats-effect 2+ (doesn't use Monix anymore).

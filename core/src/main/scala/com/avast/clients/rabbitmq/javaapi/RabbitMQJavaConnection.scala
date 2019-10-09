@@ -4,14 +4,13 @@ import java.io.IOException
 import java.time.{Duration => JavaDuration}
 import java.util.concurrent.{CompletableFuture, ExecutorService}
 
+import cats.effect.{ContextShift, IO, Timer}
 import com.avast.clients.rabbitmq.RabbitMQConnection.DefaultListeners
 import com.avast.clients.rabbitmq.{ChannelListener, ConnectionListener, ConsumerListener, RabbitMQConnection => ScalaConnection}
 import com.avast.metrics.api.Monitor
 import com.typesafe.config.Config
-import monix.eval.Task
-import monix.execution.Scheduler
 
-import scala.concurrent.Await
+import scala.concurrent.{Await, ExecutionContext}
 import scala.concurrent.duration._
 
 trait RabbitMQJavaConnection extends AutoCloseable {
@@ -84,6 +83,11 @@ object RabbitMQJavaConnection {
     private var consumerListener: ConsumerListener = DefaultListeners.DefaultConsumerListener
     private var timeout: Duration = 10.seconds
 
+    private implicit val ec: ExecutionContext = ExecutionContext.fromExecutor(executorService)
+    private implicit val cs: ContextShift[IO] = IO.contextShift(ec)
+    private implicit val timer: Timer[IO] = IO.timer(ec)
+
+
     def withConnectionListener(connectionListener: ConnectionListener): Builder = {
       this.connectionListener = connectionListener
       this
@@ -106,11 +110,9 @@ object RabbitMQJavaConnection {
 
     def build(): RabbitMQJavaConnection = {
 
-      implicit val sch: Scheduler = Scheduler(executorService)
-
       val (conn, connClose) = Await.result(
         ScalaConnection
-          .fromConfig[Task](
+          .fromConfig[IO](
             config,
             executorService,
             Option(connectionListener).getOrElse(DefaultListeners.DefaultConnectionListener),
@@ -118,12 +120,12 @@ object RabbitMQJavaConnection {
             Option(consumerListener).getOrElse(DefaultListeners.DefaultConsumerListener)
           )
           .allocated
-          .runToFuture,
+          .unsafeToFuture(),
         timeout
       )
 
       new RabbitMQJavaConnectionImpl(conn, timeout) {
-        override def close(): Unit = connClose.runSyncUnsafe(timeout)
+        override def close(): Unit = connClose.unsafeRunTimed(timeout)
       }
     }
 

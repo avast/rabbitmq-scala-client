@@ -1,15 +1,13 @@
 package com.avast.clients.rabbitmq
 
-import cats.effect.{Effect, Resource}
+import cats.effect._
 import com.avast.clients.rabbitmq.DefaultRabbitMQClientFactory.FakeConfigRootName
-import com.avast.clients.rabbitmq.api.{RabbitMQConsumer, RabbitMQProducer, RabbitMQPullConsumer}
+import com.avast.clients.rabbitmq.api._
 import com.avast.metrics.scalaapi.Monitor
 import com.rabbitmq.client.ShutdownSignalException
 import com.typesafe.config.Config
 import com.typesafe.scalalogging.StrictLogging
-import monix.execution.Scheduler
 
-import scala.concurrent.ExecutionContext
 import scala.language.higherKinds
 import scala.util.control.NonFatal
 
@@ -19,7 +17,7 @@ class DefaultRabbitMQConnection[F[_]](connection: ServerConnection,
                                       override val connectionListener: ConnectionListener,
                                       override val channelListener: ChannelListener,
                                       override val consumerListener: ConsumerListener,
-                                      blockingScheduler: Scheduler)(implicit F: Effect[F])
+                                      blocker: Blocker)(implicit F: ConcurrentEffect[F], timer: Timer[F], cs: ContextShift[F])
     extends RabbitMQConnection[F]
     with StrictLogging {
 
@@ -51,70 +49,55 @@ class DefaultRabbitMQConnection[F[_]](connection: ServerConnection,
         channel.close()
     })
 
-  def newConsumer[A: DeliveryConverter](configName: String, monitor: Monitor)(readAction: DeliveryReadAction[F, A])(
-      implicit ec: ExecutionContext): Resource[F, RabbitMQConsumer[F]] = {
+  def newConsumer[A: DeliveryConverter](configName: String, monitor: Monitor)(
+      readAction: DeliveryReadAction[F, A]): Resource[F, RabbitMQConsumer[F]] = {
     createChannel().map { channel =>
-      implicit val scheduler = Scheduler(ses, ec)
-
       DefaultRabbitMQClientFactory.Consumer
         .fromConfig[F, A](config.getConfig(configName),
                           s"$FakeConfigRootName.$configName",
                           channel,
                           info,
-                          blockingScheduler,
+                          blocker,
                           monitor,
                           consumerListener,
                           readAction)
     }
   }
 
-  def newConsumer[A: DeliveryConverter](consumerConfig: ConsumerConfig, monitor: Monitor)(readAction: DeliveryReadAction[F, A])(
-      implicit ec: ExecutionContext): Resource[F, RabbitMQConsumer[F]] = {
+  def newConsumer[A: DeliveryConverter](consumerConfig: ConsumerConfig, monitor: Monitor)(
+      readAction: DeliveryReadAction[F, A]): Resource[F, RabbitMQConsumer[F]] = {
     createChannel().map { channel =>
-      implicit val scheduler = Scheduler(ses, ec)
-
       DefaultRabbitMQClientFactory.Consumer
-        .create[F, A](consumerConfig, "_manually_provided_", channel, info, blockingScheduler, monitor, consumerListener, readAction)
+        .create[F, A](consumerConfig, "_manually_provided_", channel, info, blocker, monitor, consumerListener, readAction)
     }
   }
 
-  def newPullConsumer[A: DeliveryConverter](configName: String, monitor: Monitor)(
-      implicit ec: ExecutionContext): Resource[F, RabbitMQPullConsumer[F, A]] = {
+  def newPullConsumer[A: DeliveryConverter](configName: String, monitor: Monitor): Resource[F, RabbitMQPullConsumer[F, A]] = {
     createChannel().map { channel =>
-      implicit val scheduler = Scheduler(ses, ec)
-
       DefaultRabbitMQClientFactory.PullConsumer
-        .fromConfig[F, A](config.getConfig(configName), s"$FakeConfigRootName.$configName", channel, info, blockingScheduler, monitor)
+        .fromConfig[F, A](config.getConfig(configName), s"$FakeConfigRootName.$configName", channel, info, blocker, monitor)
     }
   }
 
-  def newPullConsumer[A: DeliveryConverter](pullConsumerConfig: PullConsumerConfig, monitor: Monitor)(
-      implicit ec: ExecutionContext): Resource[F, RabbitMQPullConsumer[F, A]] = {
+  def newPullConsumer[A: DeliveryConverter](pullConsumerConfig: PullConsumerConfig,
+                                            monitor: Monitor): Resource[F, RabbitMQPullConsumer[F, A]] = {
     createChannel().map { channel =>
-      implicit val scheduler = Scheduler(ses, ec)
-
       DefaultRabbitMQClientFactory.PullConsumer
-        .create[F, A](pullConsumerConfig, "_manually_provided_", channel, info, blockingScheduler, monitor)
+        .create[F, A](pullConsumerConfig, "_manually_provided_", channel, info, blocker, monitor)
     }
   }
 
-  def newProducer[A: ProductConverter](configName: String, monitor: Monitor)(
-      implicit ec: ExecutionContext): Resource[F, RabbitMQProducer[F, A]] = {
+  def newProducer[A: ProductConverter](configName: String, monitor: Monitor): Resource[F, RabbitMQProducer[F, A]] = {
     createChannel().map { channel =>
-      implicit val scheduler = Scheduler(ses, ec)
-
       DefaultRabbitMQClientFactory.Producer
-        .fromConfig[F, A](config.getConfig(configName), s"$FakeConfigRootName.$configName", channel, info, blockingScheduler, monitor)
+        .fromConfig[F, A](config.getConfig(configName), s"$FakeConfigRootName.$configName", channel, info, blocker, monitor)
     }
   }
 
-  override def newProducer[A: ProductConverter](producerConfig: ProducerConfig, monitor: Monitor)(
-      implicit ec: ExecutionContext): Resource[F, RabbitMQProducer[F, A]] = {
+  override def newProducer[A: ProductConverter](producerConfig: ProducerConfig, monitor: Monitor): Resource[F, RabbitMQProducer[F, A]] = {
     createChannel().map { channel =>
-      implicit val scheduler = Scheduler(ses, ec)
-
       DefaultRabbitMQClientFactory.Producer
-        .create[F, A](producerConfig, "_manually_provided_", channel, info, blockingScheduler, monitor)
+        .create[F, A](producerConfig, "_manually_provided_", channel, info, blocker, monitor)
     }
   }
 

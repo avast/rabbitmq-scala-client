@@ -1,24 +1,22 @@
 package com.avast.clients.rabbitmq
 
+import java.time.{Duration, Instant}
 import java.util.concurrent.RejectedExecutionException
 import java.util.concurrent.atomic.AtomicInteger
 
-import cats.effect.{Effect, IO, Sync}
+import cats.effect._
 import cats.implicits._
 import com.avast.bytes.Bytes
 import com.avast.clients.rabbitmq.api._
 import com.avast.clients.rabbitmq.javaapi.JavaConverters._
 import com.avast.metrics.scalaapi.Monitor
 import com.rabbitmq.client.AMQP.BasicProperties
-import com.rabbitmq.client.{DefaultConsumer, Envelope, ShutdownSignalException}
+import com.rabbitmq.client.{Delivery => _, _}
 import com.typesafe.scalalogging.StrictLogging
-import monix.execution.Scheduler
 
 import scala.collection.JavaConverters._
-import scala.concurrent.Future
 import scala.language.higherKinds
 import scala.util.control.NonFatal
-import scala.util.{Failure, Success}
 
 class DefaultRabbitMQConsumer[F[_]: Effect](
     override val name: String,
@@ -28,13 +26,15 @@ class DefaultRabbitMQConsumer[F[_]: Effect](
     override protected val monitor: Monitor,
     failureAction: DeliveryResult,
     consumerListener: ConsumerListener,
-    override protected val blockingScheduler: Scheduler)(readAction: DeliveryReadAction[F, Bytes])(implicit scheduler: Scheduler)
+    override protected val blocker: Blocker)(readAction: DeliveryReadAction[F, Bytes])(implicit override protected val cs: ContextShift[F])
     extends DefaultConsumer(channel)
     with RabbitMQConsumer[F]
     with ConsumerBase[F]
     with StrictLogging {
 
   import DefaultRabbitMQConsumer._
+
+  override protected implicit val F: Sync[F] = Effect[F]
 
   private val readMeter = monitor.meter("read")
 
@@ -61,17 +61,23 @@ class DefaultRabbitMQConsumer[F[_]: Effect](
       case None => envelope.getRoutingKey
     }
 
-    handleDelivery(messageId, deliveryTag, properties, routingKey, body)
-      .andThen {
-        case Success(_) =>
+    val action = handleDelivery(messageId, deliveryTag, properties, routingKey, body)
+      .flatTap(_ =>
+        F.delay {
           processingCount.decrementAndGet()
           logger.debug(s"Delivery processed successfully (tag $deliveryTag)")
-
-        case Failure(NonFatal(e)) =>
-          processingCount.decrementAndGet()
-          processingFailedMeter.mark()
-          logger.debug("Could not process delivery", e)
+      })
+      .recoverWith {
+        case e =>
+          F.delay {
+            processingCount.decrementAndGet()
+            processingFailedMeter.mark()
+            logger.debug("Could not process delivery", e)
+          } >>
+            F.raiseError(e)
       }
+
+    toIO(action).unsafeToFuture() // actually start the processing
 
     ()
   }
@@ -80,47 +86,60 @@ class DefaultRabbitMQConsumer[F[_]: Effect](
                              deliveryTag: Long,
                              properties: BasicProperties,
                              routingKey: String,
-                             body: Array[Byte]): Future[Unit] = {
-    try {
-      readMeter.mark()
+                             body: Array[Byte]): F[Unit] =
+    F.delay {
+      try {
+        readMeter.mark()
 
-      logger.debug(s"[$name] Read delivery with ID $messageId, deliveryTag $deliveryTag")
+        logger.debug(s"[$name] Read delivery with ID $messageId, deliveryTag $deliveryTag")
 
-      val delivery = Delivery(Bytes.copyFrom(body), properties.asScala, Option(routingKey).getOrElse(""))
+        val delivery = Delivery(Bytes.copyFrom(body), properties.asScala, Option(routingKey).getOrElse(""))
 
-      logger.trace(s"[$name] Received delivery: $delivery")
+        logger.trace(s"[$name] Received delivery: $delivery")
 
-      processedTimer
-        .time {
-          toIO {
-            readAction(delivery)
-              .flatMap {
-                handleResult(messageId, deliveryTag, properties, routingKey, body)
-              }
-          }.unsafeToFuture()
-        }
-        .recoverWith {
-          case NonFatal(t) => handleCallbackFailure(messageId, deliveryTag, properties, routingKey, body)(t)
-        }
-    } catch {
-      // we catch this specific exception, handling of others is up to Lyra
-      case e: RejectedExecutionException =>
-        logger.debug(s"[$name] Executor was unable to plan the handling task", e)
-        handleFailure(messageId, deliveryTag, properties, routingKey, body, e)
+        val st = Instant.now()
 
-      case NonFatal(e) => handleCallbackFailure(messageId, deliveryTag, properties, routingKey, body)(e)
-    }
-  }
+        @inline
+        def taskDuration: Duration = Duration.between(st, Instant.now())
+
+        readAction(delivery)
+          .flatMap {
+            handleResult(messageId, deliveryTag, properties, routingKey, body)
+          }
+          .flatTap(_ =>
+            F.delay {
+              val duration = taskDuration
+              logger.debug(s"[$name] Delivery ID $messageId handling succeeded in $duration")
+              processedTimer.update(duration)
+          })
+          .recoverWith {
+            case NonFatal(t) =>
+              F.delay {
+                val duration = taskDuration
+                logger.debug(s"[$name] Delivery ID $messageId handling failed in $duration", t)
+                processedTimer.updateFailure(duration)
+              } >>
+                handleCallbackFailure(messageId, deliveryTag, properties, routingKey, body)(t)
+          }
+      } catch {
+        // we catch this specific exception, handling of others is up to Lyra
+        case e: RejectedExecutionException =>
+          logger.debug(s"[$name] Executor was unable to plan the handling task", e)
+          handleFailure(messageId, deliveryTag, properties, routingKey, body, e)
+
+        case NonFatal(e) => handleCallbackFailure(messageId, deliveryTag, properties, routingKey, body)(e)
+      }
+    }.flatten
 
   private def handleCallbackFailure(messageId: String,
                                     deliveryTag: Long,
                                     properties: BasicProperties,
                                     routingKey: String,
-                                    body: Array[Byte])(t: Throwable): Future[Unit] = {
-
-    logger.error(s"[$name] Error while executing callback, it's probably a BUG", t)
-
-    handleFailure(messageId, deliveryTag, properties, routingKey, body, t)
+                                    body: Array[Byte])(t: Throwable): F[Unit] = {
+    F.delay {
+      logger.error(s"[$name] Error while executing callback, it's probably a BUG", t)
+    } >>
+      handleFailure(messageId, deliveryTag, properties, routingKey, body, t)
   }
 
   private def handleFailure(messageId: String,
@@ -128,16 +147,14 @@ class DefaultRabbitMQConsumer[F[_]: Effect](
                             properties: BasicProperties,
                             routingKey: String,
                             body: Array[Byte],
-                            t: Throwable): Future[Unit] = {
-    processingCount.decrementAndGet()
-    processingFailedMeter.mark()
-    consumerListener.onError(this, name, channel, t)
-
-    toIO {
+                            t: Throwable): F[Unit] = {
+    F.delay {
+      processingCount.decrementAndGet()
+      processingFailedMeter.mark()
+      consumerListener.onError(this, name, channel, t)
+    } >>
       executeFailureAction(messageId, deliveryTag, properties, routingKey, body)
-    }.unsafeToFuture()
   }
-
   private def executeFailureAction(messageId: String,
                                    deliveryTag: Long,
                                    properties: BasicProperties,

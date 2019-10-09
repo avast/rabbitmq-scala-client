@@ -1,6 +1,7 @@
 package com.avast.clients.rabbitmq
 
 import cats.arrow.FunctionK
+import cats.effect.IO
 import cats.~>
 import com.avast.clients.rabbitmq.api.{
   Delivery => ScalaDelivery,
@@ -12,21 +13,19 @@ import com.avast.clients.rabbitmq.api.{
   RabbitMQPullConsumer => ScalaPullConsumer
 }
 import mainecoon.FunctorK
-import monix.eval.Task
-import monix.execution.Scheduler
 
 import scala.concurrent.{ExecutionContext, Future}
 import scala.language.{higherKinds, implicitConversions}
 
 package object javaapi {
-  type FromTask[A[_]] = FunctionK[Task, A]
+  type FromIO[A[_]] = IO ~> A
 
   // these two implicit vals below are here just because of usage in Java API (com.avast.clients.rabbitmq.javaapi.RabbitMQJavaConnection)
-  private[rabbitmq] implicit def fkToFuture(implicit ec: ExecutionContext): FromTask[Future] = new FunctionK[Task, Future] {
-    override def apply[A](fa: Task[A]): Future[A] = fa.runToFuture(Scheduler(ses, ec))
+  private[rabbitmq] implicit def fkToFuture(implicit ec: ExecutionContext): FromIO[Future] = new FunctionK[IO, Future] {
+    override def apply[A](fa: IO[A]): Future[A] = fa.unsafeToFuture()
   }
 
-  private[javaapi] implicit def producerFunctorK[A]: FunctorK[ScalaProducer[?[_], A]] = new FunctorK[ScalaProducer[?[_], A]] {
+  private[javaapi] implicit def producerFunctorK[A]: FunctorK[ScalaProducer[*[_], A]] = new FunctorK[ScalaProducer[*[_], A]] {
     override def mapK[F[_], G[_]](af: ScalaProducer[F, A])(fToG: ~>[F, G]): ScalaProducer[G, A] =
       (routingKey: String, body: A, properties: Option[ScalaProperties]) => {
         fToG {
@@ -35,8 +34,7 @@ package object javaapi {
       }
   }
 
-  private[javaapi] def pullConsumerToFuture[A: DeliveryConverter](cons: ScalaPullConsumer[Task, A])(
-      implicit sch: Scheduler): ScalaPullConsumer[Future, A] = { () =>
+  private[javaapi] def pullConsumerToFuture[A: DeliveryConverter](cons: ScalaPullConsumer[IO, A]): ScalaPullConsumer[Future, A] = { () =>
     cons
       .pull()
       .map {
@@ -44,10 +42,10 @@ package object javaapi {
           ScalaPullResult.Ok(new ScalaDeliveryWithHandle[Future, A] {
             override def delivery: ScalaDelivery[A] = deliveryWithHandle.delivery
 
-            override def handle(result: ScalaDeliveryResult): Future[Unit] = deliveryWithHandle.handle(result).runToFuture
+            override def handle(result: ScalaDeliveryResult): Future[Unit] = deliveryWithHandle.handle(result).unsafeToFuture()
           })
         case ScalaPullResult.EmptyQueue => ScalaPullResult.EmptyQueue
       }
-      .runToFuture
+      .unsafeToFuture()
   }
 }

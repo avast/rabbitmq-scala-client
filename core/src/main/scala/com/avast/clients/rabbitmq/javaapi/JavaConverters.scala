@@ -1,29 +1,18 @@
 package com.avast.clients.rabbitmq.javaapi
 
 import java.util.concurrent.{CompletableFuture, Executor}
-import java.util.{function, Date, Optional}
+import java.util.{Date, Optional, function}
 
+import cats.effect.{ContextShift, IO}
 import com.avast.bytes.Bytes
 import com.avast.clients.rabbitmq.DeliveryReadAction
-import com.avast.clients.rabbitmq.api.{
-  DeliveryMode,
-  Delivery => ScalaDelivery,
-  DeliveryResult => ScalaResult,
-  DeliveryWithHandle => ScalaDeliveryWithHandle,
-  MessageProperties => ScalaProperties
-}
-import com.avast.clients.rabbitmq.javaapi.{
-  Delivery => JavaDelivery,
-  DeliveryResult => JavaResult,
-  DeliveryWithHandle => JavaDeliveryWithHandle,
-  MessageProperties => JavaProperties
-}
+import com.avast.clients.rabbitmq.api.{DeliveryMode, Delivery => ScalaDelivery, DeliveryResult => ScalaResult, DeliveryWithHandle => ScalaDeliveryWithHandle, MessageProperties => ScalaProperties}
+import com.avast.clients.rabbitmq.javaapi.{Delivery => JavaDelivery, DeliveryResult => JavaResult, DeliveryWithHandle => JavaDeliveryWithHandle, MessageProperties => JavaProperties}
 import com.rabbitmq.client.AMQP
 import com.rabbitmq.client.AMQP.BasicProperties
-import monix.eval.Task
 
 import scala.collection.JavaConverters._
-import scala.concurrent.{ExecutionContext, Future, Promise}
+import scala.concurrent._
 import scala.util.{Failure, Success}
 
 private[rabbitmq] object JavaConverters {
@@ -195,8 +184,8 @@ private[rabbitmq] object JavaConverters {
   }
 
   implicit class JavaActionConversion(val readAction: function.Function[JavaDelivery, CompletableFuture[DeliveryResult]]) extends AnyVal {
-    def asScala(implicit ex: Executor, ec: ExecutionContext): DeliveryReadAction[Task, Bytes] =
-      d => Task.deferFuture(readAction(d.asJava).asScala).map(_.asScala)
+    def asScala(implicit ex: Executor, cs: ContextShift[IO]): DeliveryReadAction[IO, Bytes] =
+      d => IO.fromFuture(IO.delay(readAction(d.asJava).asScala)).map(_.asScala)
   }
 
   implicit class ScalaDeliveryWithHandleConversion(val deliveryWithHandle: ScalaDeliveryWithHandle[Future, Bytes]) extends AnyVal {

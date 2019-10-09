@@ -5,23 +5,20 @@ import java.util.UUID
 
 import com.avast.clients.rabbitmq.RabbitMQConnection.DefaultListeners
 import com.avast.clients.rabbitmq.api.DeliveryResult
-import com.avast.metrics.scalaapi.{Gauge, Monitor, TimerPair}
+import com.avast.metrics.scalaapi._
 import com.rabbitmq.client.AMQP.BasicProperties
 import com.rabbitmq.client.Envelope
 import com.rabbitmq.client.impl.recovery.AutorecoveringChannel
 import monix.eval.Task
-import monix.execution.Scheduler
 import monix.execution.Scheduler.Implicits.global
 import org.mockito.{ArgumentCaptor, Matchers}
 import org.mockito.Mockito._
 import org.scalatest.time.{Seconds, Span}
 
-import scala.collection.mutable
+import scala.collection.JavaConverters._
 import scala.collection.immutable
 import scala.concurrent.{ExecutionContext, Future}
-import scala.util.{Failure, Random, Success}
-
-import scala.collection.JavaConverters._
+import scala.util._
 
 class DefaultRabbitMQConsumerTest extends TestBase {
 
@@ -48,7 +45,7 @@ class DefaultRabbitMQConsumerTest extends TestBase {
       Monitor.noOp,
       DeliveryResult.Reject,
       DefaultListeners.DefaultConsumerListener,
-      Scheduler.global
+      TestBase.testBlocker
     )({ delivery =>
       assertResult(Some(messageId))(delivery.properties.messageId)
 
@@ -87,7 +84,7 @@ class DefaultRabbitMQConsumerTest extends TestBase {
       Monitor.noOp,
       DeliveryResult.Reject,
       DefaultListeners.DefaultConsumerListener,
-      Scheduler.global
+      TestBase.testBlocker
     )({ delivery =>
       assertResult(Some(messageId))(delivery.properties.messageId)
 
@@ -126,7 +123,7 @@ class DefaultRabbitMQConsumerTest extends TestBase {
       Monitor.noOp,
       DeliveryResult.Reject,
       DefaultListeners.DefaultConsumerListener,
-      Scheduler.global
+      TestBase.testBlocker
     )({ delivery =>
       assertResult(Some(messageId))(delivery.properties.messageId)
 
@@ -165,7 +162,7 @@ class DefaultRabbitMQConsumerTest extends TestBase {
       Monitor.noOp,
       DeliveryResult.Reject,
       DefaultListeners.DefaultConsumerListener,
-      Scheduler.global
+      TestBase.testBlocker
     )({ delivery =>
       assertResult(Some(messageId))(delivery.properties.messageId)
 
@@ -206,7 +203,7 @@ class DefaultRabbitMQConsumerTest extends TestBase {
       Monitor.noOp,
       DeliveryResult.Retry,
       DefaultListeners.DefaultConsumerListener,
-      Scheduler.global
+      TestBase.testBlocker
     )({ delivery =>
       assertResult(Some(messageId))(delivery.properties.messageId)
 
@@ -242,7 +239,7 @@ class DefaultRabbitMQConsumerTest extends TestBase {
       Monitor.noOp,
       DeliveryResult.Retry,
       DefaultListeners.DefaultConsumerListener,
-      Scheduler.global
+      TestBase.testBlocker
     )({ delivery =>
       assertResult(Some(messageId))(delivery.properties.messageId)
 
@@ -278,23 +275,16 @@ class DefaultRabbitMQConsumerTest extends TestBase {
     when(tasksMonitor.gauge(Matchers.anyString())(Matchers.any()))
       .thenReturn(Monitor.noOp().gauge("")(() => 0).asInstanceOf[Gauge[Nothing]])
 
-    var successLengths = mutable.Seq.empty[Long] // scalastyle:ignore
-    var failuresLengths = mutable.Seq.empty[Long] // scalastyle:ignore
+    var successLengths = Seq.newBuilder[Long] // scalastyle:ignore
+    var failuresLengths = Seq.newBuilder[Long] // scalastyle:ignore
 
     when(tasksMonitor.timerPair(Matchers.eq("processed"))).thenReturn(new TimerPair {
-      override def start(): TimeContext = ???
-      override def update(duration: Duration): Unit = ???
+      override def update(duration: Duration): Unit = successLengths += duration.toMillis
+      override def updateFailure(duration: Duration): Unit = failuresLengths += duration.toMillis
 
-      override def updateFailure(duration: Duration): Unit = ???
-      override def time[A](block: => A): A = ???
-      override def time[A](future: => Future[A])(implicit ec: ExecutionContext): Future[A] = {
-        val start = System.currentTimeMillis()
-
-        future.andThen {
-          case Success(_) => successLengths = successLengths :+ System.currentTimeMillis() - start
-          case Failure(_) => failuresLengths = failuresLengths :+ System.currentTimeMillis() - start
-        }
-      }
+      override def start(): TimeContext = fail("Should have not be called")
+      override def time[A](block: => A): A = fail("Should have not be called")
+      override def time[A](future: => Future[A])(implicit ec: ExecutionContext): Future[A] = fail("Should have not be called")
     })
 
     {
@@ -306,7 +296,7 @@ class DefaultRabbitMQConsumerTest extends TestBase {
         monitor,
         DeliveryResult.Retry,
         DefaultListeners.DefaultConsumerListener,
-        Scheduler.global
+        TestBase.testBlocker
       )({ delivery =>
         assertResult(Some(messageId))(delivery.properties.messageId)
         Task.now(DeliveryResult.Ack) // immediate
@@ -316,14 +306,14 @@ class DefaultRabbitMQConsumerTest extends TestBase {
 
       eventually(timeout(Span(3, Seconds)), interval(Span(0.1, Seconds))) {
         assertResult(Seq.empty)(failuresLengths)
-        val Seq(taskLength) = successLengths
+        val Seq(taskLength) = successLengths.result()
 
         assert(taskLength < 200)
       }
     }
 
-    successLengths = mutable.Seq.empty
-    failuresLengths = mutable.Seq.empty
+    successLengths = Seq.newBuilder
+    failuresLengths = Seq.newBuilder
 
     {
       val consumer = new DefaultRabbitMQConsumer[Task](
@@ -334,7 +324,7 @@ class DefaultRabbitMQConsumerTest extends TestBase {
         monitor,
         DeliveryResult.Retry,
         DefaultListeners.DefaultConsumerListener,
-        Scheduler.global
+        TestBase.testBlocker
       )({ delivery =>
         assertResult(Some(messageId))(delivery.properties.messageId)
         import scala.concurrent.duration._
@@ -345,7 +335,7 @@ class DefaultRabbitMQConsumerTest extends TestBase {
 
       eventually(timeout(Span(3, Seconds)), interval(Span(0.1, Seconds))) {
         assertResult(Seq.empty)(failuresLengths)
-        val Seq(taskLength) = successLengths
+        val Seq(taskLength) = successLengths.result()
 
         assert(taskLength > 2000)
       }
@@ -373,23 +363,16 @@ class DefaultRabbitMQConsumerTest extends TestBase {
     when(tasksMonitor.gauge(Matchers.anyString())(Matchers.any()))
       .thenReturn(Monitor.noOp().gauge("")(() => 0).asInstanceOf[Gauge[Nothing]])
 
-    var successLengths = mutable.Seq.empty[Long] // scalastyle:ignore
-    var failuresLengths = mutable.Seq.empty[Long] // scalastyle:ignore
+    var successLengths = Seq.newBuilder[Long] // scalastyle:ignore
+    var failuresLengths = Seq.newBuilder[Long] // scalastyle:ignore
 
     when(tasksMonitor.timerPair(Matchers.eq("processed"))).thenReturn(new TimerPair {
-      override def start(): TimeContext = ???
-      override def update(duration: Duration): Unit = ???
+      override def update(duration: Duration): Unit = successLengths += duration.toMillis
+      override def updateFailure(duration: Duration): Unit = failuresLengths += duration.toMillis
 
-      override def updateFailure(duration: Duration): Unit = ???
-      override def time[A](block: => A): A = ???
-      override def time[A](future: => Future[A])(implicit ec: ExecutionContext): Future[A] = {
-        val start = System.currentTimeMillis()
-
-        future.andThen {
-          case Success(_) => successLengths = successLengths :+ System.currentTimeMillis() - start
-          case Failure(_) => failuresLengths = failuresLengths :+ System.currentTimeMillis() - start
-        }
-      }
+      override def start(): TimeContext = fail("Should have not be called")
+      override def time[A](block: => A): A = fail("Should have not be called")
+      override def time[A](future: => Future[A])(implicit ec: ExecutionContext): Future[A] = fail("Should have not be called")
     })
 
     {
@@ -401,7 +384,7 @@ class DefaultRabbitMQConsumerTest extends TestBase {
         monitor,
         DeliveryResult.Retry,
         DefaultListeners.DefaultConsumerListener,
-        Scheduler.global
+        TestBase.testBlocker
       )({ delivery =>
         assertResult(Some(messageId))(delivery.properties.messageId)
         Task.raiseError(new RuntimeException) // immediate
@@ -411,14 +394,14 @@ class DefaultRabbitMQConsumerTest extends TestBase {
 
       eventually(timeout(Span(3, Seconds)), interval(Span(0.1, Seconds))) {
         assertResult(Seq.empty)(successLengths)
-        val Seq(taskLength) = failuresLengths
+        val Seq(taskLength) = failuresLengths.result()
 
         assert(taskLength < 200)
       }
     }
 
-    successLengths = mutable.Seq.empty
-    failuresLengths = mutable.Seq.empty
+    successLengths = Seq.newBuilder
+    failuresLengths = Seq.newBuilder
 
     {
       val consumer = new DefaultRabbitMQConsumer[Task](
@@ -429,7 +412,7 @@ class DefaultRabbitMQConsumerTest extends TestBase {
         monitor,
         DeliveryResult.Retry,
         DefaultListeners.DefaultConsumerListener,
-        Scheduler.global
+        TestBase.testBlocker
       )({ delivery =>
         assertResult(Some(messageId))(delivery.properties.messageId)
         import scala.concurrent.duration._
@@ -440,7 +423,7 @@ class DefaultRabbitMQConsumerTest extends TestBase {
 
       eventually(timeout(Span(3, Seconds)), interval(Span(0.1, Seconds))) {
         assertResult(Seq.empty)(successLengths)
-        val Seq(taskLength) = failuresLengths
+        val Seq(taskLength) = failuresLengths.result()
 
         assert(taskLength > 2000)
       }

@@ -1,19 +1,18 @@
 package com.avast.clients.rabbitmq.extras
 
-import java.util.concurrent.{CompletableFuture, ExecutorService}
+import java.util.concurrent._
 import java.util.function.{Function => JavaFunction}
 
 import cats.MonadError
+import cats.effect.{ContextShift, IO, Timer}
 import cats.implicits._
 import com.avast.bytes.Bytes
 import com.avast.clients.rabbitmq.api.DeliveryResult.{Reject, Republish}
 import com.avast.clients.rabbitmq.api.{Delivery, DeliveryResult}
 import com.avast.clients.rabbitmq.extras.PoisonedMessageHandler._
+import com.avast.clients.rabbitmq.javaapi
 import com.avast.clients.rabbitmq.javaapi.JavaConverters._
-import com.avast.clients.rabbitmq.{javaapi, _}
 import com.typesafe.scalalogging.StrictLogging
-import monix.eval.Task
-import monix.execution.Scheduler
 
 import scala.concurrent.ExecutionContext
 import scala.language.higherKinds
@@ -86,37 +85,46 @@ object PoisonedMessageHandler {
   def withCustomPoisonedAction[F[_]: FailableMonad, A](maxAttempts: Int)(wrappedAction: Delivery[A] => F[DeliveryResult])(
       customPoisonedAction: Delivery[A] => F[Unit]): PoisonedMessageHandler[F, A] = {
     new DefaultPoisonedMessageHandler[F, A](maxAttempts)(wrappedAction) {
-      override protected def handlePoisonedMessage(delivery: Delivery[A]) = customPoisonedAction(delivery)
+      override protected def handlePoisonedMessage(delivery: Delivery[A]): F[Unit] = customPoisonedAction(delivery)
     }
   }
 
-  def forJava(maxAttempts: Int, wrapped: JavaAction, ex: ExecutorService): JavaAction = new JavaAction {
-    private implicit val sch: Scheduler = Scheduler(ses, ExecutionContext.fromExecutor(ex))
+  def forJava(maxAttempts: Int, wrapped: JavaAction, executor: ExecutorService): JavaAction = new JavaAction {
+    private implicit val ex: Executor = executor
+    private implicit val ec: ExecutionContext = ExecutionContext.fromExecutor(ex)
+    private implicit val cs: ContextShift[IO] = IO.contextShift(ec)
+    private implicit val timer: Timer[IO] = IO.timer(ec)
 
-    private val handler = new DefaultPoisonedMessageHandler[Task, Bytes](maxAttempts)(d => wrapped.asScala.apply(d))
+    private val handler = new DefaultPoisonedMessageHandler[IO, Bytes](maxAttempts)(d => wrapped.asScala.apply(d))
 
     override def apply(t: javaapi.Delivery): CompletableFuture[javaapi.DeliveryResult] = {
-      handler(t.asScala).map(_.asJava).runToFuture.asJava
+      handler(t.asScala).map(_.asJava).unsafeToFuture().asJava
     }
   }
 
   /**
     * @param customPoisonedAction The delivery is always REJECTed after this method execution.
     */
-  def forJava(maxAttempts: Int, wrapped: JavaAction, customPoisonedAction: CustomJavaPoisonedAction, ex: ExecutorService): JavaAction =
+  def forJava(maxAttempts: Int,
+              wrapped: JavaAction,
+              customPoisonedAction: CustomJavaPoisonedAction,
+              executor: ExecutorService): JavaAction =
     new JavaAction {
-      private implicit val sch: Scheduler = Scheduler(ses, ExecutionContext.fromExecutor(ex))
+      private implicit val ex: Executor = executor
+      private implicit val ec: ExecutionContext = ExecutionContext.fromExecutor(ex)
+      private implicit val cs: ContextShift[IO] = IO.contextShift(ec)
+      private implicit val timer: Timer[IO] = IO.timer(ec)
 
-      private val handler = new DefaultPoisonedMessageHandler[Task, Bytes](maxAttempts)(d => wrapped.asScala.apply(d)) {
-        override protected def handlePoisonedMessage(delivery: Delivery[Bytes]): Task[Unit] = {
-          Task.deferFuture {
+      private val handler = new DefaultPoisonedMessageHandler[IO, Bytes](maxAttempts)(d => wrapped.asScala.apply(d)) {
+        override protected def handlePoisonedMessage(delivery: Delivery[Bytes]): IO[Unit] = {
+          IO.fromFuture(IO.delay {
             customPoisonedAction(delivery.asJava).asScala.map(_ => ())
-          }
+          })
         }
       }
 
       override def apply(t: javaapi.Delivery): CompletableFuture[javaapi.DeliveryResult] = {
-        handler(t.asScala).map(_.asJava).runToFuture.asJava
+        handler(t.asScala).map(_.asJava).unsafeToFuture().asJava
       }
     }
 
