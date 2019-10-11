@@ -117,7 +117,7 @@ object RabbitMQConnection extends StrictLogging {
         logger.info(s"Connecting to ${hosts.mkString("[", ", ", "]")}, virtual host '$virtualHost'")
 
         try {
-          factory.newConnection(addresses, name) match {
+          factory.newConnection(addresses.toArray, name) match {
             case conn: ServerConnection =>
               conn.addRecoveryListener(exceptionHandler)
               conn.addShutdownListener((cause: ShutdownSignalException) => connectionListener.onShutdown(conn, cause))
