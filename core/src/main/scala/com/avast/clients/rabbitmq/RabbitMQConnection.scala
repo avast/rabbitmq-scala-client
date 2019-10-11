@@ -11,6 +11,7 @@ import com.rabbitmq.client._
 import com.typesafe.scalalogging.StrictLogging
 import javax.net.ssl.SSLContext
 
+import scala.collection.immutable
 import scala.language.higherKinds
 import scala.util.control.NonFatal
 
@@ -144,7 +145,7 @@ object RabbitMQConnection extends StrictLogging {
     factory.setTopologyRecoveryEnabled(topologyRecovery)
     factory.setAutomaticRecoveryEnabled(networkRecovery.enabled)
     factory.setExceptionHandler(exceptionHandler)
-    factory.setRequestedHeartbeat(heartBeatInterval.getSeconds.toInt)
+    factory.setRequestedHeartbeat(heartBeatInterval.toSeconds.toInt)
 
     if (networkRecovery.enabled) factory.setRecoveryDelayHandler(networkRecovery.handler)
 
@@ -158,17 +159,18 @@ object RabbitMQConnection extends StrictLogging {
     }
 
     if (connectionConfig.ssl.enabled) {
-      import connectionConfig.ssl.trustStore._
+      connectionConfig.ssl.trustStore match {
+        case Some(truststore) =>
+          import truststore._
 
-      if (connectionConfig.ssl.trustStore.path.toString.trim.nonEmpty) {
-        val sslContext = SSLBuilder
-          .empty()
-          .loadAllFromBundle(path, KeyStoreTypes.JKSTrustStore, password)
-          .build
+          val sslContext = SSLBuilder
+            .empty()
+            .loadAllFromBundle(path, KeyStoreTypes.JKSTrustStore, password)
+            .build
 
-        factory.useSslProtocol(sslContext)
-      } else {
-        factory.useSslProtocol(SSLContext.getDefault)
+          factory.useSslProtocol(sslContext)
+
+        case None => factory.useSslProtocol(SSLContext.getDefault)
       }
     }
 
@@ -252,5 +254,6 @@ object RabbitMQConnection extends StrictLogging {
         }
       }
     }
-
 }
+
+private[rabbitmq] case class RabbitMQConnectionInfo(hosts: immutable.Seq[String], virtualHost: String, username: Option[String])

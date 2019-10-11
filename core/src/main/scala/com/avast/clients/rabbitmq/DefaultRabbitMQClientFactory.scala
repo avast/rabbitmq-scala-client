@@ -1,7 +1,6 @@
 package com.avast.clients.rabbitmq
 
-import java.time.Duration
-import java.util.concurrent.{TimeUnit, TimeoutException}
+import java.util.concurrent.TimeoutException
 
 import cats.effect._
 import cats.syntax.all._
@@ -43,13 +42,13 @@ private[rabbitmq] object DefaultRabbitMQClientFactory extends LazyLogging {
     def create[F[_]: ConcurrentEffect, A: DeliveryConverter](
         consumerConfig: ConsumerConfig,
         channel: ServerChannel,
-        channelFactoryInfo: RabbitMQConnectionInfo,
+        connectionInfo: RabbitMQConnectionInfo,
         blocker: Blocker,
         monitor: Monitor,
         consumerListener: ConsumerListener,
         readAction: DeliveryReadAction[F, A])(implicit timer: Timer[F], cs: ContextShift[F]): DefaultRabbitMQConsumer[F] = {
 
-      prepareConsumer(consumerConfig, readAction, channelFactoryInfo, channel, consumerListener, blocker, monitor)
+      prepareConsumer(consumerConfig, readAction, connectionInfo, channel, consumerListener, blocker, monitor)
     }
   }
 
@@ -58,23 +57,23 @@ private[rabbitmq] object DefaultRabbitMQClientFactory extends LazyLogging {
     def create[F[_]: ConcurrentEffect, A: DeliveryConverter](
         consumerConfig: PullConsumerConfig,
         channel: ServerChannel,
-        channelFactoryInfo: RabbitMQConnectionInfo,
+        connectionInfo: RabbitMQConnectionInfo,
         blocker: Blocker,
         monitor: Monitor)(implicit cs: ContextShift[F]): DefaultRabbitMQPullConsumer[F, A] = {
 
-      preparePullConsumer(consumerConfig, channelFactoryInfo, channel, blocker, monitor)
+      preparePullConsumer(consumerConfig, connectionInfo, channel, blocker, monitor)
     }
   }
 
   object Declarations {
-    def declareExchange[F[_]: Sync](config: DeclareExchange, channel: ServerChannel, channelFactoryInfo: RabbitMQConnectionInfo): F[Unit] =
+    def declareExchange[F[_]: Sync](config: DeclareExchange, channel: ServerChannel, connectionInfo: RabbitMQConnectionInfo): F[Unit] =
       Sync[F].delay {
         import config._
 
-        DefaultRabbitMQClientFactory.this.declareExchange(name, `type`, durable, autoDelete, arguments, channel, channelFactoryInfo)
+        DefaultRabbitMQClientFactory.this.declareExchange(name, `type`, durable, autoDelete, arguments, channel, connectionInfo)
       }
 
-    def declareQueue[F[_]: Sync](config: DeclareQueue, channel: ServerChannel, channelFactoryInfo: RabbitMQConnectionInfo): F[Unit] =
+    def declareQueue[F[_]: Sync](config: DeclareQueue, channel: ServerChannel, connectionInfo: RabbitMQConnectionInfo): F[Unit] =
       Sync[F].delay {
         import config._
 
@@ -82,20 +81,20 @@ private[rabbitmq] object DefaultRabbitMQClientFactory extends LazyLogging {
         ()
       }
 
-    def bindQueue[F[_]: Sync](config: BindQueue, channel: ServerChannel, channelFactoryInfo: RabbitMQConnectionInfo): F[Unit] =
+    def bindQueue[F[_]: Sync](config: BindQueue, channel: ServerChannel, connectionInfo: RabbitMQConnectionInfo): F[Unit] =
       Sync[F].delay {
         import config._
 
-        bindQueues(channel, queueName, exchangeName, routingKeys, arguments, channelFactoryInfo)
+        bindQueues(channel, queueName, exchangeName, routingKeys, arguments, connectionInfo)
       }
 
-    def bindExchange[F[_]: Sync](config: BindExchange, channel: ServerChannel, channelFactoryInfo: RabbitMQConnectionInfo): F[Unit] =
+    def bindExchange[F[_]: Sync](config: BindExchange, channel: ServerChannel, connectionInfo: RabbitMQConnectionInfo): F[Unit] =
       Sync[F].delay {
         import config._
 
         routingKeys.foreach {
           DefaultRabbitMQClientFactory.this
-            .bindExchange(channelFactoryInfo)(channel, sourceExchangeName, destExchangeName, arguments.value)
+            .bindExchange(connectionInfo)(channel, sourceExchangeName, destExchangeName, arguments.value)
         }
       }
   }
@@ -103,7 +102,7 @@ private[rabbitmq] object DefaultRabbitMQClientFactory extends LazyLogging {
   private def prepareProducer[F[_]: ConcurrentEffect, A: ProductConverter](
       producerConfig: ProducerConfig,
       channel: ServerChannel,
-      channelFactoryInfo: RabbitMQConnectionInfo,
+      connectionInfo: RabbitMQConnectionInfo,
       blocker: Blocker,
       monitor: Monitor)(implicit cs: ContextShift[F]): DefaultRabbitMQProducer[F, A] = {
     import producerConfig._
@@ -115,16 +114,11 @@ private[rabbitmq] object DefaultRabbitMQClientFactory extends LazyLogging {
       priority = producerConfig.properties.priority.map(Integer.valueOf)
     )
 
-    // auto declare of exchange
-    // parse it only if it's needed
-    // "Lazy" parsing, because exchange type is not part of reference.conf and we don't want to make it fail on missing type when enabled=false
-    if (declare.getBoolean("enabled")) {
-      ??? // TODO
-//      val path = s"$configName.declare"
-//      val d = declare.wrapped(path).as[AutoDeclareExchange](path)
-//
-//      declareExchange(exchange, channelFactoryInfo, channel, d)
+    // auto declare exchange; if configured
+    declare.foreach {
+      declareExchange(name, connectionInfo, channel, _)
     }
+
     new DefaultRabbitMQProducer[F, A](producerConfig.name, exchange, channel, defaultProperties, reportUnroutable, blocker, monitor)
   }
 
@@ -141,7 +135,7 @@ private[rabbitmq] object DefaultRabbitMQClientFactory extends LazyLogging {
   }
 
   private def declareExchange(name: String,
-                              `type`: String,
+                              `type`: ExchangeType,
                               durable: Boolean,
                               autoDelete: Boolean,
                               arguments: DeclareArguments,
@@ -149,32 +143,34 @@ private[rabbitmq] object DefaultRabbitMQClientFactory extends LazyLogging {
                               connectionInfo: RabbitMQConnectionInfo): Unit = {
     logger.info(s"Declaring exchange '$name' of type ${`type`} in virtual host '${connectionInfo.virtualHost}'")
     val javaArguments = argsAsJava(arguments.value)
-    channel.exchangeDeclare(name, `type`, durable, autoDelete, javaArguments)
+    channel.exchangeDeclare(name, `type`.value, durable, autoDelete, javaArguments)
     ()
   }
 
   private def prepareConsumer[F[_]: ConcurrentEffect, A: DeliveryConverter](
       consumerConfig: ConsumerConfig,
       readAction: DeliveryReadAction[F, A],
-      channelFactoryInfo: RabbitMQConnectionInfo,
+      connectionInfo: RabbitMQConnectionInfo,
       channel: ServerChannel,
       consumerListener: ConsumerListener,
       blocker: Blocker,
       monitor: Monitor)(implicit timer: Timer[F], cs: ContextShift[F]): DefaultRabbitMQConsumer[F] = {
 
     // auto declare exchanges
-    declareExchangesFromBindings(channelFactoryInfo, channel, consumerConfig.bindings)
+    declareExchangesFromBindings(connectionInfo, channel, consumerConfig.bindings)
 
-    // auto declare queue
-    declareQueue(consumerConfig.queueName, channelFactoryInfo, channel, consumerConfig.declare)
+    // auto declare queue; if configured
+    consumerConfig.declare.foreach {
+      declareQueue(consumerConfig.queueName, connectionInfo, channel, _)
+    }
 
     // set prefetch size (per consumer)
     channel.basicQos(consumerConfig.prefetchCount)
 
     // auto bind
-    bindQueues(channelFactoryInfo, channel, consumerConfig.queueName, consumerConfig.bindings)
+    bindQueues(connectionInfo, channel, consumerConfig.queueName, consumerConfig.bindings)
 
-    prepareConsumer(consumerConfig, channelFactoryInfo, channel, readAction, consumerListener, blocker, monitor)
+    prepareConsumer(consumerConfig, connectionInfo, channel, readAction, consumerListener, blocker, monitor)
   }
 
   private def preparePullConsumer[F[_]: ConcurrentEffect, A: DeliveryConverter](
@@ -189,8 +185,10 @@ private[rabbitmq] object DefaultRabbitMQClientFactory extends LazyLogging {
     // auto declare exchanges
     declareExchangesFromBindings(connectionInfo, channel, consumerConfig.bindings)
 
-    // auto declare queue
-    declareQueue(queueName, connectionInfo, channel, declare)
+    // auto declare queue; if configured
+    declare.foreach {
+      declareQueue(consumerConfig.queueName, connectionInfo, channel, _)
+    }
 
     // auto bind
     bindQueues(connectionInfo, channel, consumerConfig.queueName, consumerConfig.bindings)
@@ -256,13 +254,13 @@ private[rabbitmq] object DefaultRabbitMQClientFactory extends LazyLogging {
     channel.queueBind(queueName, exchangeName, routingKey, arguments)
   }
 
-  private[rabbitmq] def bindExchange(channelFactoryInfo: RabbitMQConnectionInfo)(
+  private[rabbitmq] def bindExchange(connectionInfo: RabbitMQConnectionInfo)(
       channel: ServerChannel,
       sourceExchangeName: String,
       destExchangeName: String,
       arguments: ArgumentsMap)(routingKey: String): AMQP.Exchange.BindOk = {
     logger.info(
-      s"Binding exchange $sourceExchangeName($routingKey) -> exchange '$destExchangeName' in virtual host '${channelFactoryInfo.virtualHost}'"
+      s"Binding exchange $sourceExchangeName($routingKey) -> exchange '$destExchangeName' in virtual host '${connectionInfo.virtualHost}'"
     )
 
     channel.exchangeBind(destExchangeName, sourceExchangeName, routingKey, arguments)
@@ -271,19 +269,13 @@ private[rabbitmq] object DefaultRabbitMQClientFactory extends LazyLogging {
   private def declareExchangesFromBindings(connectionInfo: RabbitMQConnectionInfo,
                                            channel: ServerChannel,
                                            bindings: Seq[AutoBindQueue]): Unit = {
-    bindings.zipWithIndex.foreach {
-      case (bind, i) =>
-        import bind.exchange._
+    bindings.foreach { bind =>
+      import bind.exchange._
 
-        // parse it only if it's needed
-        if (declare.getBoolean("enabled")) {
-//          val path = s"$configName.bindings.$i.exchange.declare"
-//          val d = declare.wrapped(path).as[AutoDeclareExchange](path)
-//
-//          declareExchange(name, connectionInfo, channel, d)
-
-          ??? // TODO
-        }
+      // auto declare exchange; if configured
+      declare.foreach {
+        declareExchange(name, connectionInfo, channel, _)
+      }
     }
   }
 
@@ -344,12 +336,11 @@ private[rabbitmq] object DefaultRabbitMQClientFactory extends LazyLogging {
         // we try to catch also long-lasting synchronous work on the thread
         val action: F[DeliveryResult] = blocker.delay { userReadAction(delivery) }.flatten
 
-        val timedOutAction: F[DeliveryResult] = if (processTimeout == Duration.ZERO) {
+        val timedOutAction: F[DeliveryResult] = if () {
           action
         } else {
-
           Concurrent
-            .timeout(action, ScalaDuration(processTimeout.toMillis, TimeUnit.MILLISECONDS))
+            .timeout(action, processTimeout)
             .recoverWith {
               case e: TimeoutException => doTimeoutAction(consumerConfig, timeoutsMeter, e)
             }
