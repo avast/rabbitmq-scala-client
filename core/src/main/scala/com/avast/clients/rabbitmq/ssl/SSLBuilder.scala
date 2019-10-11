@@ -3,10 +3,8 @@ package com.avast.clients.rabbitmq.ssl
 import java.io.InputStream
 import java.nio.file.{Files, Path}
 
-import com.typesafe.config.{Config, ConfigFactory}
-import javax.net.ssl.{SSLContext, X509KeyManager, X509TrustManager}
-import net.ceedubs.ficus.Ficus._
-import net.ceedubs.ficus.readers.ValueReader
+import com.typesafe.config.ConfigFactory
+import javax.net.ssl._
 
 import scala.collection.immutable
 
@@ -75,15 +73,4 @@ private[rabbitmq] object SSLBuilder {
   def fromBundleStream(is: InputStream, keyStoreType: KeyStoreType, password: String = DefaultAvastJksPassword): SSLBuilder = {
     empty().loadAllFromBundleStream(is, keyStoreType, password)
   }
-
-  def fromConfig(providedConfig: Config): SSLBuilder = {
-    // we need to wrap it with one level, to be able to parse it with Ficus
-    val config = ConfigFactory
-      .empty()
-      .withValue("root", providedConfig.withFallback(DefaultConfig).root())
-
-    config.as[SSLBuilder]("root")
-  }
-
-  private implicit val sslContextValueReader: ValueReader[SSLBuilder] = SSLBuilderValueReader
 }

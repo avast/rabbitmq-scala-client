@@ -6,10 +6,14 @@ import cats.~>
 import com.avast.clients.rabbitmq.api._
 import com.avast.clients.rabbitmq.{
   api,
+  BindExchange,
+  BindQueue,
   ChannelListener,
   ConnectionListener,
   ConsumerConfig,
   ConsumerListener,
+  DeclareExchange,
+  DeclareQueue,
   DeliveryConverter,
   DeliveryReadAction,
   ProducerConfig,
@@ -38,24 +42,10 @@ package object testing {
       new RabbitMQConnection[SyncIO] {
         override def newChannel(): Resource[SyncIO, ServerChannel] = conn.newChannel()
 
-        override def newConsumer[A: DeliveryConverter](configName: String, monitor: Monitor)(
-            readAction: DeliveryReadAction[SyncIO, A]): Resource[SyncIO, RabbitMQConsumer[SyncIO]] = {
-          conn.newConsumer(configName, monitor)(readAction.andThen(_.to[F])).map { cons =>
-            FunctorK[RabbitMQConsumer].mapK(cons)(fkFToSyncIO)
-          }
-        }
-
         override def newConsumer[A: DeliveryConverter](consumerConfig: ConsumerConfig, monitor: Monitor)(
             readAction: DeliveryReadAction[SyncIO, A]): Resource[SyncIO, RabbitMQConsumer[SyncIO]] = {
           conn.newConsumer(consumerConfig, monitor)(readAction.andThen(_.to[F])).map { cons =>
             FunctorK[RabbitMQConsumer].mapK(cons)(fkFToSyncIO)
-          }
-        }
-
-        override def newProducer[A: ProductConverter](configName: String,
-                                                      monitor: Monitor): Resource[SyncIO, RabbitMQProducer[SyncIO, A]] = {
-          conn.newProducer(configName, monitor).map { prod =>
-            FunctorK[RabbitMQProducer[*[_], A]].mapK(prod)(fkFToSyncIO)
           }
         }
 
@@ -66,13 +56,6 @@ package object testing {
           }
         }
 
-        override def newPullConsumer[A: DeliveryConverter](configName: String,
-                                                           monitor: Monitor): Resource[SyncIO, api.RabbitMQPullConsumer[SyncIO, A]] = {
-          conn.newPullConsumer(configName, monitor).map { cons =>
-            pullConsumerToSyncIO(cons)
-          }
-        }
-
         override def newPullConsumer[A: DeliveryConverter](pullConsumerConfig: PullConsumerConfig,
                                                            monitor: Monitor): Resource[SyncIO, api.RabbitMQPullConsumer[SyncIO, A]] = {
           conn.newPullConsumer(pullConsumerConfig, monitor).map { cons =>
@@ -80,13 +63,13 @@ package object testing {
           }
         }
 
-        override def declareExchange(configName: String): SyncIO[Unit] = conn.declareExchange(configName)
+        override def declareExchange(config: DeclareExchange): SyncIO[Unit] = conn.declareExchange(config)
 
-        override def declareQueue(configName: String): SyncIO[Unit] = conn.declareQueue(configName)
+        override def declareQueue(config: DeclareQueue): SyncIO[Unit] = conn.declareQueue(config)
 
-        override def bindQueue(configName: String): SyncIO[Unit] = conn.bindQueue(configName)
+        override def bindExchange(config: BindExchange): SyncIO[Unit] = conn.bindExchange(config)
 
-        override def bindExchange(configName: String): SyncIO[Unit] = conn.bindExchange(configName)
+        override def bindQueue(config: BindQueue): SyncIO[Unit] = conn.bindQueue(config)
 
         override def withChannel[A](f: ServerChannel => SyncIO[A]): SyncIO[A] = conn.withChannel(f(_).to[F])
 

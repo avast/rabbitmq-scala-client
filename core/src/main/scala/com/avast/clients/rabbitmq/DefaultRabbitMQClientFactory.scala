@@ -6,20 +6,14 @@ import java.util.concurrent.{TimeUnit, TimeoutException}
 import cats.effect._
 import cats.syntax.all._
 import com.avast.bytes.Bytes
-import com.avast.clients.rabbitmq.api.DeliveryResult._
 import com.avast.clients.rabbitmq.api._
 import com.avast.metrics.scalaapi.{Meter, Monitor}
 import com.rabbitmq.client.AMQP
 import com.rabbitmq.client.AMQP.Queue
-import com.typesafe.config._
 import com.typesafe.scalalogging.LazyLogging
-import net.ceedubs.ficus.Ficus._
-import net.ceedubs.ficus.readers.ArbitraryTypeReader._
-import net.ceedubs.ficus.readers.ValueReader
 import org.slf4j.event.Level
 
 import scala.collection.JavaConverters._
-import scala.collection.generic.CanBuildFrom
 import scala.collection.immutable
 import scala.concurrent.duration.{Duration => ScalaDuration}
 import scala.language.{higherKinds, implicitConversions}
@@ -31,151 +25,23 @@ private[rabbitmq] object DefaultRabbitMQClientFactory extends LazyLogging {
 
   private type DefaultDeliveryReadAction[F[_]] = DeliveryReadAction[F, Bytes]
 
-  private[rabbitmq] val FakeConfigRootName = "_rabbitmq_config_root_"
-
-  private[rabbitmq] final val DeclareQueueRootConfigKey = "avastRabbitMQDeclareQueueDefaults"
-  private[rabbitmq] final val DeclareQueueDefaultConfig = ConfigFactory.defaultReference().getConfig(DeclareQueueRootConfigKey)
-
-  private[rabbitmq] final val BindQueueRootConfigKey = "avastRabbitMQBindQueueDefaults"
-  private[rabbitmq] final val BindQueueDefaultConfig = ConfigFactory.defaultReference().getConfig(BindQueueRootConfigKey)
-
-  private[rabbitmq] final val BindExchangeRootConfigKey = "avastRabbitMQBindExchangeDefaults"
-  private[rabbitmq] final val BindExchangeDefaultConfig = ConfigFactory.defaultReference().getConfig(BindExchangeRootConfigKey)
-
-  private[rabbitmq] final val DeclareExchangeRootConfigKey = "avastRabbitMQDeclareExchangeDefaults"
-  private[rabbitmq] final val DeclareExchangeDefaultConfig = ConfigFactory.defaultReference().getConfig(DeclareExchangeRootConfigKey)
-
-  private[rabbitmq] final val ProducerRootConfigKey = "avastRabbitMQProducerDefaults"
-  private[rabbitmq] final val ProducerDefaultConfig = {
-    val c = ConfigFactory.defaultReference().getConfig(ProducerRootConfigKey)
-    c.withValue("declare", c.getConfig("declare").withFallback(DeclareExchangeDefaultConfig).root())
-  }
-
-  private[rabbitmq] final val ConsumerRootConfigKey = "avastRabbitMQConsumerDefaults"
-  private[rabbitmq] final val ConsumerDefaultConfig = {
-    val c = ConfigFactory.defaultReference().getConfig(ConsumerRootConfigKey)
-    c.withValue("declare", c.getConfig("declare").withFallback(DeclareQueueDefaultConfig).root())
-  }
-  private[rabbitmq] final val PullConsumerRootConfigKey = "avastRabbitMQPullConsumerDefaults"
-  private[rabbitmq] final val PullConsumerDefaultConfig = {
-    val c = ConfigFactory.defaultReference().getConfig(ConsumerRootConfigKey)
-    c.withValue("declare", c.getConfig("declare").withFallback(DeclareQueueDefaultConfig).root())
-  }
-
-  private[rabbitmq] final val ConsumerBindingRootConfigKey = "avastRabbitMQConsumerBindingDefaults"
-  private[rabbitmq] final val ConsumerBindingDefaultConfig = ConfigFactory.defaultReference().getConfig(ConsumerBindingRootConfigKey)
-
-  private implicit final val JavaDurationReader: ValueReader[Duration] = (config: Config, path: String) => config.getDuration(path)
-
-  private implicit final val DeliveryResultReader: ValueReader[DeliveryResult] = (config: Config, path: String) =>
-    config.getString(path).toLowerCase match {
-      case "ack" => Ack
-      case "reject" => Reject
-      case "retry" => Retry
-      case "republish" => Republish()
-  }
-
-  private implicit final val rabbitDeclareArgumentsReader: ValueReader[DeclareArguments] = (config: Config, path: String) => {
-    import scala.collection.JavaConverters._
-    val argumentsMap = config
-      .getObject(path)
-      .asScala
-      .toMap
-      .mapValues(_.unwrapped())
-
-    DeclareArguments(argumentsMap)
-  }
-
-  private implicit final val rabbitBindArgumentsReader: ValueReader[BindArguments] = (config: Config, path: String) => {
-    import scala.collection.JavaConverters._
-    val argumentsMap = config
-      .getObject(path)
-      .asScala
-      .toMap
-      .mapValues(_.unwrapped())
-
-    BindArguments(argumentsMap)
-  }
-
-  private implicit final val logLevelReader: ValueReader[Level] = ValueReader[String].map(Level.valueOf)
-
-  // this overrides Ficus's default reader and pass better path into possible exception
-  private implicit def traversableReader[C[_], A](implicit entryReader: ValueReader[A],
-                                                  cbf: CanBuildFrom[Nothing, A, C[A]]): ValueReader[C[A]] =
-    (config: Config, path: String) => {
-      val list = config.getList(path).asScala
-      val builder = cbf()
-      builder.sizeHint(list.size)
-      list.zipWithIndex.foreach {
-        case (entry, index) =>
-          val entryConfig = entry.atPath(s"$path.$index")
-          builder += entryReader.read(entryConfig, s"$path.$index")
-      }
-
-      builder.result
-    }
-
   object Producer {
-
-    def fromConfig[F[_]: ConcurrentEffect, A: ProductConverter](
-        providedConfig: Config,
-        configName: String,
-        channel: ServerChannel,
-        factoryInfo: RabbitMQConnectionInfo,
-        blocker: Blocker,
-        monitor: Monitor)(implicit cs: ContextShift[F]): DefaultRabbitMQProducer[F, A] = {
-      val producerConfig = providedConfig.wrapped(configName).as[ProducerConfig](configName)
-      create[F, A](producerConfig, configName, channel, factoryInfo, blocker, monitor)
-    }
 
     def create[F[_]: ConcurrentEffect, A: ProductConverter](
         producerConfig: ProducerConfig,
-        configName: String,
         channel: ServerChannel,
         factoryInfo: RabbitMQConnectionInfo,
         blocker: Blocker,
         monitor: Monitor)(implicit cs: ContextShift[F]): DefaultRabbitMQProducer[F, A] = {
-      prepareProducer[F, A](producerConfig, configName, channel, factoryInfo, blocker, monitor)
+      prepareProducer[F, A](producerConfig, channel, factoryInfo, blocker, monitor)
     }
 
   }
 
   object Consumer {
 
-    def fromConfig[F[_]: ConcurrentEffect, A: DeliveryConverter](providedConfig: Config,
-                                                                 configName: String,
-                                                                 channel: ServerChannel,
-                                                                 channelFactoryInfo: RabbitMQConnectionInfo,
-                                                                 blocker: Blocker,
-                                                                 monitor: Monitor,
-                                                                 consumerListener: ConsumerListener,
-                                                                 readAction: DeliveryReadAction[F, A])(
-        implicit
-        timer: Timer[F],
-        cs: ContextShift[F]): DefaultRabbitMQConsumer[F] = {
-
-      val mergedConfig = providedConfig.withFallback(ConsumerDefaultConfig)
-
-      // merge consumer binding defaults
-      val updatedConfig = {
-        val updated =
-          mergedConfig.as[Seq[Config]]("bindings").map { bindConfig =>
-            bindConfig.withFallback(ConsumerBindingDefaultConfig).root()
-          }
-
-        import scala.collection.JavaConverters._
-
-        mergedConfig.withValue("bindings", ConfigValueFactory.fromIterable(updated.asJava))
-      }
-
-      val consumerConfig = updatedConfig.wrapped(configName).as[ConsumerConfig](configName)
-
-      create[F, A](consumerConfig, configName, channel, channelFactoryInfo, blocker, monitor, consumerListener, readAction)
-    }
-
     def create[F[_]: ConcurrentEffect, A: DeliveryConverter](
         consumerConfig: ConsumerConfig,
-        configName: String,
         channel: ServerChannel,
         channelFactoryInfo: RabbitMQConnectionInfo,
         blocker: Blocker,
@@ -183,108 +49,59 @@ private[rabbitmq] object DefaultRabbitMQClientFactory extends LazyLogging {
         consumerListener: ConsumerListener,
         readAction: DeliveryReadAction[F, A])(implicit timer: Timer[F], cs: ContextShift[F]): DefaultRabbitMQConsumer[F] = {
 
-      prepareConsumer(consumerConfig, configName, readAction, channelFactoryInfo, channel, consumerListener, blocker, monitor)
+      prepareConsumer(consumerConfig, readAction, channelFactoryInfo, channel, consumerListener, blocker, monitor)
     }
   }
 
   object PullConsumer {
 
-    def fromConfig[F[_]: ConcurrentEffect, A: DeliveryConverter](
-        providedConfig: Config,
-        configName: String,
-        channel: ServerChannel,
-        channelFactoryInfo: RabbitMQConnectionInfo,
-        blocker: Blocker,
-        monitor: Monitor)(implicit cs: ContextShift[F]): DefaultRabbitMQPullConsumer[F, A] = {
-
-      val mergedConfig = providedConfig.withFallback(PullConsumerDefaultConfig)
-
-      // merge consumer binding defaults
-      val updatedConfig = {
-        val updated =
-          mergedConfig.as[Seq[Config]]("bindings").map { bindConfig =>
-            bindConfig.withFallback(ConsumerBindingDefaultConfig).root()
-          }
-
-        import scala.collection.JavaConverters._
-
-        mergedConfig.withValue("bindings", ConfigValueFactory.fromIterable(updated.asJava))
-      }
-
-      val consumerConfig = updatedConfig.wrapped(configName).as[PullConsumerConfig](configName)
-
-      create[F, A](consumerConfig, configName, channel, channelFactoryInfo, blocker, monitor)
-    }
-
     def create[F[_]: ConcurrentEffect, A: DeliveryConverter](
         consumerConfig: PullConsumerConfig,
-        configName: String,
         channel: ServerChannel,
         channelFactoryInfo: RabbitMQConnectionInfo,
         blocker: Blocker,
         monitor: Monitor)(implicit cs: ContextShift[F]): DefaultRabbitMQPullConsumer[F, A] = {
 
-      preparePullConsumer(consumerConfig, configName, channelFactoryInfo, channel, blocker, monitor)
+      preparePullConsumer(consumerConfig, channelFactoryInfo, channel, blocker, monitor)
     }
   }
 
   object Declarations {
-    def declareExchange[F[_]: Sync](config: Config, channel: ServerChannel, channelFactoryInfo: RabbitMQConnectionInfo): F[Unit] = {
-      declareExchange(config.withFallback(DeclareExchangeDefaultConfig).as[DeclareExchange], channel, channelFactoryInfo)
-    }
-
-    def declareQueue[F[_]: Sync](config: Config, channel: ServerChannel, channelFactoryInfo: RabbitMQConnectionInfo): F[Unit] = {
-      declareQueue(config.withFallback(DeclareQueueDefaultConfig).as[DeclareQueue], channel, channelFactoryInfo)
-    }
-
-    def bindQueue[F[_]: Sync](config: Config, channel: ServerChannel, channelFactoryInfo: RabbitMQConnectionInfo): F[Unit] = {
-      bindQueue(config.withFallback(BindQueueDefaultConfig).as[BindQueue], channel, channelFactoryInfo)
-    }
-
-    def bindExchange[F[_]: Sync](config: Config, channel: ServerChannel, channelFactoryInfo: RabbitMQConnectionInfo): F[Unit] = {
-      bindExchange(config.withFallback(BindExchangeDefaultConfig).as[BindExchange], channel, channelFactoryInfo)
-    }
-
-    private def declareExchange[F[_]: Sync](config: DeclareExchange,
-                                            channel: ServerChannel,
-                                            channelFactoryInfo: RabbitMQConnectionInfo): F[Unit] =
+    def declareExchange[F[_]: Sync](config: DeclareExchange, channel: ServerChannel, channelFactoryInfo: RabbitMQConnectionInfo): F[Unit] =
       Sync[F].delay {
         import config._
 
         DefaultRabbitMQClientFactory.this.declareExchange(name, `type`, durable, autoDelete, arguments, channel, channelFactoryInfo)
       }
 
-    private def declareQueue[F[_]: Sync](config: DeclareQueue,
-                                         channel: ServerChannel,
-                                         channelFactoryInfo: RabbitMQConnectionInfo): F[Unit] = Sync[F].delay {
-      import config._
+    def declareQueue[F[_]: Sync](config: DeclareQueue, channel: ServerChannel, channelFactoryInfo: RabbitMQConnectionInfo): F[Unit] =
+      Sync[F].delay {
+        import config._
 
-      DefaultRabbitMQClientFactory.this.declareQueue(channel, name, durable, exclusive, autoDelete, arguments)
-      ()
-    }
+        DefaultRabbitMQClientFactory.this.declareQueue(channel, name, durable, exclusive, autoDelete, arguments)
+        ()
+      }
 
-    private def bindQueue[F[_]: Sync](config: BindQueue, channel: ServerChannel, channelFactoryInfo: RabbitMQConnectionInfo): F[Unit] =
+    def bindQueue[F[_]: Sync](config: BindQueue, channel: ServerChannel, channelFactoryInfo: RabbitMQConnectionInfo): F[Unit] =
       Sync[F].delay {
         import config._
 
         bindQueues(channel, queueName, exchangeName, routingKeys, arguments, channelFactoryInfo)
       }
 
-    private def bindExchange[F[_]: Sync](config: BindExchange,
-                                         channel: ServerChannel,
-                                         channelFactoryInfo: RabbitMQConnectionInfo): F[Unit] = Sync[F].delay {
-      import config._
+    def bindExchange[F[_]: Sync](config: BindExchange, channel: ServerChannel, channelFactoryInfo: RabbitMQConnectionInfo): F[Unit] =
+      Sync[F].delay {
+        import config._
 
-      routingKeys.foreach {
-        DefaultRabbitMQClientFactory.this
-          .bindExchange(channelFactoryInfo)(channel, sourceExchangeName, destExchangeName, arguments.value)
+        routingKeys.foreach {
+          DefaultRabbitMQClientFactory.this
+            .bindExchange(channelFactoryInfo)(channel, sourceExchangeName, destExchangeName, arguments.value)
+        }
       }
-    }
   }
 
   private def prepareProducer[F[_]: ConcurrentEffect, A: ProductConverter](
       producerConfig: ProducerConfig,
-      configName: String,
       channel: ServerChannel,
       channelFactoryInfo: RabbitMQConnectionInfo,
       blocker: Blocker,
@@ -302,10 +119,11 @@ private[rabbitmq] object DefaultRabbitMQClientFactory extends LazyLogging {
     // parse it only if it's needed
     // "Lazy" parsing, because exchange type is not part of reference.conf and we don't want to make it fail on missing type when enabled=false
     if (declare.getBoolean("enabled")) {
-      val path = s"$configName.declare"
-      val d = declare.wrapped(path).as[AutoDeclareExchange](path)
-
-      declareExchange(exchange, channelFactoryInfo, channel, d)
+      ??? // TODO
+//      val path = s"$configName.declare"
+//      val d = declare.wrapped(path).as[AutoDeclareExchange](path)
+//
+//      declareExchange(exchange, channelFactoryInfo, channel, d)
     }
     new DefaultRabbitMQProducer[F, A](producerConfig.name, exchange, channel, defaultProperties, reportUnroutable, blocker, monitor)
   }
@@ -337,7 +155,6 @@ private[rabbitmq] object DefaultRabbitMQClientFactory extends LazyLogging {
 
   private def prepareConsumer[F[_]: ConcurrentEffect, A: DeliveryConverter](
       consumerConfig: ConsumerConfig,
-      configName: String,
       readAction: DeliveryReadAction[F, A],
       channelFactoryInfo: RabbitMQConnectionInfo,
       channel: ServerChannel,
@@ -346,7 +163,7 @@ private[rabbitmq] object DefaultRabbitMQClientFactory extends LazyLogging {
       monitor: Monitor)(implicit timer: Timer[F], cs: ContextShift[F]): DefaultRabbitMQConsumer[F] = {
 
     // auto declare exchanges
-    declareExchangesFromBindings(configName, channelFactoryInfo, channel, consumerConfig.bindings)
+    declareExchangesFromBindings(channelFactoryInfo, channel, consumerConfig.bindings)
 
     // auto declare queue
     declareQueue(consumerConfig.queueName, channelFactoryInfo, channel, consumerConfig.declare)
@@ -362,7 +179,6 @@ private[rabbitmq] object DefaultRabbitMQClientFactory extends LazyLogging {
 
   private def preparePullConsumer[F[_]: ConcurrentEffect, A: DeliveryConverter](
       consumerConfig: PullConsumerConfig,
-      configName: String,
       connectionInfo: RabbitMQConnectionInfo,
       channel: ServerChannel,
       blocker: Blocker,
@@ -371,7 +187,7 @@ private[rabbitmq] object DefaultRabbitMQClientFactory extends LazyLogging {
     import consumerConfig._
 
     // auto declare exchanges
-    declareExchangesFromBindings(configName, connectionInfo, channel, consumerConfig.bindings)
+    declareExchangesFromBindings(connectionInfo, channel, consumerConfig.bindings)
 
     // auto declare queue
     declareQueue(queueName, connectionInfo, channel, declare)
@@ -452,8 +268,7 @@ private[rabbitmq] object DefaultRabbitMQClientFactory extends LazyLogging {
     channel.exchangeBind(destExchangeName, sourceExchangeName, routingKey, arguments)
   }
 
-  private def declareExchangesFromBindings(configName: String,
-                                           connectionInfo: RabbitMQConnectionInfo,
+  private def declareExchangesFromBindings(connectionInfo: RabbitMQConnectionInfo,
                                            channel: ServerChannel,
                                            bindings: Seq[AutoBindQueue]): Unit = {
     bindings.zipWithIndex.foreach {
@@ -462,10 +277,12 @@ private[rabbitmq] object DefaultRabbitMQClientFactory extends LazyLogging {
 
         // parse it only if it's needed
         if (declare.getBoolean("enabled")) {
-          val path = s"$configName.bindings.$i.exchange.declare"
-          val d = declare.wrapped(path).as[AutoDeclareExchange](path)
+//          val path = s"$configName.bindings.$i.exchange.declare"
+//          val d = declare.wrapped(path).as[AutoDeclareExchange](path)
+//
+//          declareExchange(name, connectionInfo, channel, d)
 
-          declareExchange(name, connectionInfo, channel, d)
+          ??? // TODO
         }
     }
   }
@@ -571,15 +388,6 @@ private[rabbitmq] object DefaultRabbitMQClientFactory extends LazyLogging {
     }
 
     consumerConfig.timeoutAction
-  }
-
-  implicit class WrapConfig(val c: Config) extends AnyVal {
-    def wrapped(prefix: String = "root"): Config = {
-      // we need to wrap it with one level, to be able to parse it with Ficus
-      ConfigFactory
-        .empty()
-        .withValue(prefix, c.withFallback(ProducerDefaultConfig).root())
-    }
   }
 
   private implicit def argsAsJava(value: ArgumentsMap): java.util.Map[String, Object] = {

@@ -1,22 +1,15 @@
 package com.avast.clients.rabbitmq
 
 import java.io.IOException
-import java.nio.file.{Path, Paths}
-import java.time.Duration
 import java.util.concurrent.ExecutorService
 
 import cats.effect._
-import com.avast.clients.rabbitmq.DefaultRabbitMQClientFactory.FakeConfigRootName
 import com.avast.clients.rabbitmq.api._
 import com.avast.clients.rabbitmq.ssl.{KeyStoreTypes, SSLBuilder}
 import com.avast.metrics.scalaapi.Monitor
 import com.rabbitmq.client._
-import com.typesafe.config.{Config, ConfigFactory}
 import com.typesafe.scalalogging.StrictLogging
 import javax.net.ssl.SSLContext
-import net.ceedubs.ficus.Ficus._
-import net.ceedubs.ficus.readers.ArbitraryTypeReader._
-import net.ceedubs.ficus.readers.ValueReader
 
 import scala.language.higherKinds
 import scala.util.control.NonFatal
@@ -28,15 +21,6 @@ trait RabbitMQConnection[F[_]] {
     */
   def newChannel(): Resource[F, ServerChannel]
 
-  /** Creates new instance of consumer, using the TypeSafe configuration passed to the factory and consumer name.
-    *
-    * @param configName Name of configuration of the consumer.
-    * @param monitor    Monitor for metrics.
-    * @param readAction Action executed for each delivered message. You should never return a failed future.
-    */
-  def newConsumer[A: DeliveryConverter](configName: String, monitor: Monitor)(
-      readAction: DeliveryReadAction[F, A]): Resource[F, RabbitMQConsumer[F]]
-
   /** Creates new instance of consumer, using the passed configuration.
     *
     * @param consumerConfig Configuration of the consumer.
@@ -46,26 +30,12 @@ trait RabbitMQConnection[F[_]] {
   def newConsumer[A: DeliveryConverter](consumerConfig: ConsumerConfig, monitor: Monitor)(
       readAction: DeliveryReadAction[F, A]): Resource[F, RabbitMQConsumer[F]]
 
-  /** Creates new instance of producer, using the TypeSafe configuration passed to the factory and producer name.
-    *
-    * @param configName Name of configuration of the producer.
-    * @param monitor    Monitor for metrics.
-    */
-  def newProducer[A: ProductConverter](configName: String, monitor: Monitor): Resource[F, RabbitMQProducer[F, A]]
-
   /** Creates new instance of producer, using the passed configuration.
     *
     * @param producerConfig Configuration of the producer.
     * @param monitor    Monitor for metrics.
     */
   def newProducer[A: ProductConverter](producerConfig: ProducerConfig, monitor: Monitor): Resource[F, RabbitMQProducer[F, A]]
-
-  /** Creates new instance of pull consumer, using the TypeSafe configuration passed to the factory and consumer name.
-    *
-    * @param configName Name of configuration of the consumer.
-    * @param monitor    Monitor for metrics.
-    */
-  def newPullConsumer[A: DeliveryConverter](configName: String, monitor: Monitor): Resource[F, RabbitMQPullConsumer[F, A]]
 
   /** Creates new instance of pull consumer, using the passed configuration.
     *
@@ -75,27 +45,10 @@ trait RabbitMQConnection[F[_]] {
   def newPullConsumer[A: DeliveryConverter](pullConsumerConfig: PullConsumerConfig,
                                             monitor: Monitor): Resource[F, RabbitMQPullConsumer[F, A]]
 
-  /**
-    * Declares and additional exchange, using the TypeSafe configuration passed to the factory and config name.
-    */
-  def declareExchange(configName: String): F[Unit]
-
-  /**
-    * Declares and additional queue, using the TypeSafe configuration passed to the factory and config name.
-    */
-  def declareQueue(configName: String): F[Unit]
-
-  /**
-    * Binds a queue to an exchange, using the TypeSafe configuration passed to the factory and config name.<br>
-    * Failure indicates that the binding has failed for AT LEAST one routing key.
-    */
-  def bindQueue(configName: String): F[Unit]
-
-  /**
-    * Binds an exchange to an another exchange, using the TypeSafe configuration passed to the factory and config name.<br>
-    * Failure indicates that the binding has failed for AT LEAST one routing key.
-    */
-  def bindExchange(configName: String): F[Unit]
+  def declareExchange(config: DeclareExchange): F[Unit]
+  def declareQueue(config: DeclareQueue): F[Unit]
+  def bindExchange(config: BindExchange): F[Unit]
+  def bindQueue(config: BindQueue): F[Unit]
 
   /** Executes a specified action with newly created [[ServerChannel]] which is then closed.
     *
@@ -117,116 +70,68 @@ object RabbitMQConnection extends StrictLogging {
     final val DefaultConsumerListener: ConsumerListener = ConsumerListener.Default
   }
 
-  private[rabbitmq] final val RootConfigKey = "avastRabbitMQConnectionDefaults"
-  private[rabbitmq] final val DefaultConfig = ConfigFactory.defaultReference().getConfig(RootConfigKey)
-  private[rabbitmq] final val RootConfigKeyRecoveryLinear = "avastRabbitMQRecoveryLinearDefaults"
-  private[rabbitmq] final val DefaultConfigRecoveryLinear = ConfigFactory.defaultReference().getConfig(RootConfigKeyRecoveryLinear)
-  private[rabbitmq] final val RootConfigKeyRecoveryExponential = "avastRabbitMQRecoveryExponentialDefaults"
-  private[rabbitmq] final val DefaultConfigRecoveryExponential =
-    ConfigFactory.defaultReference().getConfig(RootConfigKeyRecoveryExponential)
-
-  private implicit final val JavaDurationReader: ValueReader[Duration] = (config: Config, path: String) => config.getDuration(path)
-
-  private implicit final val JavaPathReader: ValueReader[Path] = (config: Config, path: String) => Paths.get(config.getString(path))
-
-  private implicit final val RecoveryDelayHandlerReader: ValueReader[RecoveryDelayHandler] = (config: Config, path: String) => {
-    val rdhConfig = config.getConfig(path.split('.').dropRight(1).mkString("."))
-
-    rdhConfig.getString("type").toLowerCase match {
-      case "linear" =>
-        val finalConfig = rdhConfig.withFallback(DefaultConfigRecoveryLinear)
-
-        RecoveryDelayHandlers.Linear(
-          delay = finalConfig.getDuration("initialDelay"),
-          period = finalConfig.getDuration("period")
-        )
-
-      case "exponential" =>
-        val finalConfig = rdhConfig.withFallback(DefaultConfigRecoveryExponential)
-
-        RecoveryDelayHandlers.Exponential(
-          delay = finalConfig.getDuration("initialDelay"),
-          period = finalConfig.getDuration("period"),
-          factor = finalConfig.getDouble("factor"),
-          maxLength = finalConfig.getDuration("maxLength"),
-        )
-    }
-  }
-
-  /** Creates new instance of channel factory, using the passed configuration.
-    *
-    * @param providedConfig   The configuration.
-    * @param blockingExecutor [[ExecutorService]] which should be used as shared blocking pool (IO operations) for all channels from this connection.
-    */
-  def fromConfig[F[_]: ConcurrentEffect: Timer: ContextShift](
-      providedConfig: Config,
+  def make[F[_]: ConcurrentEffect: Timer: ContextShift](
+      connectionConfig: RabbitMQConnectionConfig,
       blockingExecutor: ExecutorService,
       connectionListener: ConnectionListener = DefaultListeners.DefaultConnectionListener,
       channelListener: ChannelListener = DefaultListeners.DefaultChannelListener,
-      consumerListener: ConsumerListener = DefaultListeners.DefaultConsumerListener): Resource[F, DefaultRabbitMQConnection[F]] =
-    Resource.make {
-      Sync[F].delay {
-        // we need to wrap it with one level, to be able to parse it with Ficus
-        val config = ConfigFactory
-          .empty()
-          .withValue(FakeConfigRootName, providedConfig.withFallback(DefaultConfig).root())
+      consumerListener: ConsumerListener = DefaultListeners.DefaultConsumerListener): Resource[F, DefaultRabbitMQConnection[F]] = {
+    createConnection(connectionConfig, blockingExecutor, connectionListener, channelListener, consumerListener).map { connection =>
+      val blocker = Blocker.liftExecutorService(blockingExecutor)
 
-        val connectionConfig = config.as[RabbitMQConnectionConfig](FakeConfigRootName)
-        val connection = createConnection(connectionConfig, blockingExecutor, connectionListener, channelListener, consumerListener)
-
-        val blocker = Blocker.liftExecutorService(blockingExecutor)
-
-        new DefaultRabbitMQConnection(
-          connection = connection,
-          info = RabbitMQConnectionInfo(
-            hosts = connectionConfig.hosts.toVector,
-            virtualHost = connectionConfig.virtualHost,
-            username = if (connectionConfig.credentials.enabled) Option(connectionConfig.credentials.username) else None
-          ),
-          config = providedConfig,
-          connectionListener = connectionListener,
-          channelListener = channelListener,
-          consumerListener = consumerListener,
-          blocker = blocker
-        )
-      }
-    }(_.close())
-
-  protected def createConnection(connectionConfig: RabbitMQConnectionConfig,
-                                 executor: ExecutorService,
-                                 connectionListener: ConnectionListener,
-                                 channelListener: ChannelListener,
-                                 consumerListener: ConsumerListener): ServerConnection = {
-    import connectionConfig._
-
-    val factory = new ConnectionFactory
-    val exceptionHandler = createExceptionHandler(connectionListener, channelListener, consumerListener)
-    setUpConnection(connectionConfig, factory, exceptionHandler, executor)
-
-    val addresses = try {
-      hosts.map(Address.parseAddress)
-    } catch {
-      case NonFatal(e) => throw new IllegalArgumentException("Invalid format of hosts", e)
-    }
-
-    logger.info(s"Connecting to ${hosts.mkString("[", ", ", "]")}, virtual host '$virtualHost'")
-
-    try {
-      factory.newConnection(addresses, name) match {
-        case conn: ServerConnection =>
-          conn.addRecoveryListener(exceptionHandler)
-          conn.addShutdownListener((cause: ShutdownSignalException) => connectionListener.onShutdown(conn, cause))
-          connectionListener.onCreate(conn)
-          conn
-        // since we set `factory.setAutomaticRecoveryEnabled(true)` it should always be `Recoverable` (based on docs), so the exception will never be thrown
-        case _ => throw new IllegalStateException("Required Recoverable Connection")
-      }
-    } catch {
-      case NonFatal(e) =>
-        connectionListener.onCreateFailure(e)
-        throw e
+      new DefaultRabbitMQConnection(
+        connection = connection,
+        info = RabbitMQConnectionInfo(
+          hosts = connectionConfig.hosts.toVector,
+          virtualHost = connectionConfig.virtualHost,
+          username = if (connectionConfig.credentials.enabled) Option(connectionConfig.credentials.username) else None
+        ),
+        connectionListener = connectionListener,
+        channelListener = channelListener,
+        consumerListener = consumerListener,
+        blocker = blocker
+      )
     }
   }
+
+  protected def createConnection[F[_]: Sync](connectionConfig: RabbitMQConnectionConfig,
+                                             executor: ExecutorService,
+                                             connectionListener: ConnectionListener,
+                                             channelListener: ChannelListener,
+                                             consumerListener: ConsumerListener): Resource[F, ServerConnection] =
+    Resource.make {
+      Sync[F].delay {
+        import connectionConfig._
+
+        val factory = new ConnectionFactory
+        val exceptionHandler = createExceptionHandler(connectionListener, channelListener, consumerListener)
+        setUpConnection(connectionConfig, factory, exceptionHandler, executor)
+
+        val addresses = try {
+          hosts.map(Address.parseAddress)
+        } catch {
+          case NonFatal(e) => throw new IllegalArgumentException("Invalid format of hosts", e)
+        }
+
+        logger.info(s"Connecting to ${hosts.mkString("[", ", ", "]")}, virtual host '$virtualHost'")
+
+        try {
+          factory.newConnection(addresses, name) match {
+            case conn: ServerConnection =>
+              conn.addRecoveryListener(exceptionHandler)
+              conn.addShutdownListener((cause: ShutdownSignalException) => connectionListener.onShutdown(conn, cause))
+              connectionListener.onCreate(conn)
+              conn
+            // since we set `factory.setAutomaticRecoveryEnabled(true)` it should always be `Recoverable` (based on docs), so the exception will never be thrown
+            case _ => throw new IllegalStateException("Required Recoverable Connection")
+          }
+        } catch {
+          case NonFatal(e) =>
+            connectionListener.onCreateFailure(e)
+            throw e
+        }
+      }
+    }(c => Sync[F].delay(c.close()))
 
   private def setUpConnection(connectionConfig: RabbitMQConnectionConfig,
                               factory: ConnectionFactory,
