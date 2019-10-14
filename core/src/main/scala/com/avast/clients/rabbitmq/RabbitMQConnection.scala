@@ -46,10 +46,10 @@ trait RabbitMQConnection[F[_]] {
   def newPullConsumer[A: DeliveryConverter](pullConsumerConfig: PullConsumerConfig,
                                             monitor: Monitor): Resource[F, RabbitMQPullConsumer[F, A]]
 
-  def declareExchange(config: DeclareExchange): F[Unit]
-  def declareQueue(config: DeclareQueue): F[Unit]
-  def bindExchange(config: BindExchange): F[Unit]
-  def bindQueue(config: BindQueue): F[Unit]
+  def declareExchange(config: DeclareExchangeConfig): F[Unit]
+  def declareQueue(config: DeclareQueueConfig): F[Unit]
+  def bindExchange(config: BindExchangeConfig): F[Unit]
+  def bindQueue(config: BindQueueConfig): F[Unit]
 
   /** Executes a specified action with newly created [[ServerChannel]] which is then closed.
     *

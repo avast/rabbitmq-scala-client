@@ -65,14 +65,16 @@ private[rabbitmq] object DefaultRabbitMQClientFactory extends LazyLogging {
   }
 
   object Declarations {
-    def declareExchange[F[_]: Sync](config: DeclareExchange, channel: ServerChannel, connectionInfo: RabbitMQConnectionInfo): F[Unit] =
+    def declareExchange[F[_]: Sync](config: DeclareExchangeConfig,
+                                    channel: ServerChannel,
+                                    connectionInfo: RabbitMQConnectionInfo): F[Unit] =
       Sync[F].delay {
         import config._
 
         DefaultRabbitMQClientFactory.this.declareExchange(name, `type`, durable, autoDelete, arguments, channel, connectionInfo)
       }
 
-    def declareQueue[F[_]: Sync](config: DeclareQueue, channel: ServerChannel, connectionInfo: RabbitMQConnectionInfo): F[Unit] =
+    def declareQueue[F[_]: Sync](config: DeclareQueueConfig, channel: ServerChannel, connectionInfo: RabbitMQConnectionInfo): F[Unit] =
       Sync[F].delay {
         import config._
 
@@ -80,14 +82,14 @@ private[rabbitmq] object DefaultRabbitMQClientFactory extends LazyLogging {
         ()
       }
 
-    def bindQueue[F[_]: Sync](config: BindQueue, channel: ServerChannel, connectionInfo: RabbitMQConnectionInfo): F[Unit] =
+    def bindQueue[F[_]: Sync](config: BindQueueConfig, channel: ServerChannel, connectionInfo: RabbitMQConnectionInfo): F[Unit] =
       Sync[F].delay {
         import config._
 
         bindQueues(channel, queueName, exchangeName, routingKeys, arguments, connectionInfo)
       }
 
-    def bindExchange[F[_]: Sync](config: BindExchange, channel: ServerChannel, connectionInfo: RabbitMQConnectionInfo): F[Unit] =
+    def bindExchange[F[_]: Sync](config: BindExchangeConfig, channel: ServerChannel, connectionInfo: RabbitMQConnectionInfo): F[Unit] =
       Sync[F].delay {
         import config._
 
@@ -124,7 +126,7 @@ private[rabbitmq] object DefaultRabbitMQClientFactory extends LazyLogging {
   private[rabbitmq] def declareExchange(name: String,
                                         connectionInfo: RabbitMQConnectionInfo,
                                         channel: ServerChannel,
-                                        autoDeclareExchange: AutoDeclareExchange): Unit = {
+                                        autoDeclareExchange: AutoDeclareExchangeConfig): Unit = {
     import autoDeclareExchange._
 
     if (enabled) {
@@ -137,7 +139,7 @@ private[rabbitmq] object DefaultRabbitMQClientFactory extends LazyLogging {
                               `type`: ExchangeType,
                               durable: Boolean,
                               autoDelete: Boolean,
-                              arguments: DeclareArguments,
+                              arguments: DeclareArgumentsConfig,
                               channel: ServerChannel,
                               connectionInfo: RabbitMQConnectionInfo): Unit = {
     logger.info(s"Declaring exchange '$name' of type ${`type`} in virtual host '${connectionInfo.virtualHost}'")
@@ -198,7 +200,7 @@ private[rabbitmq] object DefaultRabbitMQClientFactory extends LazyLogging {
   private def declareQueue(queueName: String,
                            connectionInfo: RabbitMQConnectionInfo,
                            channel: ServerChannel,
-                           declare: AutoDeclareQueue): Unit = {
+                           declare: AutoDeclareQueueConfig): Unit = {
     import declare._
 
     if (enabled) {
@@ -212,14 +214,14 @@ private[rabbitmq] object DefaultRabbitMQClientFactory extends LazyLogging {
                                      durable: Boolean,
                                      exclusive: Boolean,
                                      autoDelete: Boolean,
-                                     arguments: DeclareArguments): Queue.DeclareOk = {
+                                     arguments: DeclareArgumentsConfig): Queue.DeclareOk = {
     channel.queueDeclare(queueName, durable, exclusive, autoDelete, arguments.value)
   }
 
   private def bindQueues(connectionInfo: RabbitMQConnectionInfo,
                          channel: ServerChannel,
                          queueName: String,
-                         bindings: immutable.Seq[AutoBindQueue]): Unit = {
+                         bindings: immutable.Seq[AutoBindQueueConfig]): Unit = {
     bindings.foreach { bind =>
       import bind._
       val exchangeName = bind.exchange.name
@@ -232,7 +234,7 @@ private[rabbitmq] object DefaultRabbitMQClientFactory extends LazyLogging {
                          queueName: String,
                          exchangeName: String,
                          routingKeys: immutable.Seq[String],
-                         bindArguments: BindArguments,
+                         bindArguments: BindArgumentsConfig,
                          connectionInfo: RabbitMQConnectionInfo): Unit = {
     if (routingKeys.nonEmpty) {
       routingKeys.foreach { routingKey =>
@@ -267,7 +269,7 @@ private[rabbitmq] object DefaultRabbitMQClientFactory extends LazyLogging {
 
   private def declareExchangesFromBindings(connectionInfo: RabbitMQConnectionInfo,
                                            channel: ServerChannel,
-                                           bindings: Seq[AutoBindQueue]): Unit = {
+                                           bindings: Seq[AutoBindQueueConfig]): Unit = {
     bindings.foreach { bind =>
       import bind.exchange._
 

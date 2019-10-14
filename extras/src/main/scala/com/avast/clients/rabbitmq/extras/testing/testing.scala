@@ -6,14 +6,14 @@ import cats.~>
 import com.avast.clients.rabbitmq.api._
 import com.avast.clients.rabbitmq.{
   api,
-  BindExchange,
-  BindQueue,
+  BindExchangeConfig,
+  BindQueueConfig,
   ChannelListener,
   ConnectionListener,
   ConsumerConfig,
   ConsumerListener,
-  DeclareExchange,
-  DeclareQueue,
+  DeclareExchangeConfig,
+  DeclareQueueConfig,
   DeliveryConverter,
   DeliveryReadAction,
   ProducerConfig,
@@ -63,13 +63,13 @@ package object testing {
           }
         }
 
-        override def declareExchange(config: DeclareExchange): SyncIO[Unit] = conn.declareExchange(config)
+        override def declareExchange(config: DeclareExchangeConfig): SyncIO[Unit] = conn.declareExchange(config)
 
-        override def declareQueue(config: DeclareQueue): SyncIO[Unit] = conn.declareQueue(config)
+        override def declareQueue(config: DeclareQueueConfig): SyncIO[Unit] = conn.declareQueue(config)
 
-        override def bindExchange(config: BindExchange): SyncIO[Unit] = conn.bindExchange(config)
+        override def bindExchange(config: BindExchangeConfig): SyncIO[Unit] = conn.bindExchange(config)
 
-        override def bindQueue(config: BindQueue): SyncIO[Unit] = conn.bindQueue(config)
+        override def bindQueue(config: BindQueueConfig): SyncIO[Unit] = conn.bindQueue(config)
 
         override def withChannel[A](f: ServerChannel => SyncIO[A]): SyncIO[A] = conn.withChannel(f(_).to[F])
 

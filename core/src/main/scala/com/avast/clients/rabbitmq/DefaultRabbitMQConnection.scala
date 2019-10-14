@@ -69,19 +69,19 @@ class DefaultRabbitMQConnection[F[_]](connection: ServerConnection,
     }
   }
 
-  override def declareExchange(config: DeclareExchange): F[Unit] = withChannel { ch =>
+  override def declareExchange(config: DeclareExchangeConfig): F[Unit] = withChannel { ch =>
     DefaultRabbitMQClientFactory.Declarations.declareExchange(config, ch, info)
   }
 
-  override def declareQueue(config: DeclareQueue): F[Unit] = withChannel { ch =>
+  override def declareQueue(config: DeclareQueueConfig): F[Unit] = withChannel { ch =>
     DefaultRabbitMQClientFactory.Declarations.declareQueue(config, ch, info)
   }
 
-  override def bindExchange(config: BindExchange): F[Unit] = withChannel { ch =>
+  override def bindExchange(config: BindExchangeConfig): F[Unit] = withChannel { ch =>
     DefaultRabbitMQClientFactory.Declarations.bindExchange(config, ch, info)
   }
 
-  override def bindQueue(config: BindQueue): F[Unit] = withChannel { ch =>
+  override def bindQueue(config: BindQueueConfig): F[Unit] = withChannel { ch =>
     DefaultRabbitMQClientFactory.Declarations.bindQueue(config, ch, info)
   }
 
