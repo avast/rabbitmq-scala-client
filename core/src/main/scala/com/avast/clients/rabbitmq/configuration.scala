@@ -23,7 +23,7 @@ final case class NetworkRecoveryConfig(enabled: Boolean = true, handler: Recover
 
 final case class CredentialsConfig(enabled: Boolean = true, username: String, password: String)
 
-final case class SslConfig(enabled: Boolean = true, trustStore: Option[TrustStoreConfig] = None) // TODO SSLContext??
+final case class SslConfig(enabled: Boolean = true, trustStore: Option[TrustStoreConfig] = None) // TODO SSLContext??; support other types
 
 final case class TrustStoreConfig(path: Path, password: String)
 

@@ -40,8 +40,6 @@ class LiveTest extends TestBase with ScalaFutures {
 
     private val original = ConfigFactory.load().getConfig("myConfig")
 
-    implicit def cra[T: ClassTag](implicit crs: ConfigReader[Seq[T]]): ConfigReader[Array[T]] = crs.map(_.toArray)
-
     val bindConfigs: Array[Config] = original.getObjectList("consumer.bindings").asScala.map(_.toConfig).toArray
     bindConfigs(0) = bindConfigs(0).withValue("exchange.name", ConfigValueFactory.fromAnyRef(exchange1))
     bindConfigs(1) = bindConfigs(1).withValue("exchange.name", ConfigValueFactory.fromAnyRef(exchange2))

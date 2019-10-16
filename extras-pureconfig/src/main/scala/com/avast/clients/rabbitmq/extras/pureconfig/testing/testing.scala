@@ -1,8 +1,6 @@
 package com.avast.clients.rabbitmq.extras.pureconfig
 
-import cats.arrow.FunctionK
 import cats.effect.{Effect, Resource, SyncIO}
-import cats.~>
 import com.avast.clients.rabbitmq.api._
 import com.avast.clients.rabbitmq.pureconfig.PureconfigRabbitMQConnection
 import com.avast.clients.rabbitmq.{
@@ -74,5 +72,4 @@ package object testing {
       }
     }
   }
-
 }

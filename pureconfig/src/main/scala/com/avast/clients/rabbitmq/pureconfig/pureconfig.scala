@@ -3,8 +3,6 @@ package com.avast.clients.rabbitmq
 import java.util.concurrent.ExecutorService
 
 import _root_.pureconfig._
-import _root_.pureconfig.generic.ProductHint
-import _root_.pureconfig.generic.semiauto._
 import cats.effect.{ConcurrentEffect, ContextShift, Resource, Sync, Timer}
 import com.avast.clients.rabbitmq.RabbitMQConnection.DefaultListeners
 import com.typesafe.config.Config
@@ -21,16 +19,13 @@ package object pureconfig extends Implicits {
         channelListener: ChannelListener = DefaultListeners.DefaultChannelListener,
         consumerListener: ConsumerListener = DefaultListeners.DefaultConsumerListener): Resource[F, PureconfigRabbitMQConnection[F]] = {
 
-      Resource
-        .liftF(Sync[F].delay {
-          ConfigSource.fromConfig(config).loadOrThrow[RabbitMQConnectionConfig]
-        })
-        .flatMap { config =>
-          RabbitMQConnection.make(config, blockingExecutor, connectionListener, channelListener, consumerListener)
-        }
-        .map(new DefaultPureconfigRabbitMQConnection[F](config, _))
+      for {
+        connectionConfig <- Resource.liftF(Sync[F].delay { ConfigSource.fromConfig(config).loadOrThrow[RabbitMQConnectionConfig] })
+        connection <- RabbitMQConnection.make(connectionConfig, blockingExecutor, connectionListener, channelListener, consumerListener)
+      } yield new DefaultPureconfigRabbitMQConnection[F](config, connection)
     }
   }
 
+  // to add the extension method to RabbitMQConnection object:
   implicit def connectionObjectToOps(f: RabbitMQConnection.type): RabbitMQConnectionOps.type = RabbitMQConnectionOps
 }

@@ -116,5 +116,4 @@ package object testing {
       new RabbitMQConsumer[G] {} // no-op
     }
   }
-
 }

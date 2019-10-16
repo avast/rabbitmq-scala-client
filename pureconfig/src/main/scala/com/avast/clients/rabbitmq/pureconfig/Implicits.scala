@@ -1,4 +1,5 @@
 package com.avast.clients.rabbitmq.pureconfig
+
 import _root_.pureconfig.ConfigReader.Result
 import _root_.pureconfig._
 import _root_.pureconfig.generic.ProductHint
@@ -34,7 +35,7 @@ import org.slf4j.event.Level
 object Implicits extends Implicits
 
 trait Implicits {
-  // https://pureconfig.github.io/docs/overriding-behavior-for-case-classes.html#field-mappings
+  // use camelCase names (see https://pureconfig.github.io/docs/overriding-behavior-for-case-classes.html#field-mappings)
   private implicit def hint[T]: ProductHint[T] = ProductHint[T](ConfigFieldMapping(CamelCase, CamelCase))
 
   // connection, producer, consumers:
@@ -78,19 +79,18 @@ trait Implicits {
   implicit val mapStringAnyReader: ConfigReader[Map[String, Any]] = ConfigReader.fromCursor { cur =>
     import scala.collection.JavaConverters._
 
-    cur.asObjectCursor
-      .map(_.value.asScala.toMap.mapValues(_.unwrapped()))
+    cur.asObjectCursor.map(_.value.asScala.toMap.mapValues(_.unwrapped()))
   }
-}
 
-object RecoveryDelayHandlerReader extends ConfigReader[RecoveryDelayHandler] {
-  implicit val linearReader: ConfigReader[RecoveryDelayHandlers.Linear] = deriveReader
-  implicit val exponentialReader: ConfigReader[RecoveryDelayHandlers.Exponential] = deriveReader
+  private object RecoveryDelayHandlerReader extends ConfigReader[RecoveryDelayHandler] {
+    implicit val linearReader: ConfigReader[RecoveryDelayHandlers.Linear] = deriveReader
+    implicit val exponentialReader: ConfigReader[RecoveryDelayHandlers.Exponential] = deriveReader
 
-  override def from(cur: ConfigCursor): Result[RecoveryDelayHandler] = {
-    cur.fluent.at("type").asString.map(_.toLowerCase).flatMap {
-      case "linear" => ConfigReader[RecoveryDelayHandlers.Linear].from(cur)
-      case "exponential" => ConfigReader[RecoveryDelayHandlers.Exponential].from(cur)
+    override def from(cur: ConfigCursor): Result[RecoveryDelayHandler] = {
+      cur.fluent.at("type").asString.map(_.toLowerCase).flatMap {
+        case "linear" => ConfigReader[RecoveryDelayHandlers.Linear].from(cur)
+        case "exponential" => ConfigReader[RecoveryDelayHandlers.Exponential].from(cur)
+      }
     }
   }
 }
