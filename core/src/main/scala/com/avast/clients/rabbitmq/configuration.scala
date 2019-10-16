@@ -35,7 +35,7 @@ final case class ConsumerConfig(queueName: String,
                                 prefetchCount: Int = 100,
                                 declare: Option[AutoDeclareQueueConfig] = None,
                                 bindings: immutable.Seq[AutoBindQueueConfig],
-                                consumerTag: String,
+                                consumerTag: String = "Default",
                                 name: String)
 
 final case class PullConsumerConfig(queueName: String,
@@ -44,10 +44,10 @@ final case class PullConsumerConfig(queueName: String,
                                     bindings: immutable.Seq[AutoBindQueueConfig],
                                     name: String)
 
-final case class AutoDeclareQueueConfig(enabled: Boolean = true,
-                                        durable: Boolean,
-                                        exclusive: Boolean,
-                                        autoDelete: Boolean,
+final case class AutoDeclareQueueConfig(enabled: Boolean = false,
+                                        durable: Boolean = true,
+                                        exclusive: Boolean = false,
+                                        autoDelete: Boolean = false,
                                         arguments: DeclareArgumentsConfig = DeclareArgumentsConfig())
 
 final case class DeclareArgumentsConfig(value: Map[String, Any] = Map.empty)
