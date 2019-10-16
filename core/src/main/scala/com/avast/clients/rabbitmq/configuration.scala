@@ -11,7 +11,7 @@ import scala.concurrent.duration._
 
 final case class RabbitMQConnectionConfig(hosts: immutable.Seq[String],
                                           name: String,
-                                          virtualHost: String = "",
+                                          virtualHost: String,
                                           connectionTimeout: FiniteDuration = 5.seconds,
                                           heartBeatInterval: FiniteDuration = 30.seconds,
                                           topologyRecovery: Boolean = true,
@@ -103,6 +103,13 @@ sealed trait ExchangeType {
   val value: String
 }
 object ExchangeType {
+  def apply(name: String): Option[ExchangeType] = name.toLowerCase match {
+    case Direct.value => Some(Direct)
+    case Fanout.value => Some(Fanout)
+    case Topic.value => Some(Topic)
+    case _ => None
+  }
+
   case object Direct extends ExchangeType { val value: String = "direct" }
   case object Fanout extends ExchangeType { val value: String = "fanout" }
   case object Topic extends ExchangeType { val value: String = "topic" }
