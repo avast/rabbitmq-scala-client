@@ -39,6 +39,8 @@ dependencies {
     testCompile project(":extras-cactus")
 
     testCompile project(":extras")
+    testCompile project(":pureconfig")
+    testCompile project(":extras-pureconfig")
 
     testCompile "io.circe:circe-generic_$scalaVersion:$circeVersion"
     testCompile "io.circe:circe-generic-extras_$scalaVersion:$circeVersion"

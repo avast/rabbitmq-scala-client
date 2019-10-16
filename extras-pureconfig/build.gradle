@@ -1,0 +1,5 @@
+archivesBaseName = "rabbitmq-client-pureconfig-extras_$scalaVersion"
+
+dependencies {
+    compile project(":pureconfig")
+}

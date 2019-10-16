@@ -124,14 +124,8 @@ subprojects {
     }
 
     tasks.withType(ScalaCompile) {
-        String[] plugins
-        plugins = configurations.scalaCompilerPlugin.files.stream().map(new Function() {
-            @Override
-            Object apply(final Object o) {
-                return "-Xplugin:" + ((File) o).getAbsolutePath()
-            }
-        }).toArray()
-
+        List plugins = configurations.scalaCompilerPlugin.files.collect{ "-Xplugin:${it.getAbsolutePath()}".toString() }
+        plugins.add("-Ypartial-unification")
         scalaCompileOptions.additionalParameters = plugins
     }
 
