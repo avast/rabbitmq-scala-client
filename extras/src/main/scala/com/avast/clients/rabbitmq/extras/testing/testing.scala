@@ -31,11 +31,11 @@ package object testing {
 
   implicit class ConnectionOps[F[_]](val conn: RabbitMQConnection[F]) {
 
-    private implicit def resourceFToSyncIO[A](rt: Resource[F, A])(implicit F: Effect[F]): Resource[SyncIO, A] = {
+    private[rabbitmq] implicit def resourceFToSyncIO[A](rt: Resource[F, A])(implicit F: Effect[F]): Resource[SyncIO, A] = {
       rt.mapK(fkFToSyncIO)
     }
 
-    private implicit def fToSyncIO[A](rt: F[A])(implicit F: Effect[F]): SyncIO[A] = fkFToSyncIO.apply(rt)
+    private[rabbitmq] implicit def fToSyncIO[A](rt: F[A])(implicit F: Effect[F]): SyncIO[A] = fkFToSyncIO.apply(rt)
 
     // scalastyle:off
     def asBlocking(implicit F: Effect[F]): RabbitMQConnection[SyncIO] = {
@@ -82,11 +82,11 @@ package object testing {
     }
   }
 
-  private def fkFToSyncIO[F[_]](implicit F: Effect[F]): FunctionK[F, SyncIO] = new FunctionK[F, SyncIO] {
+  private[rabbitmq] def fkFToSyncIO[F[_]](implicit F: Effect[F]): FunctionK[F, SyncIO] = new FunctionK[F, SyncIO] {
     override def apply[A](fa: F[A]): SyncIO[A] = SyncIO.apply(F.toIO(fa).unsafeRunSync())
   }
 
-  private def pullConsumerToSyncIO[F[_], A: DeliveryConverter](cons: RabbitMQPullConsumer[F, A])(
+  private[rabbitmq] def pullConsumerToSyncIO[F[_], A: DeliveryConverter](cons: RabbitMQPullConsumer[F, A])(
       implicit F: Effect[F]): RabbitMQPullConsumer[SyncIO, A] = { () =>
     fkFToSyncIO.apply(cons.pull()).map {
       case ok: PullResult.Ok[F, A] =>
@@ -102,7 +102,7 @@ package object testing {
     }
   }
 
-  private implicit def producerFunctorK[A]: FunctorK[RabbitMQProducer[*[_], A]] = new FunctorK[RabbitMQProducer[*[_], A]] {
+  private[rabbitmq] implicit def producerFunctorK[A]: FunctorK[RabbitMQProducer[*[_], A]] = new FunctorK[RabbitMQProducer[*[_], A]] {
     override def mapK[F[_], G[_]](af: RabbitMQProducer[F, A])(fToG: ~>[F, G]): RabbitMQProducer[G, A] =
       (routingKey: String, body: A, properties: Option[MessageProperties]) => {
         fToG {
@@ -111,7 +111,7 @@ package object testing {
       }
   }
 
-  private implicit val consumerFunctorK: FunctorK[RabbitMQConsumer] = new FunctorK[RabbitMQConsumer] {
+  private[rabbitmq] implicit val consumerFunctorK: FunctorK[RabbitMQConsumer] = new FunctorK[RabbitMQConsumer] {
     override def mapK[F[_], G[_]](af: RabbitMQConsumer[F])(fk: F ~> G): RabbitMQConsumer[G] = {
       new RabbitMQConsumer[G] {} // no-op
     }

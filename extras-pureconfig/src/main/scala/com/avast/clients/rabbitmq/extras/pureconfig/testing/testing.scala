@@ -21,6 +21,7 @@ import mainecoon.FunctorK
 import scala.language.higherKinds
 
 package object testing {
+  import com.avast.clients.rabbitmq.extras.testing._
 
   implicit class PureconfigConnectionOps[F[_]](val conn: PureconfigRabbitMQConnection[F]) {
 
@@ -71,41 +72,6 @@ package object testing {
 
         override val consumerListener: ConsumerListener = conn.consumerListener
       }
-    }
-  }
-
-  private def fkFToSyncIO[F[_]](implicit F: Effect[F]): FunctionK[F, SyncIO] = new FunctionK[F, SyncIO] {
-    override def apply[A](fa: F[A]): SyncIO[A] = SyncIO.apply(F.toIO(fa).unsafeRunSync())
-  }
-
-  private def pullConsumerToSyncIO[F[_], A: DeliveryConverter](cons: RabbitMQPullConsumer[F, A])(
-      implicit F: Effect[F]): RabbitMQPullConsumer[SyncIO, A] = { () =>
-    fkFToSyncIO.apply(cons.pull()).map {
-      case ok: PullResult.Ok[F, A] =>
-        import ok._ // see https://users.scala-lang.org/t/constructor-pattern-match-constructor-cannot-be-instantiated-to-expected-type/435
-
-        PullResult.Ok(new DeliveryWithHandle[SyncIO, A] {
-          override def delivery: Delivery[A] = deliveryWithHandle.delivery
-
-          override def handle(result: DeliveryResult): SyncIO[Unit] = fkFToSyncIO.apply(deliveryWithHandle.handle(result))
-        })
-
-      case PullResult.EmptyQueue => PullResult.EmptyQueue
-    }
-  }
-
-  private implicit def producerFunctorK[A]: FunctorK[RabbitMQProducer[*[_], A]] = new FunctorK[RabbitMQProducer[*[_], A]] {
-    override def mapK[F[_], G[_]](af: RabbitMQProducer[F, A])(fToG: ~>[F, G]): RabbitMQProducer[G, A] =
-      (routingKey: String, body: A, properties: Option[MessageProperties]) => {
-        fToG {
-          af.send(routingKey, body, properties)
-        }
-      }
-  }
-
-  private implicit val consumerFunctorK: FunctorK[RabbitMQConsumer] = new FunctorK[RabbitMQConsumer] {
-    override def mapK[F[_], G[_]](af: RabbitMQConsumer[F])(fk: F ~> G): RabbitMQConsumer[G] = {
-      new RabbitMQConsumer[G] {} // no-op
     }
   }
 
