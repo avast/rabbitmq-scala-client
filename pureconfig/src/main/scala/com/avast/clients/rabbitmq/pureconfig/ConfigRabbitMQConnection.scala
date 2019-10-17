@@ -26,7 +26,7 @@ import pureconfig.ConfigSource
 import scala.language.higherKinds
 import scala.reflect.ClassTag
 
-trait PureconfigRabbitMQConnection[F[_]] {
+trait ConfigRabbitMQConnection[F[_]] {
 
   def newChannel(): Resource[F, ServerChannel]
 
@@ -87,9 +87,11 @@ trait PureconfigRabbitMQConnection[F[_]] {
   def consumerListener: ConsumerListener
 }
 
-class DefaultPureconfigRabbitMQConnection[F[_]](config: Config, wrapped: RabbitMQConnection[F])(implicit F: ConcurrentEffect[F])
-    extends PureconfigRabbitMQConnection[F] {
+class DefaultConfigRabbitMQConnection[F[_]](config: Config, wrapped: RabbitMQConnection[F])(implicit F: ConcurrentEffect[F],
+                                                                                            pureconfigImplicits: PureconfigImplicits)
+    extends ConfigRabbitMQConnection[F] {
   import cats.syntax.flatMap._
+  import pureconfigImplicits._
 
   override def newChannel(): Resource[F, ServerChannel] = wrapped.newChannel()
 

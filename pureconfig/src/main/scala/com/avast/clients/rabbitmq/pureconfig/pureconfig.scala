@@ -9,7 +9,7 @@ import com.typesafe.config.Config
 
 import scala.language.{higherKinds, implicitConversions}
 
-package object pureconfig extends Implicits {
+package object pureconfig {
 
   object RabbitMQConnectionOps {
     def fromConfig[F[_]: ConcurrentEffect: Timer: ContextShift](
@@ -17,12 +17,16 @@ package object pureconfig extends Implicits {
         blockingExecutor: ExecutorService,
         connectionListener: ConnectionListener = DefaultListeners.DefaultConnectionListener,
         channelListener: ChannelListener = DefaultListeners.DefaultChannelListener,
-        consumerListener: ConsumerListener = DefaultListeners.DefaultConsumerListener): Resource[F, PureconfigRabbitMQConnection[F]] = {
+        consumerListener: ConsumerListener = DefaultListeners.DefaultConsumerListener)(
+        implicit namingConvention: NamingConvention = CamelCase): Resource[F, ConfigRabbitMQConnection[F]] = {
+
+      implicit val pureconfigImplicits: PureconfigImplicits = new PureconfigImplicits
+      import pureconfigImplicits._
 
       for {
         connectionConfig <- Resource.liftF(Sync[F].delay { ConfigSource.fromConfig(config).loadOrThrow[RabbitMQConnectionConfig] })
         connection <- RabbitMQConnection.make(connectionConfig, blockingExecutor, connectionListener, channelListener, consumerListener)
-      } yield new DefaultPureconfigRabbitMQConnection[F](config, connection)
+      } yield new DefaultConfigRabbitMQConnection[F](config, connection)
     }
   }
 
