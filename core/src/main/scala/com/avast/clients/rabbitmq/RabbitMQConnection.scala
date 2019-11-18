@@ -76,7 +76,7 @@ object RabbitMQConnection extends StrictLogging {
       sslContext: Option[SSLContext] = None,
       connectionListener: ConnectionListener = DefaultListeners.DefaultConnectionListener,
       channelListener: ChannelListener = DefaultListeners.DefaultChannelListener,
-      consumerListener: ConsumerListener = DefaultListeners.DefaultConsumerListener): Resource[F, DefaultRabbitMQConnection[F]] = {
+      consumerListener: ConsumerListener = DefaultListeners.DefaultConsumerListener): Resource[F, RabbitMQConnection[F]] = {
     createConnection(connectionConfig, blockingExecutor, sslContext, connectionListener, channelListener, consumerListener).map {
       connection =>
         val blocker = Blocker.liftExecutorService(blockingExecutor)

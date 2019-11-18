@@ -21,7 +21,7 @@ import com.avast.clients.rabbitmq.{
 }
 import com.avast.metrics.scalaapi.Monitor
 import com.typesafe.config.Config
-import pureconfig.ConfigSource
+import pureconfig.{ConfigReader, ConfigSource}
 
 import scala.language.higherKinds
 import scala.reflect.ClassTag
@@ -87,11 +87,17 @@ trait ConfigRabbitMQConnection[F[_]] {
   def consumerListener: ConsumerListener
 }
 
-class DefaultConfigRabbitMQConnection[F[_]](config: Config, wrapped: RabbitMQConnection[F])(implicit F: ConcurrentEffect[F],
-                                                                                            pureconfigImplicits: PureconfigImplicits)
-    extends ConfigRabbitMQConnection[F] {
+class DefaultConfigRabbitMQConnection[F[_]](config: Config, wrapped: RabbitMQConnection[F])(
+    implicit F: ConcurrentEffect[F],
+    consumerConfigReader: ConfigReader[ConsumerConfig],
+    producerConfigReader: ConfigReader[ProducerConfig],
+    pullConsumerConfigReader: ConfigReader[PullConsumerConfig],
+    declareExchangeConfigReader: ConfigReader[DeclareExchangeConfig],
+    declareQueueConfigReader: ConfigReader[DeclareQueueConfig],
+    bindQueueConfigReader: ConfigReader[BindQueueConfig],
+    bindExchangeConfigReader: ConfigReader[BindExchangeConfig]
+) extends ConfigRabbitMQConnection[F] {
   import cats.syntax.flatMap._
-  import pureconfigImplicits._
 
   override def newChannel(): Resource[F, ServerChannel] = wrapped.newChannel()
 
@@ -132,7 +138,7 @@ class DefaultConfigRabbitMQConnection[F[_]](config: Config, wrapped: RabbitMQCon
     loadConfig[BindExchangeConfig](configName) >>= wrapped.bindExchange
   }
 
-  private def loadConfig[C](name: String)(implicit ct: ClassTag[C], cr: pureconfig.Derivation[pureconfig.ConfigReader[C]]): F[C] = {
+  private def loadConfig[C](name: String)(implicit ct: ClassTag[C], cr: ConfigReader[C]): F[C] = {
     F.delay(ConfigSource.fromConfig(config.getConfig(name)).loadOrThrow)
   }
 }

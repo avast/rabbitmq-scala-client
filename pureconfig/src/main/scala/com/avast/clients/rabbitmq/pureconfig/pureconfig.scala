@@ -20,10 +20,15 @@ package object pureconfig {
         connectionListener: ConnectionListener = DefaultListeners.DefaultConnectionListener,
         channelListener: ChannelListener = DefaultListeners.DefaultChannelListener,
         consumerListener: ConsumerListener = DefaultListeners.DefaultConsumerListener)(
-        implicit namingConvention: NamingConvention = CamelCase): Resource[F, ConfigRabbitMQConnection[F]] = {
-
-      implicit val pureconfigImplicits: PureconfigImplicits = new PureconfigImplicits
-      import pureconfigImplicits._
+        implicit connectionConfigReader: ConfigReader[RabbitMQConnectionConfig] = implicits.CamelCase.connectionConfigReader,
+        consumerConfigReader: ConfigReader[ConsumerConfig] = implicits.CamelCase.consumerConfigReader,
+        producerConfigReader: ConfigReader[ProducerConfig] = implicits.CamelCase.producerConfigReader,
+        pullConsumerConfigReader: ConfigReader[PullConsumerConfig] = implicits.CamelCase.pullConsumerConfigReader,
+        declareExchangeConfigReader: ConfigReader[DeclareExchangeConfig] = implicits.CamelCase.declareExchangeConfigReader,
+        declareQueueConfigReader: ConfigReader[DeclareQueueConfig] = implicits.CamelCase.declareQueueConfigReader,
+        bindQueueConfigReader: ConfigReader[BindQueueConfig] = implicits.CamelCase.bindQueueConfigReader,
+        bindExchangeConfigReader: ConfigReader[BindExchangeConfig] = implicits.CamelCase.bindExchangeConfigReader)
+      : Resource[F, ConfigRabbitMQConnection[F]] = {
 
       for {
         connectionConfig <- Resource.liftF(Sync[F].delay { ConfigSource.fromConfig(config).loadOrThrow[RabbitMQConnectionConfig] })

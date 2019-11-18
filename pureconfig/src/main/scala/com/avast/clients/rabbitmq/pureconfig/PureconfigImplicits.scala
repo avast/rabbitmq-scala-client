@@ -30,7 +30,16 @@ import com.avast.clients.rabbitmq.{
 import com.rabbitmq.client.RecoveryDelayHandler
 import org.slf4j.event.Level
 
-private[pureconfig] class PureconfigImplicits(implicit namingConvention: NamingConvention = CamelCase) {
+// scalastyle:off
+object implicits extends PureconfigImplicits( /* use default */ ) {
+  val CamelCase: PureconfigImplicits = new PureconfigImplicits()(namingConvention = _root_.pureconfig.CamelCase)
+  val KebabCase: PureconfigImplicits = new PureconfigImplicits()(namingConvention = _root_.pureconfig.KebabCase)
+  val SnakeCase: PureconfigImplicits = new PureconfigImplicits()(namingConvention = _root_.pureconfig.SnakeCase)
+  val PascalCase: PureconfigImplicits = new PureconfigImplicits()(namingConvention = _root_.pureconfig.PascalCase)
+}
+// scalastyle:on
+
+class PureconfigImplicits(implicit namingConvention: NamingConvention = CamelCase) {
 
   private implicit def hint[T]: ProductHint[T] = ProductHint[T](ConfigFieldMapping(namingConvention, namingConvention))
 
