@@ -5,7 +5,6 @@ import java.util.concurrent.ExecutorService
 
 import cats.effect._
 import com.avast.clients.rabbitmq.api._
-import com.avast.clients.rabbitmq.ssl.{KeyStoreTypes, SSLBuilder}
 import com.avast.metrics.scalaapi.Monitor
 import com.rabbitmq.client._
 import com.typesafe.scalalogging.StrictLogging
@@ -74,29 +73,32 @@ object RabbitMQConnection extends StrictLogging {
   def make[F[_]: ConcurrentEffect: Timer: ContextShift](
       connectionConfig: RabbitMQConnectionConfig,
       blockingExecutor: ExecutorService,
+      sslContext: Option[SSLContext] = None,
       connectionListener: ConnectionListener = DefaultListeners.DefaultConnectionListener,
       channelListener: ChannelListener = DefaultListeners.DefaultChannelListener,
       consumerListener: ConsumerListener = DefaultListeners.DefaultConsumerListener): Resource[F, DefaultRabbitMQConnection[F]] = {
-    createConnection(connectionConfig, blockingExecutor, connectionListener, channelListener, consumerListener).map { connection =>
-      val blocker = Blocker.liftExecutorService(blockingExecutor)
+    createConnection(connectionConfig, blockingExecutor, sslContext, connectionListener, channelListener, consumerListener).map {
+      connection =>
+        val blocker = Blocker.liftExecutorService(blockingExecutor)
 
-      new DefaultRabbitMQConnection(
-        connection = connection,
-        info = RabbitMQConnectionInfo(
-          hosts = connectionConfig.hosts.toVector,
-          virtualHost = connectionConfig.virtualHost,
-          username = if (connectionConfig.credentials.enabled) Option(connectionConfig.credentials.username) else None
-        ),
-        connectionListener = connectionListener,
-        channelListener = channelListener,
-        consumerListener = consumerListener,
-        blocker = blocker
-      )
+        new DefaultRabbitMQConnection(
+          connection = connection,
+          info = RabbitMQConnectionInfo(
+            hosts = connectionConfig.hosts.toVector,
+            virtualHost = connectionConfig.virtualHost,
+            username = if (connectionConfig.credentials.enabled) Option(connectionConfig.credentials.username) else None
+          ),
+          connectionListener = connectionListener,
+          channelListener = channelListener,
+          consumerListener = consumerListener,
+          blocker = blocker
+        )
     }
   }
 
   protected def createConnection[F[_]: Sync](connectionConfig: RabbitMQConnectionConfig,
                                              executor: ExecutorService,
+                                             sslContext: Option[SSLContext],
                                              connectionListener: ConnectionListener,
                                              channelListener: ChannelListener,
                                              consumerListener: ConsumerListener): Resource[F, ServerConnection] =
@@ -106,7 +108,7 @@ object RabbitMQConnection extends StrictLogging {
 
         val factory = new ConnectionFactory
         val exceptionHandler = createExceptionHandler(connectionListener, channelListener, consumerListener)
-        setUpConnection(connectionConfig, factory, exceptionHandler, executor)
+        setUpConnection(connectionConfig, factory, exceptionHandler, sslContext, executor)
 
         val addresses = try {
           hosts.map(Address.parseAddress)
@@ -137,6 +139,7 @@ object RabbitMQConnection extends StrictLogging {
   private def setUpConnection(connectionConfig: RabbitMQConnectionConfig,
                               factory: ConnectionFactory,
                               exceptionHandler: ExceptionHandler,
+                              sslContext: Option[SSLContext],
                               executor: ExecutorService): Unit = {
     import connectionConfig._
 
@@ -158,20 +161,8 @@ object RabbitMQConnection extends StrictLogging {
       factory.setPassword(password)
     }
 
-    if (connectionConfig.ssl.enabled) {
-      connectionConfig.ssl.trustStore match {
-        case Some(truststore) =>
-          import truststore._
-
-          val sslContext = SSLBuilder
-            .empty()
-            .loadAllFromBundle(path, KeyStoreTypes.JKSTrustStore, password)
-            .build
-
-          factory.useSslProtocol(sslContext)
-
-        case None => factory.useSslProtocol(SSLContext.getDefault)
-      }
+    sslContext.foreach { sslContext =>
+      factory.useSslProtocol(sslContext)
     }
 
     factory.setConnectionTimeout(connectionTimeout.toMillis.toInt)

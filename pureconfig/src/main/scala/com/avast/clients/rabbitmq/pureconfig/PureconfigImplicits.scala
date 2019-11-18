@@ -25,9 +25,7 @@ import com.avast.clients.rabbitmq.{
   ProducerPropertiesConfig,
   PullConsumerConfig,
   RabbitMQConnectionConfig,
-  RecoveryDelayHandlers,
-  SslConfig,
-  TrustStoreConfig
+  RecoveryDelayHandlers
 }
 import com.rabbitmq.client.RecoveryDelayHandler
 import org.slf4j.event.Level
@@ -53,8 +51,6 @@ private[pureconfig] class PureconfigImplicits(implicit namingConvention: NamingC
   implicit val autoDeclareExchangeConfigReader: ConfigReader[AutoDeclareExchangeConfig] = deriveReader
   implicit val networkRecoveryConfigReader: ConfigReader[NetworkRecoveryConfig] = deriveReader
   implicit val credentialsConfigReader: ConfigReader[CredentialsConfig] = deriveReader
-  implicit val sslConfigReader: ConfigReader[SslConfig] = deriveReader
-  implicit val trustStoreConfigReader: ConfigReader[TrustStoreConfig] = deriveReader
   implicit val autoBindQueueConfigReader: ConfigReader[AutoBindQueueConfig] = deriveReader
   implicit val autoBindExchangeConfigReader: ConfigReader[AutoBindExchangeConfig] = deriveReader
   implicit val producerPropertiesConfigReader: ConfigReader[ProducerPropertiesConfig] = deriveReader

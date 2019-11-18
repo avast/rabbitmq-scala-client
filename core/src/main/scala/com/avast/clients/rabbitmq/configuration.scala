@@ -1,7 +1,5 @@
 package com.avast.clients.rabbitmq
 
-import java.nio.file.Path
-
 import com.avast.clients.rabbitmq.api.DeliveryResult
 import com.rabbitmq.client.RecoveryDelayHandler
 import org.slf4j.event.Level
@@ -16,16 +14,11 @@ final case class RabbitMQConnectionConfig(hosts: immutable.Seq[String],
                                           heartBeatInterval: FiniteDuration = 30.seconds,
                                           topologyRecovery: Boolean = true,
                                           networkRecovery: NetworkRecoveryConfig = NetworkRecoveryConfig(),
-                                          credentials: CredentialsConfig,
-                                          ssl: SslConfig = SslConfig())
+                                          credentials: CredentialsConfig)
 
 final case class NetworkRecoveryConfig(enabled: Boolean = true, handler: RecoveryDelayHandler = RecoveryDelayHandlers.Linear())
 
 final case class CredentialsConfig(enabled: Boolean = true, username: String, password: String)
-
-final case class SslConfig(enabled: Boolean = true, trustStore: Option[TrustStoreConfig] = None) // TODO SSLContext??; support other types
-
-final case class TrustStoreConfig(path: Path, password: String)
 
 final case class ConsumerConfig(queueName: String,
                                 processTimeout: FiniteDuration = 10.seconds,
