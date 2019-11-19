@@ -323,6 +323,8 @@ You can either disable the recovery or select (and configure one of following ty
     Example:  
     For `initialDelay = 3s, period = 2s, factor = 2.0, maxLength = 1 minute`, produced delays will be 3, 2, 4, 8, 16, 32, 60 seconds
     (and it will never go higher).
+    
+Do not set too short custom recovery delay intervals (less than 2 seconds) as it is not recommended by the official [RabbitMQ API Guide](https://www.rabbitmq.com/api-guide.html#automatic-recovery-limitations). 
 
 ### DeliveryResult
 The consumers `readAction` returns `Future` of [`DeliveryResult`](api/src/main/scala/com/avast/clients/rabbitmq/api/DeliveryResult.scala). The `DeliveryResult` has 4 possible values
