@@ -30,6 +30,8 @@ import com.avast.clients.rabbitmq.{
 import com.rabbitmq.client.RecoveryDelayHandler
 import org.slf4j.event.Level
 
+import scala.collection.JavaConverters._
+
 // scalastyle:off
 object implicits extends PureconfigImplicits( /* use default */ ) {
   val CamelCase: PureconfigImplicits = new PureconfigImplicits()(namingConvention = _root_.pureconfig.CamelCase)
@@ -41,7 +43,7 @@ object implicits extends PureconfigImplicits( /* use default */ ) {
 
 class PureconfigImplicits(implicit namingConvention: NamingConvention = CamelCase) {
 
-  private implicit def hint[T]: ProductHint[T] = ProductHint[T](ConfigFieldMapping(namingConvention, namingConvention))
+  private implicit def hint[T]: ProductHint[T] = ProductHint[T](ConfigFieldMapping(CamelCase, namingConvention), allowUnknownKeys = false)
 
   // connection, producer, consumers:
   implicit val connectionConfigReader: ConfigReader[RabbitMQConnectionConfig] = deriveReader
@@ -90,9 +92,13 @@ class PureconfigImplicits(implicit namingConvention: NamingConvention = CamelCas
     implicit val exponentialReader: ConfigReader[RecoveryDelayHandlers.Exponential] = deriveReader
 
     override def from(cur: ConfigCursor): Result[RecoveryDelayHandler] = {
-      cur.fluent.at("type").asString.map(_.toLowerCase).flatMap {
-        case "linear" => ConfigReader[RecoveryDelayHandlers.Linear].from(cur)
-        case "exponential" => ConfigReader[RecoveryDelayHandlers.Exponential].from(cur)
+      cur.asObjectCursor.right.map(_.value.toConfig).flatMap { config =>
+        val strippedConfig = config.withoutPath("type")
+
+        config.getString("type").toLowerCase match {
+          case "linear" => ConfigReader[RecoveryDelayHandlers.Linear].from(strippedConfig.root())
+          case "exponential" => ConfigReader[RecoveryDelayHandlers.Exponential].from(strippedConfig.root())
+        }
       }
     }
   }
