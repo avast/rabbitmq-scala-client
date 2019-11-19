@@ -1,11 +1,11 @@
 package com.avast.clients.rabbitmq
-import java.time.Duration
 
+import scala.concurrent.duration._
 import scala.util.Random
 
 class RecoveryDelayHandlersTest extends TestBase {
   test("linear") {
-    val rdh = RecoveryDelayHandlers.Linear(Duration.ofMillis(10), Duration.ofMillis(42))
+    val rdh = RecoveryDelayHandlers.Linear(10.millis, 42.millis)
 
     assertResult(10)(rdh.getDelay(0))
 
@@ -15,7 +15,7 @@ class RecoveryDelayHandlersTest extends TestBase {
   }
 
   test("exponential") {
-    val rdh = RecoveryDelayHandlers.Exponential(Duration.ofMillis(1), Duration.ofMillis(5), 2.0, Duration.ofMillis(42))
+    val rdh = RecoveryDelayHandlers.Exponential(1.millis, 5.millis, 2.0, 42.millis)
 
     assertResult(1)(rdh.getDelay(0))
 

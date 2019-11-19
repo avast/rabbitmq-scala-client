@@ -1,71 +1,109 @@
 package com.avast.clients.rabbitmq
 
-import java.nio.file.Path
-import java.time.Duration
-
 import com.avast.clients.rabbitmq.api.DeliveryResult
 import com.rabbitmq.client.RecoveryDelayHandler
-import com.typesafe.config.Config
 import org.slf4j.event.Level
 
 import scala.collection.immutable
+import scala.concurrent.duration._
 
-case class RabbitMQConnectionConfig(hosts: Array[String],
-                                    name: String,
-                                    virtualHost: String,
-                                    connectionTimeout: Duration,
-                                    heartBeatInterval: Duration,
-                                    topologyRecovery: Boolean,
-                                    networkRecovery: NetworkRecovery,
-                                    credentials: Credentials,
-                                    ssl: Ssl)
+final case class RabbitMQConnectionConfig(hosts: immutable.Seq[String],
+                                          name: String,
+                                          virtualHost: String,
+                                          connectionTimeout: FiniteDuration = 5.seconds,
+                                          heartBeatInterval: FiniteDuration = 30.seconds,
+                                          topologyRecovery: Boolean = true,
+                                          networkRecovery: NetworkRecoveryConfig = NetworkRecoveryConfig(),
+                                          credentials: CredentialsConfig)
 
-case class NetworkRecovery(enabled: Boolean, handler: RecoveryDelayHandler)
+final case class NetworkRecoveryConfig(enabled: Boolean = true, handler: RecoveryDelayHandler = RecoveryDelayHandlers.Linear())
 
-case class Credentials(enabled: Boolean, username: String, password: String)
+final case class CredentialsConfig(enabled: Boolean = true, username: String, password: String)
 
-case class Ssl(enabled: Boolean, trustStore: TrustStore)
+final case class ConsumerConfig(queueName: String,
+                                processTimeout: FiniteDuration = 10.seconds,
+                                failureAction: DeliveryResult = DeliveryResult.Republish(),
+                                timeoutAction: DeliveryResult = DeliveryResult.Republish(),
+                                timeoutLogLevel: Level = Level.WARN,
+                                prefetchCount: Int = 100,
+                                declare: Option[AutoDeclareQueueConfig] = None,
+                                bindings: immutable.Seq[AutoBindQueueConfig],
+                                consumerTag: String = "Default",
+                                name: String)
 
-case class TrustStore(path: Path, password: String)
+final case class PullConsumerConfig(queueName: String,
+                                    failureAction: DeliveryResult = DeliveryResult.Republish(),
+                                    declare: Option[AutoDeclareQueueConfig] = None,
+                                    bindings: immutable.Seq[AutoBindQueueConfig],
+                                    name: String)
 
-private[rabbitmq] case class RabbitMQConnectionInfo(hosts: immutable.Seq[String], virtualHost: String, username: Option[String])
+final case class AutoDeclareQueueConfig(enabled: Boolean = false,
+                                        durable: Boolean = true,
+                                        exclusive: Boolean = false,
+                                        autoDelete: Boolean = false,
+                                        arguments: DeclareArgumentsConfig = DeclareArgumentsConfig())
 
-case class ConsumerConfig(queueName: String,
-                          processTimeout: Duration,
-                          failureAction: DeliveryResult,
-                          timeoutAction: DeliveryResult,
-                          timeoutLogLevel: Level,
-                          prefetchCount: Int,
-                          declare: AutoDeclareQueue,
-                          bindings: immutable.Seq[AutoBindQueue],
-                          consumerTag: String,
-                          name: String)
+final case class DeclareArgumentsConfig(value: Map[String, Any] = Map.empty)
 
-case class PullConsumerConfig(queueName: String,
-                              failureAction: DeliveryResult,
-                              declare: AutoDeclareQueue,
-                              bindings: immutable.Seq[AutoBindQueue],
-                              name: String)
+final case class BindArgumentsConfig(value: Map[String, Any] = Map.empty)
 
-case class AutoDeclareQueue(enabled: Boolean, durable: Boolean, exclusive: Boolean, autoDelete: Boolean, arguments: DeclareArguments)
+final case class AutoBindQueueConfig(exchange: AutoBindExchangeConfig,
+                                     routingKeys: immutable.Seq[String],
+                                     bindArguments: BindArgumentsConfig = BindArgumentsConfig())
 
-case class DeclareArguments(value: Map[String, Any])
+final case class AutoBindExchangeConfig(name: String, declare: Option[AutoDeclareExchangeConfig] = None)
 
-case class BindArguments(value: Map[String, Any])
+final case class ProducerConfig(exchange: String,
+                                declare: Option[AutoDeclareExchangeConfig] = None,
+                                reportUnroutable: Boolean = true,
+                                name: String,
+                                properties: ProducerPropertiesConfig = ProducerPropertiesConfig())
 
-case class AutoBindQueue(exchange: AutoBindExchange, routingKeys: immutable.Seq[String], bindArguments: BindArguments)
+final case class ProducerPropertiesConfig(deliveryMode: Int = 2,
+                                          contentType: Option[String] = None,
+                                          contentEncoding: Option[String] = None,
+                                          priority: Option[Int] = None)
 
-case class AutoBindExchange(name: String, declare: Config)
+final case class AutoDeclareExchangeConfig(enabled: Boolean,
+                                           `type`: ExchangeType,
+                                           durable: Boolean = true,
+                                           autoDelete: Boolean = false,
+                                           arguments: DeclareArgumentsConfig = DeclareArgumentsConfig())
 
-case class ProducerConfig(exchange: String, declare: Config, reportUnroutable: Boolean, name: String, properties: ProducerProperties)
-case class ProducerProperties(deliveryMode: Int, contentType: Option[String], contentEncoding: Option[String], priority: Option[Int])
+final case class DeclareExchangeConfig(name: String,
+                                       `type`: ExchangeType,
+                                       durable: Boolean = true,
+                                       autoDelete: Boolean = false,
+                                       arguments: DeclareArgumentsConfig = DeclareArgumentsConfig())
 
-case class AutoDeclareExchange(enabled: Boolean, `type`: String, durable: Boolean, autoDelete: Boolean, arguments: DeclareArguments)
+final case class DeclareQueueConfig(name: String,
+                                    durable: Boolean = true,
+                                    exclusive: Boolean = false,
+                                    autoDelete: Boolean = false,
+                                    arguments: DeclareArgumentsConfig = DeclareArgumentsConfig())
 
-case class DeclareExchange(name: String, `type`: String, durable: Boolean, autoDelete: Boolean, arguments: DeclareArguments)
+final case class BindQueueConfig(queueName: String,
+                                 exchangeName: String,
+                                 routingKeys: immutable.Seq[String],
+                                 arguments: BindArgumentsConfig = BindArgumentsConfig())
 
-case class DeclareQueue(name: String, durable: Boolean, exclusive: Boolean, autoDelete: Boolean, arguments: DeclareArguments)
+final case class BindExchangeConfig(sourceExchangeName: String,
+                                    destExchangeName: String,
+                                    routingKeys: immutable.Seq[String],
+                                    arguments: BindArgumentsConfig = BindArgumentsConfig())
 
-case class BindQueue(queueName: String, exchangeName: String, routingKeys: immutable.Seq[String], arguments: BindArguments)
+sealed trait ExchangeType {
+  val value: String
+}
+object ExchangeType {
+  def apply(name: String): Option[ExchangeType] = name.toLowerCase match {
+    case Direct.value => Some(Direct)
+    case Fanout.value => Some(Fanout)
+    case Topic.value => Some(Topic)
+    case _ => None
+  }
 
-case class BindExchange(sourceExchangeName: String, destExchangeName: String, routingKeys: immutable.Seq[String], arguments: BindArguments)
+  case object Direct extends ExchangeType { val value: String = "direct" }
+  case object Fanout extends ExchangeType { val value: String = "fanout" }
+  case object Topic extends ExchangeType { val value: String = "topic" }
+}

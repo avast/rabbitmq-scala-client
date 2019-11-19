@@ -1,7 +1,7 @@
 package com.avast.clients.rabbitmq
 import java.util.concurrent.Executors
 
-import cats.effect.{Blocker, IO, Resource, SyncIO}
+import cats.effect.{Blocker, IO, Resource}
 import com.typesafe.scalalogging.StrictLogging
 import monix.eval.Task
 import monix.execution.Scheduler
@@ -20,7 +20,7 @@ import scala.language.{higherKinds, implicitConversions}
 @RunWith(classOf[JUnitRunner])
 class TestBase extends FunSuite with MockitoSugar with Eventually with StrictLogging {
   protected implicit def taskToOps[A](t: Task[A]): TaskOps[A] = new TaskOps[A](t)
-  protected implicit def resourceToSyncIOOps[A](t: Resource[SyncIO, A]): ResourceSyncIOOps[A] = new ResourceSyncIOOps[A](t)
+  protected implicit def resourceToIOOps[A](t: Resource[IO, A]): ResourceIOOps[A] = new ResourceIOOps[A](t)
   protected implicit def resourceToTaskOps[A](t: Resource[Task, A]): ResourceTaskOps[A] = new ResourceTaskOps[A](t)
 }
 
@@ -34,13 +34,13 @@ class TaskOps[A](t: Task[A]) {
   def await: A = await(10.seconds)
 }
 
-class ResourceSyncIOOps[A](val r: Resource[SyncIO, A]) extends AnyVal {
+class ResourceIOOps[A](val r: Resource[IO, A]) extends AnyVal {
   def withResource[B](f: A => B): B = {
     withResource(f, Duration.Inf)
   }
 
   def withResource[B](f: A => B, timeout: Duration): B = {
-    r.use(a => SyncIO(f).map(_(a))).toIO.unsafeRunTimed(timeout).getOrElse(throw new TimeoutException("Timeout has occurred"))
+    r.use(a => IO(f).map(_(a))).unsafeRunTimed(timeout).getOrElse(throw new TimeoutException("Timeout has occurred"))
   }
 }
 

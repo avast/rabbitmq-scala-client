@@ -3,17 +3,16 @@ package com.avast.clients.rabbitmq
 import java.util.concurrent._
 import java.util.concurrent.atomic.AtomicInteger
 
-import cats.effect.SyncIO
+import cats.effect.{ContextShift, IO, Timer}
 import com.avast.bytes.Bytes
+import com.avast.clients.rabbitmq.api.DeliveryResult._
 import com.avast.clients.rabbitmq.api._
 import com.avast.clients.rabbitmq.extras.PoisonedMessageHandler
 import com.avast.clients.rabbitmq.extras.format.JsonDeliveryConverter
-import com.avast.clients.rabbitmq.extras.testing._
 import com.avast.metrics.scalaapi.Monitor
 import com.typesafe.config._
 import monix.eval.Task
 import monix.execution.Scheduler
-import net.ceedubs.ficus.Ficus._
 import org.scalatest.concurrent.ScalaFutures
 import org.scalatest.time._
 
@@ -23,8 +22,7 @@ import scala.concurrent.duration._
 import scala.util.Random
 
 class LiveTest extends TestBase with ScalaFutures {
-
-  import com.avast.clients.rabbitmq.api.DeliveryResult._
+  import pureconfig._
 
   private implicit val p: PatienceConfig = PatienceConfig(timeout = Span(5, Seconds))
 
@@ -39,7 +37,7 @@ class LiveTest extends TestBase with ScalaFutures {
 
     private val original = ConfigFactory.load().getConfig("myConfig")
 
-    val bindConfigs: Array[Config] = original.as[Array[Config]]("consumer.bindings")
+    val bindConfigs: Array[Config] = original.getObjectList("consumer.bindings").asScala.map(_.toConfig).toArray
     bindConfigs(0) = bindConfigs(0).withValue("exchange.name", ConfigValueFactory.fromAnyRef(exchange1))
     bindConfigs(1) = bindConfigs(1).withValue("exchange.name", ConfigValueFactory.fromAnyRef(exchange2))
 
@@ -200,13 +198,16 @@ class LiveTest extends TestBase with ScalaFutures {
     val c = createConfig()
     import c._
 
-    RabbitMQConnection.fromConfig[Task](config, ex).map(_.asBlocking).withResource { rabbitConnection =>
+    implicit val cs: ContextShift[IO] = IO.contextShift(ExecutionContext.global)
+    implicit val timer: Timer[IO] = IO.timer(ExecutionContext.global)
+
+    RabbitMQConnection.fromConfig[IO](config, ex).withResource { rabbitConnection =>
       val cnt = new AtomicInteger(0)
 
       val cons = rabbitConnection.newConsumer("consumer", Monitor.noOp()) { _: Delivery[Bytes] =>
         cnt.incrementAndGet()
         Thread.sleep(800) // timeout is set to 500 ms
-        SyncIO.pure(Ack)
+        IO.pure(Ack)
       }
 
       cons.withResource { _ =>
@@ -228,12 +229,15 @@ class LiveTest extends TestBase with ScalaFutures {
     val c = createConfig()
     import c._
 
-    RabbitMQConnection.fromConfig[Task](config, ex).map(_.asBlocking).withResource { rabbitConnection =>
+    implicit val cs: ContextShift[IO] = IO.contextShift(ExecutionContext.global)
+    implicit val timer: Timer[IO] = IO.timer(ExecutionContext.global)
+
+    RabbitMQConnection.fromConfig[IO](config, ex).withResource { rabbitConnection =>
       val latch = new CountDownLatch(10)
 
       val cons = rabbitConnection.newConsumer("consumer", Monitor.noOp()) { _: Delivery[Bytes] =>
         latch.countDown()
-        SyncIO.pure(Ack)
+        IO.pure(Ack)
       }
 
       cons.withResource { _ =>
@@ -302,7 +306,10 @@ class LiveTest extends TestBase with ScalaFutures {
     val c = createConfig()
     import c._
 
-    RabbitMQConnection.fromConfig[Task](config, ex).map(_.asBlocking).withResource { rabbitConnection =>
+    implicit val cs: ContextShift[IO] = IO.contextShift(ExecutionContext.global)
+    implicit val timer: Timer[IO] = IO.timer(ExecutionContext.global)
+
+    RabbitMQConnection.fromConfig[IO](config, ex).withResource { rabbitConnection =>
       val cons = rabbitConnection.newPullConsumer[Bytes]("consumer", Monitor.noOp())
 
       cons.withResource { consumer =>
@@ -349,20 +356,23 @@ class LiveTest extends TestBase with ScalaFutures {
 
     implicit val conv: DeliveryConverter[Abc] = JsonDeliveryConverter.derive[Abc]()
 
-    RabbitMQConnection.fromConfig[Task](config, ex).map(_.asBlocking).withResource { rabbitConnection =>
+    implicit val cs: ContextShift[IO] = IO.contextShift(ExecutionContext.global)
+    implicit val timer: Timer[IO] = IO.timer(ExecutionContext.global)
+
+    RabbitMQConnection.fromConfig[IO](config, ex).withResource { rabbitConnection =>
       val parsingFailures = new AtomicInteger(0)
       val processing = new AtomicInteger(0)
 
       val cons = rabbitConnection.newConsumer[Abc]("consumer", Monitor.noOp()) {
         case _: Delivery.Ok[Abc] =>
           processing.incrementAndGet()
-          SyncIO(DeliveryResult.Ack)
+          IO(DeliveryResult.Ack)
 
         case d: Delivery.MalformedContent =>
           assertResult(10)(d.body.size())
 
           val i = parsingFailures.incrementAndGet()
-          SyncIO {
+          IO {
             if (i > 3) DeliveryResult.Ack
             else {
               logger.info(s"Retrying $i", d.ce)
