@@ -425,7 +425,7 @@ class DefaultRabbitMQConsumerTest extends TestBase {
         assertResult(Seq.empty)(successLengths)
         val Seq(taskLength) = failuresLengths.result()
 
-        assert(taskLength > 2000)
+        assert(taskLength > 1990) // 2000 minus some tolerance
       }
     }
   }
