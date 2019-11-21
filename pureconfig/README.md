@@ -3,7 +3,7 @@
 This module contains an alternative way how to configure RabbitMQ client - with [`Config`](https://github.com/lightbend/config) instance.
 
 Before version 8, configuration from `Config` was the only way how to get instance of this client. Since then, configuration from `Config`
-is only available with this module. The implementation is one Pureconfig library and the module exposes `ConfigReader` instances for all
+is only available with this module. The implementation is done with Pureconfig library and the module exposes `ConfigReader` instances for all
 configuration classes.
 
 ## Dependency

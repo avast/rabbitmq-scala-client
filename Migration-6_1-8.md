@@ -1,14 +1,14 @@
 ## Migration from 6.1.x to 8.0.x
 
 
-Java API was **COMPLETELY REMOVED** and won't be supported anymore. Checkout version 7.x for last version supporting Java API.
+Java API was **COMPLETELY REMOVED** and won't be supported anymore. Checkout version 7.x for the last version supporting Java API.
 
 ---
 
 1. API is fully effectful.
     * Init methods return [`cats.effect.Resource`](https://typelevel.org/cats-effect/datatypes/resource.html) for easy resource management.
     * Declaration methods return `F[Unit]`.
-1. Configuration could be done with case classes - this is the default way. See [`RabbitMQConnection.make`](core/src/main/scala/com/avast/clients/rabbitmq/RabbitMQConnection.scala#L73).
+1. Library could be configured with case classes - this is the default way. See [`RabbitMQConnection.make`](core/src/main/scala/com/avast/clients/rabbitmq/RabbitMQConnection.scala#L73).
 1. Configuration from [Lightbend `Config`](https://github.com/lightbend/config) was separated to [`pureconfig`](pureconfig) module. It's
 behavior remained backward compatible with these exceptions:
     * SSL context is now passed explicitly and is **ignored** in `Config` (see more below).

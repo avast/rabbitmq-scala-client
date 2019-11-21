@@ -4,7 +4,7 @@
 [![Download](https://api.bintray.com/packages/avast/maven/rabbitmq-scala-client/images/download.svg) ](https://bintray.com/avast/maven/rabbitmq-scala-client/_latestVersion)
 
 
-This client is Scala wrapper over standard [RabbitMQ java client](https://www.rabbitmq.com/java-client.html). Goal of this library is
+This client is Scala wrapper over the standard [RabbitMQ Java client](https://www.rabbitmq.com/java-client.html). Goal of this library is
 to simplify basic use cases - to provide FP-oriented API for programmers and to shadow the programmer from an underlying client.
 
 The library is configurable both by case classes (`core` module) and by HOCON/Lightbend `Config` (`pureconfig` module).
