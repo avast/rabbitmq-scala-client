@@ -1,5 +1,7 @@
 package com.avast.clients.rabbitmq.pureconfig
 
+import _root_.pureconfig.error.ConfigReaderException
+import _root_.pureconfig.{ConfigCursor, ConfigReader}
 import cats.effect.{ConcurrentEffect, Resource}
 import com.avast.clients.rabbitmq.api._
 import com.avast.clients.rabbitmq.{
@@ -20,8 +22,6 @@ import com.avast.clients.rabbitmq.{
   ServerChannel
 }
 import com.avast.metrics.scalaapi.Monitor
-import com.typesafe.config.Config
-import pureconfig.{ConfigReader, ConfigSource}
 
 import scala.language.higherKinds
 import scala.reflect.ClassTag
@@ -87,7 +87,7 @@ trait ConfigRabbitMQConnection[F[_]] {
   def consumerListener: ConsumerListener
 }
 
-class DefaultConfigRabbitMQConnection[F[_]](config: Config, wrapped: RabbitMQConnection[F])(
+class DefaultConfigRabbitMQConnection[F[_]](config: ConfigCursor, wrapped: RabbitMQConnection[F])(
     implicit F: ConcurrentEffect[F],
     consumerConfigReader: ConfigReader[ConsumerConfig],
     producerConfigReader: ConfigReader[ProducerConfig],
@@ -111,34 +111,36 @@ class DefaultConfigRabbitMQConnection[F[_]](config: Config, wrapped: RabbitMQCon
 
   override def newConsumer[A: DeliveryConverter](configName: String, monitor: Monitor)(
       readAction: DeliveryReadAction[F, A]): Resource[F, RabbitMQConsumer[F]] = {
-    Resource.liftF(loadConfig[ConsumerConfig](configName)) >>= (wrapped.newConsumer(_, monitor)(readAction))
+    Resource.liftF(loadConfig[ConsumerConfig](ConsumersRootName, configName)) >>= (wrapped.newConsumer(_, monitor)(readAction))
   }
 
   override def newProducer[A: ProductConverter](configName: String, monitor: Monitor): Resource[F, RabbitMQProducer[F, A]] = {
-    Resource.liftF(loadConfig[ProducerConfig](configName)) >>= (wrapped.newProducer(_, monitor))
+    Resource.liftF(loadConfig[ProducerConfig](ProducersRootName, configName)) >>= (wrapped.newProducer(_, monitor))
   }
 
   override def newPullConsumer[A: DeliveryConverter](configName: String, monitor: Monitor): Resource[F, RabbitMQPullConsumer[F, A]] = {
-    Resource.liftF(loadConfig[PullConsumerConfig](configName)) >>= (wrapped.newPullConsumer(_, monitor))
+    Resource.liftF(loadConfig[PullConsumerConfig](ConsumersRootName, configName)) >>= (wrapped.newPullConsumer(_, monitor))
   }
 
   override def declareExchange(configName: String): F[Unit] = {
-    loadConfig[DeclareExchangeConfig](configName) >>= wrapped.declareExchange
+    loadConfig[DeclareExchangeConfig](DeclarationsRootName, configName) >>= wrapped.declareExchange
   }
 
   override def declareQueue(configName: String): F[Unit] = {
-    loadConfig[DeclareQueueConfig](configName) >>= wrapped.declareQueue
+    loadConfig[DeclareQueueConfig](DeclarationsRootName, configName) >>= wrapped.declareQueue
   }
 
   override def bindQueue(configName: String): F[Unit] = {
-    loadConfig[BindQueueConfig](configName) >>= wrapped.bindQueue
+    loadConfig[BindQueueConfig](DeclarationsRootName, configName) >>= wrapped.bindQueue
   }
 
   override def bindExchange(configName: String): F[Unit] = {
-    loadConfig[BindExchangeConfig](configName) >>= wrapped.bindExchange
+    loadConfig[BindExchangeConfig](DeclarationsRootName, configName) >>= wrapped.bindExchange
   }
 
-  private def loadConfig[C](name: String)(implicit ct: ClassTag[C], cr: ConfigReader[C]): F[C] = {
-    F.delay(ConfigSource.fromConfig(config.getConfig(name)).loadOrThrow)
+  private def loadConfig[C](section: String, name: String)(implicit ct: ClassTag[C], reader: ConfigReader[C]): F[C] = {
+    F.delay {
+      config.fluent.at(section).at(name).cursor.flatMap(reader.from).fold(errs => throw ConfigReaderException(errs), identity)
+    }
   }
 }

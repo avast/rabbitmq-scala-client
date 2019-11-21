@@ -4,26 +4,30 @@
 [![Download](https://api.bintray.com/packages/avast/maven/rabbitmq-scala-client/images/download.svg) ](https://bintray.com/avast/maven/rabbitmq-scala-client/_latestVersion)
 
 
-This client is Scala-first wrapper over standard [RabbitMQ java client](https://www.rabbitmq.com/java-client.html). Goal of this library is
+This client is Scala wrapper over the standard [RabbitMQ Java client](https://www.rabbitmq.com/java-client.html). Goal of this library is
 to simplify basic use cases - to provide FP-oriented API for programmers and to shadow the programmer from an underlying client.
 
-The library has both Scala and Java API where the Scala API is generic and gives you an option to adapt to your application's type -
-see [Scala usage below](#scala-usage).
+The library is configurable both by case classes (`core` module) and by HOCON/Lightbend `Config` (`pureconfig` module).
 
 The library uses concept of _connection_ and derived _producers_ and _consumers_. Note that the _connection_ shadows you from the underlying
 concept of AMQP connection and derived channels - it handles channels automatically according to best practises. Each _producer_ and _consumer_
 can be closed separately while closing _connection_ causes closing all derived channels and all _producers_ and _consumers_.
 
 ## Dependency
+SBT:
+`'com.avast.clients.rabbitmq' %% 'rabbitmq-client-core' % 'x.x.x'`
+
+Gradle:
 `compile 'com.avast.clients.rabbitmq:rabbitmq-client-core_$scalaVersion:x.x.x'`
 
 ## Modules
 
-There are [api](api) and [core](core) modules available for the most common usage but there are also few _extras_ modules which contains
-some optional functionality:
-1. [extras](extras/README.md)
-1. [extras-circe](extras-circe/README.md) (adds some circe-dependent functionality)
-1. [extras-cactus](extras-cactus/README.md) (adds some cactus-dependent functionality)
+1. [api](api) - Contains only basic traits for consumer etc.
+1. [core](core) - Main module. The client, configurable by case classes.
+1. [pureconfig](pureconfig) - Module for configuration from [`Config`](https://github.com/lightbend/config).
+1. [extras](extras/README.md) - Module with some extra feature.
+1. [extras-circe](extras-circe/README.md) Adds some circe-dependent functionality.
+1. [extras-cactus](extras-cactus/README.md) Aadds some cactus-dependent functionality.
 
 ## Migration
 
@@ -33,135 +37,6 @@ There is a [migration guide](Migration-6_1-7.md) between versions 6.1.x and 7.0.
 There is a [migration guide](Migration-6_1-8.md) between versions 6.1.x and 8.0.x.
 
 ## Usage
-
-Note: this is documentation for current (7.x) releases. For an older documentation, go to [releases](https://github.com/avast/rabbitmq-scala-client/releases)
-and select tag associated with required client version.
-
-### Configuration
-
-#### Structured config
-
-```hocon
-rabbitConfig {
-  // connection config
-  
-  consumer1 {
-    //consumer config
-  }
-  
-  consumer2 {
-    //consumer config
-  }
-  
-  producer1 {
-    //producer config
-  }
-  
-  producer2 {
-    //producer config
-  }
-}
-
-```
-
-#### Config example
-
-```hocon
-myConfig {
-  hosts = ["localhost:5672"]
-  virtualHost = "/"
-  
-  name = "Cluster01Connection" // used for logging AND is also visible in client properties in RabbitMQ management console
-
-  ssl {
-    enabled = false // enabled by default
-  }
-
-  credentials {
-    //enabled = true // enabled by default
-
-    username = "guest"
-    password = "guest"
-  }
-
-  connectionTimeout = 5s // default value
-
-  networkRecovery {
-    enabled = true // default value
-    period = 5s // default value
-  }
-
-
-  // CONSUMERS AND PRODUCERS:
-
-  // this is the name you use while creating; it's recommended to use something more expressive, like "licensesConsumer"
-  consumer {
-    name = "Testing" // this is used for metrics, logging etc.
-
-    consumerTag = Default // string or "Default"; default is randomly generated string (like "amq.ctag-ov2Sp8MYKE6ysJ9SchKeqQ"); visible in RabbitMQ management console
-
-    queueName = "test"
-
-    prefetchCount = 100 // don't change unless you have a reason to do so ;-)
-
-    // should the consumer declare queue he wants to read from?
-    declare {
-      enabled = true // disabled by default
-
-      durable = true // default value
-      autoDelete = false // default value
-      exclusive = false // default value
-    }
-
-    // bindings from exchanges to the queue
-    bindings = [
-      {
-        // all routing keys the queue should bind with
-        // leave empty or use "" for binding to fanout exchange
-        routingKeys = ["test"]
-
-        // should the consumer declare exchange he wants to bind to?
-        exchange {
-          name = "myclient"
-
-          declare {
-            enabled = true // disabled by default
-
-            type = "direct" // fanout, topic
-          }
-        }
-      }
-    ]
-  }
-
-  // this is the name you use while creating; it's recommended to use something more expressive, like "licensesProducer"
-  producer {
-    name = "Testing" // this is used for metrics, logging etc.
-
-    exchange = "myclient"
-
-    // should the producer declare exchange he wants to send to?
-    declare {
-      enabled = true // disabled by default
-
-      type = "direct" // fanout, topic
-      durable = true // default value
-      autoDelete = false // default value
-    }
-    
-    // These properties are used when none properties are passed to the send method.
-    properties {
-      deliveryMode = 2 // this is default value
-      contentType = "text" // default is not set
-      contentEncoding = "UTF8" // default is not set
-      priority = 1 // default is not set
-    }
-  }
-}
-```
-For full list of options please see [reference.conf](core/src/main/resources/reference.conf).
-
-### Scala usage
 
 The Scala API is _finally tagless_ (read more e.g. [here](https://www.beyondthelines.net/programming/introduction-to-tagless-final/)) with
 [`cats.effect.Resource`](https://typelevel.org/cats-effect/datatypes/resource.html) which is convenient way how to
@@ -174,19 +49,43 @@ The library uses two types of executors - one is for blocking (IO) operations an
 1. Blocking executor as `ExecutorService`
 1. Callback executor as `scala.concurrent.ExecutionContext`
 
+The default way is to configure the client with manually provided case classes; see [pureconfig](pureconfig) module for a configuration from
+HOCON (Lightbend Config).
+
+This is somewhat minimal setup, using [Monix](https://monix.io/) `Task`:
 ```scala
 import java.util.concurrent.ExecutorService
 
 import cats.effect.Resource
 import com.avast.bytes.Bytes
 import com.avast.clients.rabbitmq._
-import com.avast.clients.rabbitmq.api.{Delivery, DeliveryResult, RabbitMQProducer}
+import com.avast.clients.rabbitmq.api._
 import com.avast.metrics.scalaapi.Monitor
-import com.typesafe.config.ConfigFactory
+import javax.net.ssl.SSLContext
 import monix.eval._
 import monix.execution.Scheduler
 
-val config = ConfigFactory.load().getConfig("myRabbitConfig")
+val sslContext = SSLContext.getDefault
+
+val connectionConfig = RabbitMQConnectionConfig(
+    hosts = List("localhost:5432"),
+    name = "MyProductionConnection",
+    virtualHost = "/",
+    credentials = CredentialsConfig(username = "vogon", password = "jeltz")
+  )
+
+val consumerConfig = ConsumerConfig(
+    name = "MyConsumer",
+    queueName = "QueueWithMyEvents",
+    bindings = List(
+      AutoBindQueueConfig(exchange = AutoBindExchangeConfig(name = "OtherAppExchange"), routingKeys = List("TheEvent"))
+    )
+  )
+
+val producerConfig = ProducerConfig(
+    name = "MyProducer",
+    exchange = "MyGreatApp"
+  )
 
 implicit val sch: Scheduler = ???
 val monitor: Monitor = ???
@@ -197,14 +96,14 @@ val blockingExecutor: ExecutorService = ???
 
 val rabbitMQProducer: Resource[Task, RabbitMQProducer[Task, Bytes]] = {
     for {
-      connection <- RabbitMQConnection.fromConfig[Task](config, blockingExecutor)
+      connection <- RabbitMQConnection.make[Task](connectionConfig, blockingExecutor, Some(sslContext))
       /*
-      Here you have created the connection; it's shared for all producers/consumers amongst one RabbitMQ server - they will share a single
-      TCP connection but have separated channels.
-      If you expect very high load, you can use separate connections for each producer/consumer, however it's usually not needed.
+    Here you have created the connection; it's shared for all producers/consumers amongst one RabbitMQ server - they will share a single
+    TCP connection but have separated channels.
+    If you expect very high load, you can use separate connections for each producer/consumer, however it's usually not needed.
        */
 
-      consumer <- connection.newConsumer[Bytes]("consumer", monitor) {
+      consumer <- connection.newConsumer[Bytes](consumerConfig, monitor) {
         case delivery: Delivery.Ok[Bytes] =>
           Task.now(DeliveryResult.Ack)
 
@@ -212,7 +111,7 @@ val rabbitMQProducer: Resource[Task, RabbitMQProducer[Task, Bytes]] = {
           Task.now(DeliveryResult.Reject)
       }
 
-      producer <- connection.newProducer[Bytes]("producer", monitor)
+      producer <- connection.newProducer[Bytes](producerConfig, monitor)
     } yield {
       producer
     }
@@ -260,53 +159,6 @@ There are multiple options where to get the _converter_ (it's the same case for 
     1. Remove explicit type completely (not recommended)
     1. Make the explicit type more general (`DeliveryConverter` instead of `JsonDeliveryConverter` in this case)
 
-### Java usage
-
-The Java api is placed in subpackage `javaapi` (but not all classes have their Java counterparts, some have to be imported from Scala API,
-depending on your usage).  
-Don't get confused by the Java API partially implemented in Scala.
-
-```java
-import com.avast.clients.rabbitmq.javaapi.*;
-import com.typesafe.config.Config;
-import com.typesafe.config.ConfigFactory;
-
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ForkJoinPool;
-
-public class ExampleJava {
-    public static void main(String[] args) {
-        final Config config = ConfigFactory.load().getConfig("myConfig");
-        final String routingKey = config.getString("consumer.queueName");
-
-        final ExecutorService executor = Executors.newCachedThreadPool();
-        final ForkJoinPool callbackExecutor = new ForkJoinPool();
-
-        final RabbitMQJavaConnection connection = RabbitMQJavaConnection.newBuilder(config, executor).build();
-
-        final RabbitMQConsumer rabbitMQConsumer = connection.newConsumer(
-                "consumer",
-                ...,
-                callbackExecutor,
-                ...
-        );
-
-        final RabbitMQProducer rabbitMQProducer = connection.newProducer(
-                "producer",
-                ...,
-                callbackExecutor
-        );
-    }
-
-}
-```
-
-The Java API has some limitations compared to the Scala one - mainly it does not support [types conversions](#providing-converters-for-producer/consumer)
-and it offers only asynchronous version with `CompletableFuture` as result of all operations. 
-
-See [full example](core/src/test/java/ExampleJava.java)
-
 ## Notes
 
 ### Extras
@@ -342,8 +194,8 @@ until the message itself can be processed; on the other hand _Republish_ inserts
 lets the consumer handle other messages (if they can be processed).
 
 ### Bind/declare arguments
-There is an option to specify bind/declare arguments for queues/exchanges as you may read about at [RabbitMQ docs](https://www.rabbitmq.com/queues.html).
-Check [reference.conf](core/src/main/resources/reference.conf) or following example for usage:
+There is an option to specify bind/declare arguments for queues/exchanges as you may read about at [RabbitMQ docs](https://www.rabbitmq.com/queues.html).  
+Example of configuration with HOCON:
 ```hocon
   producer {
     name = "Testing" // this is used for logging etc.
@@ -365,20 +217,36 @@ Check [reference.conf](core/src/main/resources/reference.conf) or following exam
 ### Additional declarations and bindings
 Sometimes it's necessary to declare an additional queue or exchange which is not directly related to the consumers or producers you have
 in your application (e.g. dead-letter queue).  
-The library makes possible to do such thing, e.g.:
+The library makes possible to do such thing. Here is example of such configuration with HOCON:
 ```scala
-    rabbitConnection.bindExchange("backupExchangeBinding")
+val rabbitConnection: ConfigRabbitMQConnection[F] = ???
+
+rabbitConnection.bindExchange("backupExchangeBinding") // : F[Unit]
 ```
-where the "backupExchangeBinding" is link to the configuration (use relative path to the factory configuration):
+where the "backupExchangeBinding" is link to the configuration (use relative path to the `declarations` block in configuration):
 ```hocon
+  declarations {  
     backupExchangeBinding {
       sourceExchangeName = "mainExchange"
       destExchangeName = "backupExchange"
-      routingKeys = []
+      routingKeys = ["myMessage"]
       arguments {}
     }
+  }
 ```
-Check [reference.conf](core/src/main/resources/reference.conf) for all options or see [application.conf in tests](core/src/test/resources/application.conf).
+
+Equivalent code with using case classes configuration:
+```scala
+val rabbitConnection: RabbitMQConnection[F] = ???
+
+rabbitConnection.bindExchange(
+  BindExchangeConfig(
+    sourceExchangeName = "mainExchange",
+    destExchangeName = "backupExchange",
+    routingKeys = List("myMessage")
+  )
+) // : F[Unit]
+```
 
 ### Pull consumer
 Sometimes your use-case just doesn't fit the _normal_ consumer scenario. Here you can use the _pull consumer_ which gives you much more
@@ -390,12 +258,13 @@ The pull consumer uses `PullResult` as return type:
 
 Additionally you can call `.toOption` method on the `PullResult`.
 
-A simplified example:
+A simplified example, using configuration from HOCON:
 
 ```scala
 import cats.effect.Resource
 import com.avast.bytes.Bytes
 import com.avast.clients.rabbitmq._
+import com.avast.clients.rabbitmq.pureconfig._
 import com.avast.clients.rabbitmq.api._
 import monix.eval.Task
 import monix.execution.Scheduler
@@ -403,23 +272,23 @@ import monix.execution.Scheduler
 implicit val sch: Scheduler = ???
 
 val consumer: Resource[Task, RabbitMQPullConsumer[Task, Bytes]] = {
-    for {
-      connection <- RabbitMQConnection.fromConfig[Task](???, ???)
-      consumer <- connection.newPullConsumer[Bytes](??? : String, ???)
-    } yield {
-      consumer
-    }
+  for {
+    connection <- RabbitMQConnection.fromConfig[Task](???, ???)
+    consumer <- connection.newPullConsumer[Bytes](??? : String, ???)
+  } yield {
+    consumer
   }
+}
 
 val program: Task[Unit] = consumer.use { consumer =>
-    Task
-      .sequence { (1 to 100).map(_ => consumer.pull()) } // receive "up to" 100 deliveries
-      .flatMap { ds =>
-        // do your stuff!
+  Task
+    .sequence { (1 to 100).map(_ => consumer.pull()) } // receive "up to" 100 deliveries
+    .flatMap { ds =>
+      // do your stuff!
 
-        Task.unit
-      }
-  }
+      Task.unit
+    }
+}
 ```
 
 ### MultiFormatConsumer
@@ -447,7 +316,7 @@ import io.circe.generic.auto._ // to auto derive `io.circe.Decoder[A]` with http
 import scala.concurrent.Future
 import scala.collection.JavaConverters._
 
-private implicit val d: Decoder[Bytes] = Decoder.decodeString.map(Utils.hexToBytesImmutable)
+private implicit val d: Decoder[Bytes] = Decoder.decodeString.map(???)
 
 case class FileSource(fileId: Bytes, source: String)
 
@@ -456,7 +325,7 @@ case class NewFileSourceAdded(fileSources: Seq[FileSource])
 val consumer = MultiFormatConsumer.forType[Future, NewFileSourceAdded](
   JsonDeliveryConverter.derive(), // requires implicit `io.circe.Decoder[NewFileSourceAdded]`
   GpbDeliveryConverter[NewFileSourceAddedGpb].derive() // requires implicit `com.avast.cactus.Converter[NewFileSourceAddedGpb, NewFileSourceAdded]`
-)(businessLogic.processMessage)
+)(_ => ???)
 ```
 (see [unit test](core/src/test/scala/com/avast/clients/rabbitmq/MultiFormatConsumerTest.scala) for full example)
 
@@ -466,6 +335,10 @@ The [CheckedDeliveryConverter](core/src/main/scala/com/avast/clients/rabbitmq/co
 the example below) but it's not required - it could e.g. analyze the payload (or first bytes) too. 
 
 ```scala
+import com.avast.bytes.Bytes
+import com.avast.clients.rabbitmq.CheckedDeliveryConverter
+import com.avast.clients.rabbitmq.api.{ConversionException, Delivery}
+
 val StringDeliveryConverter: CheckedDeliveryConverter[String] = new CheckedDeliveryConverter[String] {
   override def canConvert(d: Delivery[Bytes]): Boolean = d.properties.contentType.contains("text/plain")
   override def convert(b: Bytes): Either[ConversionException, String] = Right(b.toStringUtf8)

@@ -7,8 +7,8 @@ import org.slf4j.event.Level
 import scala.collection.immutable
 import scala.concurrent.duration._
 
-final case class RabbitMQConnectionConfig(hosts: immutable.Seq[String],
-                                          name: String,
+final case class RabbitMQConnectionConfig(name: String,
+                                          hosts: immutable.Seq[String],
                                           virtualHost: String,
                                           connectionTimeout: FiniteDuration = 5.seconds,
                                           heartBeatInterval: FiniteDuration = 30.seconds,
@@ -20,22 +20,22 @@ final case class NetworkRecoveryConfig(enabled: Boolean = true, handler: Recover
 
 final case class CredentialsConfig(enabled: Boolean = true, username: String, password: String)
 
-final case class ConsumerConfig(queueName: String,
+final case class ConsumerConfig(name: String,
+                                queueName: String,
+                                bindings: immutable.Seq[AutoBindQueueConfig],
                                 processTimeout: FiniteDuration = 10.seconds,
                                 failureAction: DeliveryResult = DeliveryResult.Republish(),
                                 timeoutAction: DeliveryResult = DeliveryResult.Republish(),
                                 timeoutLogLevel: Level = Level.WARN,
                                 prefetchCount: Int = 100,
                                 declare: Option[AutoDeclareQueueConfig] = None,
-                                bindings: immutable.Seq[AutoBindQueueConfig],
-                                consumerTag: String = "Default",
-                                name: String)
+                                consumerTag: String = "Default")
 
-final case class PullConsumerConfig(queueName: String,
-                                    failureAction: DeliveryResult = DeliveryResult.Republish(),
-                                    declare: Option[AutoDeclareQueueConfig] = None,
+final case class PullConsumerConfig(name: String,
+                                    queueName: String,
                                     bindings: immutable.Seq[AutoBindQueueConfig],
-                                    name: String)
+                                    failureAction: DeliveryResult = DeliveryResult.Republish(),
+                                    declare: Option[AutoDeclareQueueConfig] = None)
 
 final case class AutoDeclareQueueConfig(enabled: Boolean = false,
                                         durable: Boolean = true,
@@ -53,10 +53,10 @@ final case class AutoBindQueueConfig(exchange: AutoBindExchangeConfig,
 
 final case class AutoBindExchangeConfig(name: String, declare: Option[AutoDeclareExchangeConfig] = None)
 
-final case class ProducerConfig(exchange: String,
+final case class ProducerConfig(name: String,
+                                exchange: String,
                                 declare: Option[AutoDeclareExchangeConfig] = None,
                                 reportUnroutable: Boolean = true,
-                                name: String,
                                 properties: ProducerPropertiesConfig = ProducerPropertiesConfig())
 
 final case class ProducerPropertiesConfig(deliveryMode: Int = 2,
