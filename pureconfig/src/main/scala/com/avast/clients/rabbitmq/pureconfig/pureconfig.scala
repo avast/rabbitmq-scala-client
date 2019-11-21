@@ -3,6 +3,7 @@ package com.avast.clients.rabbitmq
 import java.util.concurrent.ExecutorService
 
 import _root_.pureconfig._
+import _root_.pureconfig.error.ConfigReaderException
 import cats.effect.{ConcurrentEffect, ContextShift, Resource, Sync, Timer}
 import com.avast.clients.rabbitmq.RabbitMQConnection.DefaultListeners
 import com.typesafe.config.Config
@@ -11,6 +12,10 @@ import javax.net.ssl.SSLContext
 import scala.language.{higherKinds, implicitConversions}
 
 package object pureconfig {
+
+  private[pureconfig] val ConsumersRootName = "consumers"
+  private[pureconfig] val ProducersRootName = "producers"
+  private[pureconfig] val DeclarationsRootName = "declarations"
 
   object RabbitMQConnectionOps {
     def fromConfig[F[_]: ConcurrentEffect: Timer: ContextShift](
@@ -30,15 +35,21 @@ package object pureconfig {
         bindExchangeConfigReader: ConfigReader[BindExchangeConfig] = implicits.CamelCase.bindExchangeConfigReader)
       : Resource[F, ConfigRabbitMQConnection[F]] = {
 
+      val configSource = ConfigSource.fromConfig(config)
+
       for {
-        connectionConfig <- Resource.liftF(Sync[F].delay { ConfigSource.fromConfig(config).loadOrThrow[RabbitMQConnectionConfig] })
+        connectionConfig <- Resource.liftF(Sync[F].delay { configSource.loadOrThrow[RabbitMQConnectionConfig] })
         connection <- RabbitMQConnection.make(connectionConfig,
                                               blockingExecutor,
                                               sslContext,
                                               connectionListener,
                                               channelListener,
                                               consumerListener)
-      } yield new DefaultConfigRabbitMQConnection[F](config, connection)
+      } yield
+        new DefaultConfigRabbitMQConnection[F](
+          config = configSource.cursor().fold(errs => throw ConfigReaderException(errs), identity),
+          wrapped = connection
+        )
     }
   }
 
