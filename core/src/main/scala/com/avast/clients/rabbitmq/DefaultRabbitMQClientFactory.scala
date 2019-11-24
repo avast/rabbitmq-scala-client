@@ -106,7 +106,6 @@ private[rabbitmq] object DefaultRabbitMQClientFactory extends LazyLogging {
       connectionInfo: RabbitMQConnectionInfo,
       blocker: Blocker,
       monitor: Monitor)(implicit cs: ContextShift[F]): DefaultRabbitMQProducer[F, A] = {
-    import producerConfig._
 
     val defaultProperties = MessageProperties(
       deliveryMode = DeliveryMode.fromCode(producerConfig.properties.deliveryMode),
@@ -116,11 +115,19 @@ private[rabbitmq] object DefaultRabbitMQClientFactory extends LazyLogging {
     )
 
     // auto declare exchange; if configured
-    declare.foreach {
-      declareExchange(name, connectionInfo, channel, _)
+    producerConfig.declare.foreach {
+      declareExchange(producerConfig.exchange, connectionInfo, channel, _)
     }
 
-    new DefaultRabbitMQProducer[F, A](producerConfig.name, exchange, channel, defaultProperties, reportUnroutable, blocker, monitor)
+    new DefaultRabbitMQProducer[F, A](
+      producerConfig.name,
+      producerConfig.exchange,
+      channel,
+      defaultProperties,
+      producerConfig.reportUnroutable,
+      blocker,
+      monitor
+    )
   }
 
   private[rabbitmq] def declareExchange(name: String,
