@@ -33,7 +33,7 @@ Gradle:
 
 There is a [migration guide](Migration-5-6.md) between versions 5 and 6.0.x.  
 There is a [migration guide](Migration-6-6_1.md) between versions 6.0.x and 6.1.x.  
-There is a [migration guide](Migration-6_1-7.md) between versions 6.1.x and 7.0.x.
+There is a [migration guide](Migration-6_1-7.md) between versions 6.1.x and 7.0.x.  
 There is a [migration guide](Migration-6_1-8.md) between versions 6.1.x and 8.0.x.
 
 ## Usage
