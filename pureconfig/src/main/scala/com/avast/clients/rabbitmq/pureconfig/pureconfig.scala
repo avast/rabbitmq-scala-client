@@ -17,7 +17,7 @@ package object pureconfig {
   private[pureconfig] val ProducersRootName = "producers"
   private[pureconfig] val DeclarationsRootName = "declarations"
 
-  object RabbitMQConnectionOps {
+  implicit class RabbitMQConnectionOps(val f: RabbitMQConnection.type) extends AnyVal {
     def fromConfig[F[_]: ConcurrentEffect: Timer: ContextShift](
         config: Config,
         blockingExecutor: ExecutorService,
@@ -34,7 +34,6 @@ package object pureconfig {
         bindQueueConfigReader: ConfigReader[BindQueueConfig] = implicits.CamelCase.bindQueueConfigReader,
         bindExchangeConfigReader: ConfigReader[BindExchangeConfig] = implicits.CamelCase.bindExchangeConfigReader)
       : Resource[F, ConfigRabbitMQConnection[F]] = {
-
       val configSource = ConfigSource.fromConfig(config)
 
       for {
@@ -52,7 +51,4 @@ package object pureconfig {
         )
     }
   }
-
-  // to add the extension method to RabbitMQConnection object:
-  implicit def connectionObjectToOps(f: RabbitMQConnection.type): RabbitMQConnectionOps.type = RabbitMQConnectionOps
 }
