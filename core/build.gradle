@@ -23,11 +23,11 @@ dependencies {
     compile project(":api")
 
     compile "com.avast.metrics:metrics-scala_$scalaVersion:${metricsVersion}"
-    compile "com.typesafe.scala-logging:scala-logging_$scalaVersion:3.9.0"
+    compile "com.typesafe.scala-logging:scala-logging_$scalaVersion:3.9.2"
 
     compile "com.avast.bytes:bytes-core:${bytesVersion}"
 
-    compile 'com.rabbitmq:amqp-client:5.7.3'
+    compile 'com.rabbitmq:amqp-client:5.8.0'
 
     compile "org.typelevel:cats-core_$scalaVersion:$catsVersion"
     compile "org.typelevel:cats-effect_$scalaVersion:$catsEffectVersion"
