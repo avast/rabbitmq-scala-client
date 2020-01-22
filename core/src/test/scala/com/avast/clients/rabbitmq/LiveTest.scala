@@ -50,7 +50,7 @@ class LiveTest extends TestBase with ScalaFutures {
       .withValue("producers.testing.exchange", ConfigValueFactory.fromAnyRef(exchange1))
       .withValue("producers.testing2.exchange", ConfigValueFactory.fromAnyRef(exchange2))
       .withValue("producers.testing3.exchange", ConfigValueFactory.fromAnyRef(exchange4))
-      .withValue("declarations.declareExchange.name", ConfigValueFactory.fromAnyRef(exchange3))
+      .withValue("declarations.foo.declareExchange.name", ConfigValueFactory.fromAnyRef(exchange3))
       .withValue("declarations.bindExchange1.sourceExchangeName", ConfigValueFactory.fromAnyRef(exchange4))
       .withValue("declarations.bindExchange1.destExchangeName", ConfigValueFactory.fromAnyRef(exchange3))
       .withValue("declarations.bindExchange2.sourceExchangeName", ConfigValueFactory.fromAnyRef(exchange4))
@@ -256,7 +256,7 @@ class LiveTest extends TestBase with ScalaFutures {
           // additional declarations
 
           (for { // the order consumer -> producer -> declarations is required!
-            _ <- rabbitConnection.declareExchange("declareExchange")
+            _ <- rabbitConnection.declareExchange("foo.declareExchange")
             _ <- rabbitConnection.bindExchange("bindExchange1")
             _ <- rabbitConnection.bindExchange("bindExchange2")
             _ <- rabbitConnection.declareQueue("declareQueue")

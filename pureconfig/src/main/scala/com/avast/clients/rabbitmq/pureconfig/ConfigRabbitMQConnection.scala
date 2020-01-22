@@ -1,7 +1,7 @@
 package com.avast.clients.rabbitmq.pureconfig
 
 import _root_.pureconfig.error.ConfigReaderException
-import _root_.pureconfig.{ConfigCursor, ConfigReader}
+import _root_.pureconfig.{ConfigCursor, ConfigReader, PathSegment}
 import cats.effect.{ConcurrentEffect, Resource}
 import com.avast.clients.rabbitmq.api._
 import com.avast.clients.rabbitmq.{
@@ -140,7 +140,13 @@ class DefaultConfigRabbitMQConnection[F[_]](config: ConfigCursor, wrapped: Rabbi
 
   private def loadConfig[C](section: String, name: String)(implicit ct: ClassTag[C], reader: ConfigReader[C]): F[C] = {
     F.delay {
-      config.fluent.at(section).at(name).cursor.flatMap(reader.from).fold(errs => throw ConfigReaderException(errs), identity)
+      val segments: Seq[PathSegment.Key] = (section +: name.split('.').toSeq).map(PathSegment.Key)
+
+      config.fluent
+        .at(segments: _*)
+        .cursor
+        .flatMap(reader.from)
+        .fold(errs => throw ConfigReaderException(errs), identity)
     }
   }
 }
