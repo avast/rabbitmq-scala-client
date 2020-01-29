@@ -34,6 +34,7 @@ class DefaultRabbitMQPullConsumerTest extends TestBase {
     when(properties.getMessageId).thenReturn(messageId)
 
     val channel = mock[AutorecoveringChannel]
+    when(channel.isOpen).thenReturn(true)
 
     val body = Random.nextString(5).getBytes
 
@@ -77,6 +78,7 @@ class DefaultRabbitMQPullConsumerTest extends TestBase {
     when(properties.getMessageId).thenReturn(messageId)
 
     val channel = mock[AutorecoveringChannel]
+    when(channel.isOpen).thenReturn(true)
 
     val body = Random.nextString(5).getBytes
 
@@ -120,6 +122,7 @@ class DefaultRabbitMQPullConsumerTest extends TestBase {
     when(properties.getMessageId).thenReturn(messageId)
 
     val channel = mock[AutorecoveringChannel]
+    when(channel.isOpen).thenReturn(true)
 
     val body = Random.nextString(5).getBytes
 
@@ -163,6 +166,7 @@ class DefaultRabbitMQPullConsumerTest extends TestBase {
     val properties = new BasicProperties.Builder().messageId(messageId).userId(originalUserId).build()
 
     val channel = mock[AutorecoveringChannel]
+    when(channel.isOpen).thenReturn(true)
 
     val body = Random.nextString(5).getBytes
 
@@ -208,6 +212,7 @@ class DefaultRabbitMQPullConsumerTest extends TestBase {
     when(properties.getMessageId).thenReturn(messageId)
 
     val channel = mock[AutorecoveringChannel]
+    when(channel.isOpen).thenReturn(true)
 
     val body = Random.nextString(5).getBytes
 
@@ -253,6 +258,7 @@ class DefaultRabbitMQPullConsumerTest extends TestBase {
     when(properties.getMessageId).thenReturn(messageId)
 
     val channel = mock[AutorecoveringChannel]
+    when(channel.isOpen).thenReturn(true)
 
     val body = Random.nextString(5).getBytes
 

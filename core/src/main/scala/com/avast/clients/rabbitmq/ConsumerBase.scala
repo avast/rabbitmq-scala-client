@@ -1,10 +1,11 @@
 package com.avast.clients.rabbitmq
 
-import cats.effect.{Blocker, ContextShift, Effect, Sync}
+import cats.effect.{Blocker, ContextShift, Sync}
 import com.avast.clients.rabbitmq.DefaultRabbitMQConsumer._
 import com.avast.clients.rabbitmq.api.DeliveryResult
 import com.avast.metrics.scalaapi.Monitor
 import com.rabbitmq.client.AMQP.BasicProperties
+import com.rabbitmq.client.ShutdownSignalException
 import com.typesafe.scalalogging.StrictLogging
 
 import scala.collection.JavaConverters._
@@ -45,6 +46,7 @@ private[rabbitmq] trait ConsumerBase[F[_]] extends StrictLogging {
     blocker.delay {
       try {
         logger.debug(s"[$name] ACK delivery ID $messageId, deliveryTag $deliveryTag")
+        if (!channel.isOpen) throw new IllegalStateException("Cannot ack delivery on closed channel")
         channel.basicAck(deliveryTag, false)
         resultAckMeter.mark()
       } catch {
@@ -56,6 +58,7 @@ private[rabbitmq] trait ConsumerBase[F[_]] extends StrictLogging {
     blocker.delay {
       try {
         logger.debug(s"[$name] REJECT delivery ID $messageId, deliveryTag $deliveryTag")
+        if (!channel.isOpen) throw new IllegalStateException("Cannot reject delivery on closed channel")
         channel.basicReject(deliveryTag, false)
         resultRejectMeter.mark()
       } catch {
@@ -67,6 +70,7 @@ private[rabbitmq] trait ConsumerBase[F[_]] extends StrictLogging {
     blocker.delay {
       try {
         logger.debug(s"[$name] REJECT (with requeue) delivery ID $messageId, deliveryTag $deliveryTag")
+        if (!channel.isOpen) throw new IllegalStateException("Cannot retry delivery on closed channel")
         channel.basicReject(deliveryTag, true)
         resultRetryMeter.mark()
       } catch {
@@ -78,6 +82,7 @@ private[rabbitmq] trait ConsumerBase[F[_]] extends StrictLogging {
     blocker.delay {
       try {
         logger.debug(s"[$name] Republishing delivery (ID $messageId, deliveryTag $deliveryTag) to end of queue '$queueName'")
+        if (!channel.isOpen) throw new IllegalStateException("Cannot republish delivery on closed channel")
         channel.basicPublish("", queueName, properties, body)
         channel.basicAck(deliveryTag, false)
         resultRepublishMeter.mark()

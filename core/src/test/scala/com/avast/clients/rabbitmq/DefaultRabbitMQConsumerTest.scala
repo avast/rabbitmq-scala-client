@@ -36,6 +36,7 @@ class DefaultRabbitMQConsumerTest extends TestBase {
     when(properties.getMessageId).thenReturn(messageId)
 
     val channel = mock[AutorecoveringChannel]
+    when(channel.isOpen).thenReturn(true)
 
     val consumer = new DefaultRabbitMQConsumer[Task](
       "test",
@@ -75,6 +76,7 @@ class DefaultRabbitMQConsumerTest extends TestBase {
     when(properties.getMessageId).thenReturn(messageId)
 
     val channel = mock[AutorecoveringChannel]
+    when(channel.isOpen).thenReturn(true)
 
     val consumer = new DefaultRabbitMQConsumer[Task](
       "test",
@@ -114,6 +116,7 @@ class DefaultRabbitMQConsumerTest extends TestBase {
     when(properties.getMessageId).thenReturn(messageId)
 
     val channel = mock[AutorecoveringChannel]
+    when(channel.isOpen).thenReturn(true)
 
     val consumer = new DefaultRabbitMQConsumer[Task](
       "test",
@@ -153,6 +156,7 @@ class DefaultRabbitMQConsumerTest extends TestBase {
     val properties = new BasicProperties.Builder().messageId(messageId).userId(originalUserId).build()
 
     val channel = mock[AutorecoveringChannel]
+    when(channel.isOpen).thenReturn(true)
 
     val consumer = new DefaultRabbitMQConsumer[Task](
       "test",
@@ -194,6 +198,7 @@ class DefaultRabbitMQConsumerTest extends TestBase {
     when(properties.getMessageId).thenReturn(messageId)
 
     val channel = mock[AutorecoveringChannel]
+    when(channel.isOpen).thenReturn(true)
 
     val consumer = new DefaultRabbitMQConsumer[Task](
       "test",
@@ -230,6 +235,7 @@ class DefaultRabbitMQConsumerTest extends TestBase {
     when(properties.getMessageId).thenReturn(messageId)
 
     val channel = mock[AutorecoveringChannel]
+    when(channel.isOpen).thenReturn(true)
 
     val consumer = new DefaultRabbitMQConsumer[Task](
       "test",
@@ -266,6 +272,7 @@ class DefaultRabbitMQConsumerTest extends TestBase {
     when(properties.getMessageId).thenReturn(messageId)
 
     val channel = mock[AutorecoveringChannel]
+    when(channel.isOpen).thenReturn(true)
 
     val monitor = mock[Monitor]
     when(monitor.meter(Matchers.anyString())).thenReturn(Monitor.noOp.meter(""))
@@ -337,7 +344,7 @@ class DefaultRabbitMQConsumerTest extends TestBase {
         assertResult(Seq.empty)(failuresLengths)
         val Seq(taskLength) = successLengths.result()
 
-        assert(taskLength > 2000)
+        assert(taskLength > 1990) // 2000 minus some tolerance
       }
     }
   }
@@ -354,6 +361,7 @@ class DefaultRabbitMQConsumerTest extends TestBase {
     when(properties.getMessageId).thenReturn(messageId)
 
     val channel = mock[AutorecoveringChannel]
+    when(channel.isOpen).thenReturn(true)
 
     val monitor = mock[Monitor]
     when(monitor.meter(Matchers.anyString())).thenReturn(Monitor.noOp.meter(""))

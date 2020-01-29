@@ -2,6 +2,7 @@ archivesBaseName = "rabbitmq-client-api_$scalaVersion"
 
 dependencies {
     compile "com.avast.bytes:bytes-core:${bytesVersion}"
+    compile "co.fs2:fs2-core_$scalaVersion:$fs2Version"
 
     compile "com.kailuowang:mainecoon-core_$scalaVersion:0.6.2"
 }

@@ -7,13 +7,14 @@ import cats.syntax.all._
 import com.avast.bytes.Bytes
 import com.avast.clients.rabbitmq.api._
 import com.avast.metrics.scalaapi.{Meter, Monitor}
-import com.rabbitmq.client.AMQP
 import com.rabbitmq.client.AMQP.Queue
+import com.rabbitmq.client.{AMQP, Consumer}
 import com.typesafe.scalalogging.LazyLogging
 import org.slf4j.event.Level
 
 import scala.collection.JavaConverters._
 import scala.collection.immutable
+import scala.concurrent.duration.Duration
 import scala.language.{higherKinds, implicitConversions}
 import scala.util.control.NonFatal
 
@@ -62,6 +63,40 @@ private[rabbitmq] object DefaultRabbitMQClientFactory extends LazyLogging {
 
       preparePullConsumer(consumerConfig, connectionInfo, channel, blocker, monitor)
     }
+  }
+
+  private def prepareStreamingConsumer[F[_]: ConcurrentEffect, A: DeliveryConverter](
+      consumerConfig: StreamingConsumerConfig,
+      connectionInfo: RabbitMQConnectionInfo,
+      channel: ServerChannel,
+      newChannel: F[ServerChannel],
+      consumerListener: ConsumerListener,
+      blocker: Blocker,
+      monitor: Monitor)(implicit timer: Timer[F], cs: ContextShift[F]): Resource[F, DefaultRabbitMQStreamingConsumer[F, A]] = {
+    import consumerConfig._
+
+    // auto declare exchanges
+    declareExchangesFromBindings(connectionInfo, channel, consumerConfig.bindings)
+
+    // auto declare queue; if configured
+    consumerConfig.declare.foreach {
+      declareQueue(consumerConfig.queueName, connectionInfo, channel, _)
+    }
+
+    // auto bind
+    bindQueues(connectionInfo, channel, consumerConfig.queueName, consumerConfig.bindings)
+
+    DefaultRabbitMQStreamingConsumer(
+      name,
+      newChannel.flatTap(ch => Sync[F].delay(ch.basicQos(consumerConfig.prefetchCount))),
+      consumerTag,
+      queueName,
+      connectionInfo,
+      consumerListener,
+      queueBufferSize,
+      monitor,
+      blocker
+    )
   }
 
   object Declarations {
@@ -181,6 +216,27 @@ private[rabbitmq] object DefaultRabbitMQClientFactory extends LazyLogging {
     prepareConsumer(consumerConfig, connectionInfo, channel, readAction, consumerListener, blocker, monitor)
   }
 
+  object StreamingConsumer {
+
+    def create[F[_]: ConcurrentEffect, A: DeliveryConverter](consumerConfig: StreamingConsumerConfig,
+                                                             channel: ServerChannel,
+                                                             newChannel: F[ServerChannel],
+                                                             connectionInfo: RabbitMQConnectionInfo,
+                                                             blocker: Blocker,
+                                                             monitor: Monitor,
+                                                             consumerListener: ConsumerListener)(
+        implicit timer: Timer[F],
+        cs: ContextShift[F]): Resource[F, DefaultRabbitMQStreamingConsumer[F, A]] = {
+
+      prepareStreamingConsumer(consumerConfig, connectionInfo, channel, newChannel, consumerListener, blocker, monitor)
+    }
+  }
+
+  private[rabbitmq] def startConsumingQueue(channel: ServerChannel, queueName: String, consumerTag: String, consumer: Consumer): String = {
+    channel.setDefaultConsumer(consumer) // see `setDefaultConsumer` javadoc; this is possible because the channel is here exclusively for this consumer
+    val finalConsumerTag = channel.basicConsume(queueName, false, if (consumerTag == "Default") "" else consumerTag, consumer)
+    finalConsumerTag
+  }
   private def preparePullConsumer[F[_]: ConcurrentEffect, A: DeliveryConverter](
       consumerConfig: PullConsumerConfig,
       connectionInfo: RabbitMQConnectionInfo,
@@ -300,14 +356,7 @@ private[rabbitmq] object DefaultRabbitMQClientFactory extends LazyLogging {
     val readAction: DefaultDeliveryReadAction[F] = {
       val convAction: DefaultDeliveryReadAction[F] = { d: Delivery[Bytes] =>
         try {
-          val devA = d.flatMap { d =>
-            implicitly[DeliveryConverter[A]].convert(d.body) match {
-              case Right(a) => d.mapBody(_ => a)
-              case Left(ce) => Delivery.MalformedContent(d.body, d.properties, d.routingKey, ce)
-            }
-          }
-
-          userReadAction(devA)
+          userReadAction(convertDelivery(d))
         } catch {
           case NonFatal(e) =>
             ConcurrentEffect[F].raiseError(e)
@@ -321,12 +370,18 @@ private[rabbitmq] object DefaultRabbitMQClientFactory extends LazyLogging {
       new DefaultRabbitMQConsumer(name, channel, queueName, connectionInfo, monitor, failureAction, consumerListener, blocker)(readAction)
     }
 
-    val finalConsumerTag = if (consumerTag == "Default") "" else consumerTag
-
-    channel.basicConsume(queueName, false, finalConsumerTag, consumer)
-    channel.setDefaultConsumer(consumer) // see `setDefaultConsumer` javadoc; this is possible because the channel is here exclusively for this consumer
+    startConsumingQueue(channel, queueName, consumerTag, consumer)
 
     consumer
+  }
+
+  private[rabbitmq] def convertDelivery[F[_]: ConcurrentEffect, A: DeliveryConverter](d: Delivery[Bytes]): Delivery[A] = {
+    d.flatMap { d =>
+      implicitly[DeliveryConverter[A]].convert(d.body) match {
+        case Right(a) => d.mapBody(_ => a)
+        case Left(ce) => Delivery.MalformedContent(d.body, d.properties, d.routingKey, ce)
+      }
+    }
   }
 
   private def wrapReadAction[F[_]: ConcurrentEffect, A](
@@ -345,11 +400,13 @@ private[rabbitmq] object DefaultRabbitMQClientFactory extends LazyLogging {
         val action: F[DeliveryResult] = blocker.delay { userReadAction(delivery) }.flatten
 
         val timedOutAction: F[DeliveryResult] = {
-          Concurrent
-            .timeout(action, processTimeout)
-            .recoverWith {
-              case e: TimeoutException => doTimeoutAction(consumerConfig, timeoutsMeter, e)
-            }
+          if (processTimeout != Duration.Zero) {
+            Concurrent
+              .timeout(action, processTimeout)
+              .recoverWith {
+                case e: TimeoutException => doTimeoutAction(consumerConfig, timeoutsMeter, e)
+              }
+          } else action
         }
 
         timedOutAction
