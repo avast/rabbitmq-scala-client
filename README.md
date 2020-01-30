@@ -38,12 +38,13 @@ There is a [migration guide](Migration-6_1-8.md) between versions 6.1.x and 8.0.
 
 ## Usage
 
-The Scala API is _finally tagless_ (read more e.g. [here](https://www.beyondthelines.net/programming/introduction-to-tagless-final/)) with
+The API is _finally tagless_ (read more e.g. [here](https://www.beyondthelines.net/programming/introduction-to-tagless-final/)) with
 [`cats.effect.Resource`](https://typelevel.org/cats-effect/datatypes/resource.html) which is convenient way how to
-[manage resources in your app](https://typelevel.org/cats-effect/tutorial/tutorial.html#acquiring-and-releasing-resources).
+[manage resources in your app](https://typelevel.org/cats-effect/tutorial/tutorial.html#acquiring-and-releasing-resources). In addition,
+there is a support for [streaming](#streaming-support) with [`fs2.Stream`](https://fs2.io/).
 
-The Scala API uses types-conversions for both consumer and producer, that means you don't have to work directly with `Bytes` (however you
-still can, if you want) and you touch only your business class which is then (de)serialized using provided converter.
+The API uses conversions for both consumer and producer, that means you don't have to work directly with `Bytes` (however you
+still can if you want to) and you touch only your business model class which is then (de)serialized using provided converter.
 
 The library uses two types of executors - one is for blocking (IO) operations and the second for callbacks. You _have to_ provide both of them:
 1. Blocking executor as `ExecutorService`
@@ -53,6 +54,7 @@ The default way is to configure the client with manually provided case classes; 
 HOCON (Lightbend Config).
 
 This is somewhat minimal setup, using [Monix](https://monix.io/) `Task`:
+
 ```scala
 import java.util.concurrent.ExecutorService
 
@@ -64,6 +66,11 @@ import com.avast.metrics.scalaapi.Monitor
 import javax.net.ssl.SSLContext
 import monix.eval._
 import monix.execution.Scheduler
+
+implicit val sch: Scheduler = ???
+val monitor: Monitor = ???
+
+val blockingExecutor: ExecutorService = ???
 
 val sslContext = SSLContext.getDefault
 
@@ -87,21 +94,16 @@ val producerConfig = ProducerConfig(
     exchange = "MyGreatApp"
   )
 
-implicit val sch: Scheduler = ???
-val monitor: Monitor = ???
-
-val blockingExecutor: ExecutorService = ???
-
 // see https://typelevel.org/cats-effect/tutorial/tutorial.html#acquiring-and-releasing-resources
 
 val rabbitMQProducer: Resource[Task, RabbitMQProducer[Task, Bytes]] = {
     for {
       connection <- RabbitMQConnection.make[Task](connectionConfig, blockingExecutor, Some(sslContext))
       /*
-    Here you have created the connection; it's shared for all producers/consumers amongst one RabbitMQ server - they will share a single
-    TCP connection but have separated channels.
-    If you expect very high load, you can use separate connections for each producer/consumer, however it's usually not needed.
-       */
+      Here you have created the connection; it's shared for all producers/consumers amongst one RabbitMQ server - they will share a single
+      TCP connection but have separated channels.
+      If you expect very high load, you can use separate connections for each producer/consumer, however it's usually not needed.
+      */
 
       consumer <- connection.newConsumer[Bytes](consumerConfig, monitor) {
         case delivery: Delivery.Ok[Bytes] =>
@@ -117,6 +119,63 @@ val rabbitMQProducer: Resource[Task, RabbitMQProducer[Task, Bytes]] = {
     }
   }
 ```
+
+#### Streaming support
+
+It seems quite natural to process RabbitMQ queue with a streaming app.
+[`StreamingRabbitMQConsumer`](core/src/main/scala/com/avast/clients/rabbitmq/StreamingRabbitMQConsumer.scala) provides you an
+[`fs2.Stream`](https://fs2.io/) through which you can easily process incoming messages in a streaming way.
+
+Notice: Using this functionality requires you to know some basics of [FS2](https://fs2.io/guide.html#overview) library. Please see it's official
+guide if you're not familiar with it first.
+
+```scala
+// skipping imports and common things, they are the same as in general example above
+
+val consumerConfig = StreamingConsumerConfig( // notice: StreamingConsumerConfig vs. ConsumerConfig
+    name = "MyConsumer",
+    queueName = "QueueWithMyEvents",
+    bindings = List(
+      AutoBindQueueConfig(exchange = AutoBindExchangeConfig(name = "OtherAppExchange"), routingKeys = List("TheEvent"))
+    )
+  )
+
+val processMyStream: fs2.Pipe[Task, StreamedDelivery[Task, Bytes], StreamedResult] = { in =>
+    in.evalMap(delivery => delivery.handle(DeliveryResult.Ack)) // TODO you probably want to do some real stuff here
+  }
+
+val deliveryStream: Resource[Task, fs2.Stream[Task, StreamedResult]] = for {
+    connection <- RabbitMQConnection.make[Task](connectionConfig, blockingExecutor, Some(sslContext))
+    streamingConsumer <- connection.newStreamingConsumer[Bytes](consumerConfig, monitor)
+  } yield {
+    val stream: fs2.Stream[Task, StreamedResult] = streamingConsumer.deliveryStream.through(processMyStream)
+    
+    // create resilient (self-restarting) stream; see more information below
+    val resilientStream: fs2.Stream[Task, StreamedResult] = stream.handleErrorWith { _ =>
+      // TODO log the error - something is going wrong!
+      stream
+    }
+
+    resilientStream
+  }
+```
+
+While you should never ever let the stream fail (handle all your possible errors; see [Error handling](https://fs2.io/guide.html#error-handling)
+section in official docs how the stream can be failed), it's important you're able to recover the stream when it accidentally happens.
+You can do that by simply _requesting_ a new stream from the client:
+
+```scala
+val stream = streamingConsumer
+             .deliveryStream // get stream from client
+             .through(processMyStream) // "run" the stream through your processing logic
+
+val resilientStream = stream.handleErrorWith { _ =>  // handle the error in stream: recover by calling itself
+  // TODO don't forget to add some logging/metrics here!
+  stream
+}
+```
+
+Please refer to the [official guide](https://fs2.io/guide.html#overview) for understanding more deeply how the recovery of `fs2.Stream` works.
 
 #### Providing converters for producer/consumer
 
