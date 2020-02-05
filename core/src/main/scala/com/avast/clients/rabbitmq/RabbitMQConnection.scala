@@ -1,6 +1,7 @@
 package com.avast.clients.rabbitmq
 
 import java.io.IOException
+import java.util
 import java.util.concurrent.ExecutorService
 
 import cats.effect._
@@ -105,8 +106,17 @@ object RabbitMQConnection extends StrictLogging {
     Resource.make {
       Sync[F].delay {
         import connectionConfig._
-
-        val factory = new ConnectionFactory
+        import com.avast.clients.rabbitmq.AddressResolverType._
+        val factory = new ConnectionFactory {
+          override def createAddressResolver(addresses: util.List[Address]): AddressResolver = addressResolverType match {
+            case Default => super.createAddressResolver(addresses)
+            case List => new ListAddressResolver(addresses)
+            case DnsRecord if addresses.size() == 1 => new DnsRecordIpAddressResolver(addresses.get(0))
+            case DnsRecord => throw new IllegalArgumentException(s"DnsRecord configured but more hosts specified")
+            case DnsSrvRecord if addresses.size() == 1 => new DnsSrvRecordAddressResolver(addresses.get(0).getHost)
+            case DnsSrvRecord => throw new IllegalArgumentException(s"DnsSrvRecord configured but more hosts specified")
+          }
+        }
         val exceptionHandler = createExceptionHandler(connectionListener, channelListener, consumerListener)
         setUpConnection(connectionConfig, factory, exceptionHandler, sslContext, executor)
 

@@ -70,6 +70,7 @@ rabbitConfig {
 myConfig {
   hosts = ["localhost:5672"]
   virtualHost = "/"
+  addressResolverType = "Default" // other possible values: List, DnsRecord, DnsSrvRecord
   
   name = "Cluster01Connection" // used for logging AND is also visible in client properties in RabbitMQ management console
 

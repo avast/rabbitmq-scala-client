@@ -10,6 +10,7 @@ import scala.concurrent.duration._
 final case class RabbitMQConnectionConfig(name: String,
                                           hosts: immutable.Seq[String],
                                           virtualHost: String,
+                                          addressResolverType: AddressResolverType = AddressResolverType.Default,
                                           connectionTimeout: FiniteDuration = 5.seconds,
                                           heartBeatInterval: FiniteDuration = 30.seconds,
                                           topologyRecovery: Boolean = true,
@@ -91,6 +92,14 @@ final case class BindExchangeConfig(sourceExchangeName: String,
                                     destExchangeName: String,
                                     routingKeys: immutable.Seq[String],
                                     arguments: BindArgumentsConfig = BindArgumentsConfig())
+
+sealed trait AddressResolverType
+object AddressResolverType {
+  case object Default extends AddressResolverType
+  case object List extends AddressResolverType
+  case object DnsRecord extends AddressResolverType
+  case object DnsSrvRecord extends AddressResolverType
+}
 
 sealed trait ExchangeType {
   val value: String
