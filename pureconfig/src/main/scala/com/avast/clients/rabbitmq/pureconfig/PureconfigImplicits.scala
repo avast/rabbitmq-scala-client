@@ -7,7 +7,7 @@ import _root_.pureconfig.generic.semiauto._
 import cats.data.NonEmptyList
 import com.avast.clients.rabbitmq.api.DeliveryResult
 import com.avast.clients.rabbitmq.api.DeliveryResult._
-import com.avast.clients.rabbitmq.{AddressResolverType, AutoBindExchangeConfig, AutoBindQueueConfig, AutoDeclareExchangeConfig, AutoDeclareQueueConfig, BindArgumentsConfig, BindExchangeConfig, BindQueueConfig, ConsumerConfig, CredentialsConfig, DeclareArgumentsConfig, DeclareExchangeConfig, DeclareQueueConfig, ExchangeType, NetworkRecoveryConfig, ProducerConfig, ProducerPropertiesConfig, PullConsumerConfig, RabbitMQConnectionConfig, RecoveryDelayHandlers}
+import com.avast.clients.rabbitmq.{pureconfig => _, _}
 import com.rabbitmq.client.RecoveryDelayHandler
 import org.slf4j.event.Level
 import pureconfig.error._
