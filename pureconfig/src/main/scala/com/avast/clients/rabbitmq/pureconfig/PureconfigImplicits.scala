@@ -7,32 +7,13 @@ import _root_.pureconfig.generic.semiauto._
 import cats.data.NonEmptyList
 import com.avast.clients.rabbitmq.api.DeliveryResult
 import com.avast.clients.rabbitmq.api.DeliveryResult._
-import com.avast.clients.rabbitmq.{
-  AutoBindExchangeConfig,
-  AutoBindQueueConfig,
-  AutoDeclareExchangeConfig,
-  AutoDeclareQueueConfig,
-  BindArgumentsConfig,
-  BindExchangeConfig,
-  BindQueueConfig,
-  ConsumerConfig,
-  CredentialsConfig,
-  DeclareArgumentsConfig,
-  DeclareExchangeConfig,
-  DeclareQueueConfig,
-  ExchangeType,
-  NetworkRecoveryConfig,
-  ProducerConfig,
-  ProducerPropertiesConfig,
-  PullConsumerConfig,
-  RabbitMQConnectionConfig,
-  RecoveryDelayHandlers
-}
+import com.avast.clients.rabbitmq.{pureconfig => _, _}
 import com.rabbitmq.client.RecoveryDelayHandler
 import org.slf4j.event.Level
 import pureconfig.error._
 
 import scala.collection.JavaConverters._
+import scala.util.{Failure, Success}
 
 // scalastyle:off
 object implicits extends PureconfigImplicits( /* use defaults */ ) {
@@ -106,6 +87,13 @@ class PureconfigImplicits(implicit namingConvention: NamingConvention = CamelCas
   implicit val logLevelReader: ConfigReader[Level] = ConfigReader.stringConfigReader.map(Level.valueOf)
   implicit val recoveryDelayHandlerReader: ConfigReader[RecoveryDelayHandler] = RecoveryDelayHandlerReader
   implicit val exchangeTypeReader: ConfigReader[ExchangeType] = ConfigReader.fromNonEmptyStringOpt(ExchangeType.apply)
+  implicit val addressResolverTypeReader: ConfigReader[AddressResolverType] = ConfigReader.fromNonEmptyStringTry {
+    case "Default" => Success(AddressResolverType.Default)
+    case "ListAddress" => Success(AddressResolverType.List)
+    case "DnsRecordIpAddress" => Success(AddressResolverType.DnsRecord)
+    case "DnsSrvRecordAddress" => Success(AddressResolverType.DnsSrvRecord)
+    case unknownName => Failure(new IllegalArgumentException(s"Unknown addressResolverType: $unknownName"))
+  }
 
   implicit val deliveryResultReader: ConfigReader[DeliveryResult] = ConfigReader.stringConfigReader.map {
     _.toLowerCase match {
