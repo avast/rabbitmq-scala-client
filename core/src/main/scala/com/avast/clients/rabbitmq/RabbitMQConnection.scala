@@ -26,7 +26,7 @@ trait RabbitMQConnection[F[_]] {
     *
     * @param consumerConfig Configuration of the consumer.
     * @param monitor    Monitor for metrics.
-    * @param readAction Action executed for each delivered message. You should never return a failed future.
+    * @param readAction Action executed for each delivered message. You should never return a failed F.
     */
   def newConsumer[A: DeliveryConverter](consumerConfig: ConsumerConfig, monitor: Monitor)(
       readAction: DeliveryReadAction[F, A]): Resource[F, RabbitMQConsumer[F]]
@@ -45,6 +45,14 @@ trait RabbitMQConnection[F[_]] {
     */
   def newPullConsumer[A: DeliveryConverter](pullConsumerConfig: PullConsumerConfig,
                                             monitor: Monitor): Resource[F, RabbitMQPullConsumer[F, A]]
+
+  /** Creates new instance of streaming consumer, using the passed configuration.
+    *
+    * @param consumerConfig Configuration of the consumer.
+    * @param monitor Monitor for metrics.
+    */
+  def newStreamingConsumer[A: DeliveryConverter](consumerConfig: StreamingConsumerConfig,
+                                                 monitor: Monitor): Resource[F, RabbitMQStreamingConsumer[F, A]]
 
   def declareExchange(config: DeclareExchangeConfig): F[Unit]
   def declareQueue(config: DeclareQueueConfig): F[Unit]

@@ -1,7 +1,7 @@
 package com.avast.clients.rabbitmq.pureconfig
 
+import _root_.pureconfig._
 import _root_.pureconfig.error.ConfigReaderException
-import _root_.pureconfig.{ConfigCursor, ConfigReader, PathSegment}
 import cats.effect.{ConcurrentEffect, Resource}
 import com.avast.clients.rabbitmq.api._
 import com.avast.clients.rabbitmq.{
@@ -19,7 +19,8 @@ import com.avast.clients.rabbitmq.{
   ProductConverter,
   PullConsumerConfig,
   RabbitMQConnection,
-  ServerChannel
+  ServerChannel,
+  StreamingConsumerConfig
 }
 import com.avast.metrics.scalaapi.Monitor
 
@@ -34,7 +35,7 @@ trait ConfigRabbitMQConnection[F[_]] {
     *
     * @param configName Name of configuration of the consumer.
     * @param monitor    Monitor for metrics.
-    * @param readAction Action executed for each delivered message. You should never return a failed future.
+    * @param readAction Action executed for each delivered message. You should never return a failed F.
     */
   def newConsumer[A: DeliveryConverter](configName: String, monitor: Monitor)(
       readAction: DeliveryReadAction[F, A]): Resource[F, RabbitMQConsumer[F]]
@@ -52,6 +53,13 @@ trait ConfigRabbitMQConnection[F[_]] {
     * @param monitor    Monitor for metrics.
     */
   def newPullConsumer[A: DeliveryConverter](configName: String, monitor: Monitor): Resource[F, RabbitMQPullConsumer[F, A]]
+
+  /** Creates new instance of streaming consumer, using the TypeSafe configuration passed to the factory and consumer name.
+    *
+    * @param configName Name of configuration of the consumer.
+    * @param monitor    Monitor for metrics.
+    */
+  def newStreamingConsumer[A: DeliveryConverter](configName: String, monitor: Monitor): Resource[F, RabbitMQStreamingConsumer[F, A]]
 
   /**
     * Declares and additional exchange, using the TypeSafe configuration passed to the factory and config name.
@@ -92,6 +100,7 @@ class DefaultConfigRabbitMQConnection[F[_]](config: ConfigCursor, wrapped: Rabbi
     consumerConfigReader: ConfigReader[ConsumerConfig],
     producerConfigReader: ConfigReader[ProducerConfig],
     pullConsumerConfigReader: ConfigReader[PullConsumerConfig],
+    streamingConsumerConfigReader: ConfigReader[StreamingConsumerConfig],
     declareExchangeConfigReader: ConfigReader[DeclareExchangeConfig],
     declareQueueConfigReader: ConfigReader[DeclareQueueConfig],
     bindQueueConfigReader: ConfigReader[BindQueueConfig],
@@ -120,6 +129,11 @@ class DefaultConfigRabbitMQConnection[F[_]](config: ConfigCursor, wrapped: Rabbi
 
   override def newPullConsumer[A: DeliveryConverter](configName: String, monitor: Monitor): Resource[F, RabbitMQPullConsumer[F, A]] = {
     Resource.liftF(loadConfig[PullConsumerConfig](ConsumersRootName, configName)) >>= (wrapped.newPullConsumer(_, monitor))
+  }
+
+  override def newStreamingConsumer[A: DeliveryConverter](configName: String,
+                                                          monitor: Monitor): Resource[F, RabbitMQStreamingConsumer[F, A]] = {
+    Resource.liftF(loadConfig[StreamingConsumerConfig](ConsumersRootName, configName)) >>= (wrapped.newStreamingConsumer(_, monitor))
   }
 
   override def declareExchange(configName: String): F[Unit] = {

@@ -32,6 +32,14 @@ final case class ConsumerConfig(name: String,
                                 declare: Option[AutoDeclareQueueConfig] = None,
                                 consumerTag: String = "Default")
 
+final case class StreamingConsumerConfig(name: String,
+                                         queueName: String,
+                                         bindings: immutable.Seq[AutoBindQueueConfig],
+                                         prefetchCount: Int = 100,
+                                         queueBufferSize: Int = 100,
+                                         declare: Option[AutoDeclareQueueConfig] = None,
+                                         consumerTag: String = "Default")
+
 final case class PullConsumerConfig(name: String,
                                     queueName: String,
                                     bindings: immutable.Seq[AutoBindQueueConfig],

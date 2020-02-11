@@ -83,6 +83,12 @@ subprojects {
         scalaCompileOptions.additionalParameters = ['-target:jvm-1.8']
     }
 
+    test {
+        testLogging {
+            showStandardStreams = true
+        }
+    }
+
     sourceCompatibility = '1.8'
     targetCompatibility = '1.8'
 
@@ -100,6 +106,7 @@ subprojects {
         cactusVersion = "0.16.12"
         catsVersion = "2.0.0"
         catsEffectVersion = "2.0.0"
+        fs2Version = "2.2.1"
         monixVersion = "3.0.0" // just for tests!
     }
 
@@ -124,7 +131,7 @@ subprojects {
     }
 
     tasks.withType(ScalaCompile) {
-        List plugins = configurations.scalaCompilerPlugin.files.collect{ "-Xplugin:${it.getAbsolutePath()}".toString() }
+        List plugins = configurations.scalaCompilerPlugin.files.collect { "-Xplugin:${it.getAbsolutePath()}".toString() }
         plugins.add("-Ypartial-unification")
         scalaCompileOptions.additionalParameters = plugins
     }

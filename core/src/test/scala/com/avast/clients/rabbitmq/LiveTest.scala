@@ -26,6 +26,9 @@ class LiveTest extends TestBase with ScalaFutures {
 
   private implicit val p: PatienceConfig = PatienceConfig(timeout = Span(5, Seconds))
 
+  private lazy val testHelper = new TestHelper(System.getProperty("rabbit.host", System.getenv("rabbit.host")),
+                                               System.getProperty("rabbit.tcp.15672", System.getenv("rabbit.tcp.15672")).toInt)
+
   private def createConfig() = new {
 
     val queueName1: String = randomString(4) + "_QU1"
@@ -34,6 +37,9 @@ class LiveTest extends TestBase with ScalaFutures {
     val exchange2: String = randomString(4) + "_EX2"
     val exchange3: String = randomString(4) + "_EX3"
     val exchange4: String = randomString(4) + "_EX4"
+
+    testHelper.deleteQueue(queueName1)
+    testHelper.deleteQueue(queueName2)
 
     private val original = ConfigFactory.load().getConfig("myConfig")
 
@@ -47,6 +53,9 @@ class LiveTest extends TestBase with ScalaFutures {
       .withValue("consumers.testing.bindings", ConfigValueFactory.fromIterable(bindConfigs.toSeq.map(_.root()).asJava))
       .withValue("consumers.testingPull.queueName", ConfigValueFactory.fromAnyRef(queueName1))
       .withValue("consumers.testingPull.bindings", ConfigValueFactory.fromIterable(bindConfigs.toSeq.map(_.root()).asJava))
+      .withValue("consumers.testingStreaming.queueName", ConfigValueFactory.fromAnyRef(queueName1))
+      .withValue("consumers.testingStreaming.queueBufferSize", ConfigValueFactory.fromAnyRef(200))
+      .withValue("consumers.testingStreaming.bindings", ConfigValueFactory.fromIterable(bindConfigs.toSeq.map(_.root()).asJava))
       .withValue("producers.testing.exchange", ConfigValueFactory.fromAnyRef(exchange1))
       .withValue("producers.testing2.exchange", ConfigValueFactory.fromAnyRef(exchange2))
       .withValue("producers.testing3.exchange", ConfigValueFactory.fromAnyRef(exchange4))
@@ -67,9 +76,6 @@ class LiveTest extends TestBase with ScalaFutures {
 
     implicit val sched: Scheduler = Scheduler(Executors.newCachedThreadPool())
   }
-
-  val testHelper = new TestHelper(System.getProperty("rabbit.host", System.getenv("rabbit.host")),
-                                  System.getProperty("rabbit.tcp.15672", System.getenv("rabbit.tcp.15672")).toInt)
 
   test("basic") {
     val c = createConfig()
@@ -107,22 +113,27 @@ class LiveTest extends TestBase with ScalaFutures {
     import c._
 
     RabbitMQConnection.fromConfig[Task](config, ex).withResource { rabbitConnection =>
-      val cnt = Random.nextInt(100)
-      val count = cnt + 100 // random 100 - 300 messages
+      val count = Random.nextInt(500) + 500 // random 500 - 1000 messages
 
-      val latch = new CountDownLatch(count + 5)
+      logger.info(s"Sending $count messages")
+
+      val latch = new CountDownLatch(count + 100) // explanation below
 
       val d = new AtomicInteger(0)
 
       val cons = rabbitConnection.newConsumer("testing", Monitor.noOp()) { _: Delivery[Bytes] =>
         Task {
-          Thread.sleep(if (d.get() % 2 == 0) 300 else 0)
+          val n = d.incrementAndGet()
+
+          Thread.sleep(if (n % 2 == 0) 300 else 0)
           latch.countDown()
 
-          if (d.incrementAndGet() < (cnt - 50)) Ack
+          if (n < (count - 100) || n > count) Ack
           else {
-            if (d.incrementAndGet() < (cnt - 10)) Retry else Republish()
+            if (n < (count - 50)) Retry else Republish()
           }
+
+          // ^ example: 750 messages in total => 650 * Ack, 50 * Retry, 50 * Republish => processing 850 (== +100) messages in total
         }
       }
 
@@ -130,6 +141,11 @@ class LiveTest extends TestBase with ScalaFutures {
         rabbitConnection.newProducer[Bytes]("testing", Monitor.noOp()).withResource { sender =>
           for (_ <- 1 to count) {
             sender.send("test", Bytes.copyFromUtf8(Random.nextString(10))).await
+          }
+
+          // it takes some time before the stats appear... :-|
+          eventually(timeout(Span(3, Seconds)), interval(Span(0.1, Seconds))) {
+            assertResult(count)(testHelper.getPublishedCount(queueName1))
           }
 
           eventually(timeout(Span(3, Seconds)), interval(Span(0.1, Seconds))) {
@@ -357,6 +373,178 @@ class LiveTest extends TestBase with ScalaFutures {
 
           for (_ <- 1 to 10) {
             assertResult(PullResult.EmptyQueue)(consumer.pull().unsafeRunSync())
+          }
+        }
+      }
+    }
+  }
+
+  test("streaming consumer") {
+    val c = createConfig()
+    import c._
+
+    RabbitMQConnection.fromConfig[Task](config, ex).withResource { rabbitConnection =>
+      val count = Random.nextInt(50000) + 50000 // random 50 - 100k messages
+
+      logger.info(s"Sending $count messages")
+
+      val latch = new CountDownLatch(count + 10000) // explanation below
+
+      val d = new AtomicInteger(0)
+
+      rabbitConnection.newStreamingConsumer[Bytes]("testingStreaming", Monitor.noOp()).withResource { cons =>
+        val stream = cons.deliveryStream
+          .mapAsyncUnordered(20) { del =>
+            Task.delay(d.incrementAndGet()).flatMap { n =>
+              Task.sleep((if (n % 500 == 0) Random.nextInt(100) else 0).millis) >> // random slowdown 0-100 ms for every 500th message
+                del.handle {
+                  latch.countDown()
+
+                  if (n <= (count - 10000) || n > count) Ack
+                  else {
+                    if (n <= (count - 5000)) Retry else Republish()
+                  }
+
+                  // ^ example: 100000 messages in total => 6500 * Ack, 5000 * Retry, 5000 * Republish => processing 110000 (== +10000) messages in total
+                }
+            }
+          }
+
+        rabbitConnection.newProducer[Bytes]("testing", Monitor.noOp()).withResource { sender =>
+          for (_ <- 1 to count) {
+            sender.send("test", Bytes.copyFromUtf8(Random.nextString(10))).await
+          }
+
+          // it takes some time before the stats appear... :-|
+          eventually(timeout(Span(50, Seconds)), interval(Span(1, Seconds))) {
+            assertResult(count)(testHelper.getPublishedCount(queueName1))
+          }
+
+          stream.compile.drain.runToFuture // run the stream
+
+          eventually(timeout(Span(4, Minutes)), interval(Span(1, Seconds))) {
+            println("D: " + d.get())
+            assertResult(count + 10000)(d.get())
+            println("LATCH: " + latch.getCount)
+            assertResult(true)(latch.await(1000, TimeUnit.MILLISECONDS))
+            assertResult(0)(testHelper.getMessagesCount(queueName1))
+          }
+        }
+      }
+    }
+  }
+
+  test("streaming consumers to single queue") {
+    val c = createConfig()
+    import c._
+
+    RabbitMQConnection.fromConfig[Task](config, ex).withResource { rabbitConnection =>
+      val count = Random.nextInt(10000) + 10000 // random 10k - 20k messages
+
+      logger.info(s"Sending $count messages")
+
+      val latch = new CountDownLatch(count)
+
+      def toStream(cons1: RabbitMQStreamingConsumer[Task, Bytes], count: Int, d: AtomicInteger): fs2.Stream[Task, StreamedResult] = {
+        cons1.deliveryStream
+          .mapAsyncUnordered(20) { del =>
+            Task.delay(d.incrementAndGet()).flatMap { n =>
+              Task.sleep((if (n % 500 == 0) Random.nextInt(100) else 0).millis) >> // random slowdown 0-100 ms for every 500th message
+                del.handle {
+                  latch.countDown()
+
+                  Ack
+                }
+            }
+          }
+      }
+
+      rabbitConnection.newStreamingConsumer[Bytes]("testingStreaming", Monitor.noOp()).withResource { cons1 =>
+        rabbitConnection.newStreamingConsumer[Bytes]("testingStreaming", Monitor.noOp()).withResource { cons2 =>
+          val d1 = new AtomicInteger(0)
+          val d2 = new AtomicInteger(0)
+
+          val stream1 = toStream(cons1, count, d1)
+          val stream2 = toStream(cons2, count, d2)
+
+          rabbitConnection.newProducer[Bytes]("testing", Monitor.noOp()).withResource { sender =>
+            for (_ <- 1 to count) {
+              sender.send("test", Bytes.copyFromUtf8(Random.nextString(10))).await
+            }
+
+            // it takes some time before the stats appear... :-|
+            eventually(timeout(Span(50, Seconds)), interval(Span(1, Seconds))) {
+              assertResult(count)(testHelper.getPublishedCount(queueName1))
+            }
+
+            stream1.compile.drain.runToFuture // run the stream 1
+            stream2.compile.drain.runToFuture // run the stream 2
+
+            eventually(timeout(Span(5, Minutes)), interval(Span(1, Seconds))) {
+              println(s"D: ${d1.get}/${d2.get()}")
+              assertResult(count)(d1.get() + d2.get())
+              assert(d1.get() > 0)
+              assert(d2.get() > 0)
+              println("LATCH: " + latch.getCount)
+              assertResult(true)(latch.await(1000, TimeUnit.MILLISECONDS))
+              assertResult(0)(testHelper.getMessagesCount(queueName1))
+            }
+          }
+        }
+      }
+    }
+  }
+
+  test("streaming consumer stream can be manually restarted") {
+    for (_ <- 1 to 5) {
+      val c = createConfig()
+      import c._
+
+      RabbitMQConnection.fromConfig[Task](config, ex).withResource { rabbitConnection =>
+        val count = Random.nextInt(50000) + 50000 // random 50k - 100k messages
+
+        val nth = 150
+
+        logger.info(s"Sending $count messages")
+
+        val d = new AtomicInteger(0)
+
+        rabbitConnection.newStreamingConsumer[Bytes]("testingStreaming", Monitor.noOp()).withResource { cons =>
+          def stream: fs2.Stream[Task, StreamedResult] =
+            cons.deliveryStream
+              .evalMap { del =>
+                Task
+                  .delay(d.incrementAndGet())
+                  .flatMap { n =>
+                    if (n % nth != 0) del.handle(Ack)
+                    else {
+                      Task.raiseError(new RuntimeException(s"My failure $n"))
+                    }
+                  // ^^ cause failure for every nth message
+                  }
+              }
+              .handleErrorWith { e =>
+                logger.info(s"Stream has failed: ${e.getMessage}")
+                stream
+              }
+
+          rabbitConnection.newProducer[Bytes]("testing", Monitor.noOp()).withResource { sender =>
+            for (_ <- 1 to count) {
+              sender.send("test", Bytes.copyFromUtf8(Random.nextString(10))).await
+            }
+
+            // it takes some time before the stats appear... :-|
+            eventually(timeout(Span(50, Seconds)), interval(Span(0.5, Seconds))) {
+              assertResult(count)(testHelper.getPublishedCount(queueName1))
+            }
+
+            stream.compile.drain.runToFuture // run the consumer stream
+
+            eventually(timeout(Span(5, Minutes)), interval(Span(1, Seconds))) {
+              println("D: " + d.get())
+              assert(d.get() > count) // can't say exact number, number of redeliveries is unpredictable
+              assertResult(0)(testHelper.getMessagesCount(queueName1))
+            }
           }
         }
       }

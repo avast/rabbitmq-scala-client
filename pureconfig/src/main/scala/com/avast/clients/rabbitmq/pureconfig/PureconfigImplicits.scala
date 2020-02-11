@@ -65,6 +65,7 @@ class PureconfigImplicits(implicit namingConvention: NamingConvention = CamelCas
   }
   implicit val consumerConfigReader: ConfigReader[ConsumerConfig] = deriveReader
   implicit val pullConsumerConfigReader: ConfigReader[PullConsumerConfig] = deriveReader
+  implicit val streamingConsumerConfigReader: ConfigReader[StreamingConsumerConfig] = deriveReader
   implicit val producerConfigReader: ConfigReader[ProducerConfig] = deriveReader
 
   // additional declarations:

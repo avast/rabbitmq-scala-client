@@ -22,8 +22,8 @@ class DefaultRabbitMQConnection[F[_]](connection: ServerConnection,
     createChannel()
   }
 
-  private def createChannel(): Resource[F, ServerChannel] =
-    Resource.make(F.delay {
+  private val createChannelF: F[ServerChannel] = {
+    F.delay {
       try {
         connection.createChannel() match {
           case channel: ServerChannel =>
@@ -40,11 +40,17 @@ class DefaultRabbitMQConnection[F[_]](connection: ServerConnection,
           channelListener.onCreateFailure(e)
           throw e
       }
-    })(channel =>
-      F.delay {
-        logger.debug(s"Closing channel: $channel ${channel.hashCode()}")
-        channel.close()
-    })
+    }
+  }
+
+  override def newStreamingConsumer[A: DeliveryConverter](consumerConfig: StreamingConsumerConfig,
+                                                          monitor: Monitor): Resource[F, RabbitMQStreamingConsumer[F, A]] = {
+    createChannel().flatMap { channel =>
+      DefaultRabbitMQClientFactory.StreamingConsumer
+        .create[F, A](consumerConfig, channel, createChannelF, info, blocker, monitor, consumerListener)
+        .map(identity[RabbitMQStreamingConsumer[F, A]]) // type inference... :-(
+    }
+  }
 
   def newConsumer[A: DeliveryConverter](consumerConfig: ConsumerConfig, monitor: Monitor)(
       readAction: DeliveryReadAction[F, A]): Resource[F, RabbitMQConsumer[F]] = {
@@ -61,6 +67,13 @@ class DefaultRabbitMQConnection[F[_]](connection: ServerConnection,
         .create[F, A](pullConsumerConfig, channel, info, blocker, monitor)
     }
   }
+
+  private def createChannel(): Resource[F, ServerChannel] =
+    Resource.make(createChannelF)(channel =>
+      F.delay {
+        logger.debug(s"Closing channel: $channel ${channel.hashCode()}")
+        channel.close()
+    })
 
   override def newProducer[A: ProductConverter](producerConfig: ProducerConfig, monitor: Monitor): Resource[F, RabbitMQProducer[F, A]] = {
     createChannel().map { channel =>

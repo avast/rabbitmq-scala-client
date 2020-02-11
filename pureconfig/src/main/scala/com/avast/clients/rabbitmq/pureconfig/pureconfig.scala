@@ -29,6 +29,7 @@ package object pureconfig {
         consumerConfigReader: ConfigReader[ConsumerConfig] = implicits.CamelCase.consumerConfigReader,
         producerConfigReader: ConfigReader[ProducerConfig] = implicits.CamelCase.producerConfigReader,
         pullConsumerConfigReader: ConfigReader[PullConsumerConfig] = implicits.CamelCase.pullConsumerConfigReader,
+        streamingConsumerConfigReader: ConfigReader[StreamingConsumerConfig] = implicits.CamelCase.streamingConsumerConfigReader,
         declareExchangeConfigReader: ConfigReader[DeclareExchangeConfig] = implicits.CamelCase.declareExchangeConfigReader,
         declareQueueConfigReader: ConfigReader[DeclareQueueConfig] = implicits.CamelCase.declareQueueConfigReader,
         bindQueueConfigReader: ConfigReader[BindQueueConfig] = implicits.CamelCase.bindQueueConfigReader,
