@@ -252,6 +252,38 @@ When using _Retry_ the message can effectively cause starvation of other message
 until the message itself can be processed; on the other hand _Republish_ inserts the message to the original queue as a new message and it
 lets the consumer handle other messages (if they can be processed).
 
+#### Republishing
+Republishing is solved at application level with publishing a new message (with original content, headers, messageId, etc.) to the original queue and
+acknowledging the old one. This can be done via:
+1. Default exchange
+    Every virtual host in RabbitMQ has default exchange which has implicit bindings to all queues and can be easily used for publishing to
+    basically any queue. This is very handy for functionality such as the republishing however it's also very dangerous and you don't have
+    permissions to use it. In case you do have them, use this option instead of the custom exchange.  
+    This the default option (in other words, the client will use the default exchange in case you don't tell it not to do so).
+1. Custom exchange
+    In case you're unable to use the default exchange, you have to create your own exchange to replace the functionality. The RabbitMQ client
+    will create it for you together with all necessary bindings and all you have to do is to just configure a name of the exchange, e.g.
+    ```hocon
+       rabbitConnection {
+         hosts = ["localhost:5672"]
+         virtualHost = "/"
+       
+         ...
+       
+         republishStrategy {
+           type = CustomExchange
+       
+           exchangeName = "ExchangeForRepublishing"
+
+           exchangeDeclare = true // default
+           exchangeAutoBind = true // default
+         }
+         
+         ...
+       }
+    ```
+   The exchange is created as _direct_, _durable_ and without _auto-delete_ flag.
+
 ### Bind/declare arguments
 There is an option to specify bind/declare arguments for queues/exchanges as you may read about at [RabbitMQ docs](https://www.rabbitmq.com/queues.html).  
 Example of configuration with HOCON:

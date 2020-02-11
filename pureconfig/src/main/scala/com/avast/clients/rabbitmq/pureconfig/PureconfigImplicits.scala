@@ -9,6 +9,7 @@ import com.avast.clients.rabbitmq.api.DeliveryResult
 import com.avast.clients.rabbitmq.api.DeliveryResult._
 import com.avast.clients.rabbitmq.{pureconfig => _, _}
 import com.rabbitmq.client.RecoveryDelayHandler
+import com.typesafe.config.Config
 import org.slf4j.event.Level
 import pureconfig.error._
 
@@ -93,6 +94,7 @@ class PureconfigImplicits(implicit namingConvention: NamingConvention = CamelCas
 
   implicit val logLevelReader: ConfigReader[Level] = ConfigReader.stringConfigReader.map(Level.valueOf)
   implicit val recoveryDelayHandlerReader: ConfigReader[RecoveryDelayHandler] = RecoveryDelayHandlerReader
+  implicit val republishStrategyConfigReader: ConfigReader[RepublishStrategyConfig] = RepublishStrategyConfigReader
   implicit val exchangeTypeReader: ConfigReader[ExchangeType] = ConfigReader.fromNonEmptyStringOpt(ExchangeType.apply)
   implicit val addressResolverTypeReader: ConfigReader[AddressResolverType] = ConfigReader.fromNonEmptyStringTry {
     case "Default" => Success(AddressResolverType.Default)
@@ -117,17 +119,24 @@ class PureconfigImplicits(implicit namingConvention: NamingConvention = CamelCas
     cur.asObjectCursor.map(_.value.asScala.toMap.mapValues(_.unwrapped()))
   }
 
+  private def withType[A](cur: ConfigCursor)(f: (Config, String) => Result[A]): Result[A] = {
+    cur.asObjectCursor.right.map(_.value.toConfig).flatMap { config =>
+      val `type` = config.getString("type")
+      val strippedConfig = config.withoutPath("type")
+
+      f(strippedConfig, `type`)
+    }
+  }
+
   private object RecoveryDelayHandlerReader extends ConfigReader[RecoveryDelayHandler] {
     implicit val linearReader: ConfigReader[RecoveryDelayHandlers.Linear] = deriveReader
     implicit val exponentialReader: ConfigReader[RecoveryDelayHandlers.Exponential] = deriveReader
 
     override def from(cur: ConfigCursor): Result[RecoveryDelayHandler] = {
-      cur.asObjectCursor.right.map(_.value.toConfig).flatMap { config =>
-        val strippedConfig = config.withoutPath("type")
-
-        config.getString("type").toLowerCase match {
-          case "linear" => ConfigReader[RecoveryDelayHandlers.Linear].from(strippedConfig.root())
-          case "exponential" => ConfigReader[RecoveryDelayHandlers.Exponential].from(strippedConfig.root())
+      withType(cur) { (config, `type`) =>
+        `type`.toLowerCase match {
+          case "linear" => ConfigReader[RecoveryDelayHandlers.Linear].from(config.root())
+          case "exponential" => ConfigReader[RecoveryDelayHandlers.Exponential].from(config.root())
         }
       }
     }
@@ -173,6 +182,24 @@ class PureconfigImplicits(implicit namingConvention: NamingConvention = CamelCas
             // remove allowed keys
             val strippedConfig = AllowedRootConfigKeys.foldLeft(config)(_.withoutPath(_))
             DerivedReader.from(strippedConfig.root())
+        }
+      }
+    }
+  }
+
+  private object RepublishStrategyConfigReader extends ConfigReader[RepublishStrategyConfig] {
+    implicit val defaultExchangeConfigReader: ConfigReader[RepublishStrategyConfig.DefaultExchange.type] = deriveReader
+    implicit val customExchangeConfigReader: ConfigReader[RepublishStrategyConfig.CustomExchange] = deriveReader
+
+    override def from(cur: ConfigCursor): Result[RepublishStrategyConfig] = {
+      withType(cur) { (config, `type`) =>
+        `type`.toLowerCase match {
+          case "defaultexchange" => ConfigReader[RepublishStrategyConfig.DefaultExchange.type].from(config.root())
+          case "customexchange" => ConfigReader[RepublishStrategyConfig.CustomExchange].from(config.root())
+          case t =>
+            cur.fluent.at("type").cursor.map(_.location).flatMap { location => // because of correct location
+              Left(ConfigReaderFailures(CannotParse(s"Unknown republish strategy type: $t", location)))
+            }
         }
       }
     }

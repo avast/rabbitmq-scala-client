@@ -23,6 +23,7 @@ class DefaultRabbitMQStreamingConsumer[F[_]: ConcurrentEffect, A: DeliveryConver
     connectionInfo: RabbitMQConnectionInfo,
     consumerListener: ConsumerListener,
     monitor: Monitor,
+    republishStrategy: RepublishStrategy,
     blocker: Blocker)(createQueue: F[DeliveryQueue[F, Bytes]], newChannel: F[ServerChannel])(implicit cs: ContextShift[F])
     extends RabbitMQStreamingConsumer[F, A]
     with StrictLogging {
@@ -191,6 +192,7 @@ class DefaultRabbitMQStreamingConsumer[F[_]: ConcurrentEffect, A: DeliveryConver
   private class StreamingConsumer(override val channel: ServerChannel, val queue: DeliveryQueue[F, Bytes])
       extends ConsumerWithCallbackBase(channel, DeliveryResult.Retry, consumerListener) {
     private val receivingEnabled = Ref.unsafe[F, Boolean](true)
+    override protected val republishStrategy: RepublishStrategy = DefaultRabbitMQStreamingConsumer.this.republishStrategy
 
     override def handleDelivery(consumerTag: String, envelope: Envelope, properties: AMQP.BasicProperties, body: Array[Byte]): Unit = {
       processingCount.incrementAndGet()
@@ -269,13 +271,19 @@ object DefaultRabbitMQStreamingConsumer extends StrictLogging {
       consumerListener: ConsumerListener,
       queueBufferSize: Int,
       monitor: Monitor,
+      republishStrategy: RepublishStrategy,
       blocker: Blocker)(implicit cs: ContextShift[F]): Resource[F, DefaultRabbitMQStreamingConsumer[F, A]] = {
     val newQueue: F[DeliveryQueue[F, Bytes]] = createQueue(queueBufferSize)
 
     Resource.make(Sync[F].delay {
-      new DefaultRabbitMQStreamingConsumer(name, queueName, initialConsumerTag, connectionInfo, consumerListener, monitor, blocker)(
-        newQueue,
-        newChannel)
+      new DefaultRabbitMQStreamingConsumer(name,
+                                           queueName,
+                                           initialConsumerTag,
+                                           connectionInfo,
+                                           consumerListener,
+                                           monitor,
+                                           republishStrategy,
+                                           blocker)(newQueue, newChannel)
     })(_.close)
   }
 

@@ -1,6 +1,7 @@
 package com.avast.clients.rabbitmq
 
 import cats.effect._
+import cats.syntax.flatMap._
 import com.avast.clients.rabbitmq.api._
 import com.avast.metrics.scalaapi.Monitor
 import com.rabbitmq.client.ShutdownSignalException
@@ -9,12 +10,13 @@ import com.typesafe.scalalogging.StrictLogging
 import scala.language.higherKinds
 import scala.util.control.NonFatal
 
-class DefaultRabbitMQConnection[F[_]](connection: ServerConnection,
-                                      info: RabbitMQConnectionInfo,
-                                      override val connectionListener: ConnectionListener,
-                                      override val channelListener: ChannelListener,
-                                      override val consumerListener: ConsumerListener,
-                                      blocker: Blocker)(implicit F: ConcurrentEffect[F], timer: Timer[F], cs: ContextShift[F])
+class DefaultRabbitMQConnection[F[_]] private (connection: ServerConnection,
+                                               info: RabbitMQConnectionInfo,
+                                               republishStrategy: RepublishStrategyConfig,
+                                               override val connectionListener: ConnectionListener,
+                                               override val channelListener: ChannelListener,
+                                               override val consumerListener: ConsumerListener,
+                                               blocker: Blocker)(implicit F: ConcurrentEffect[F], timer: Timer[F], cs: ContextShift[F])
     extends RabbitMQConnection[F]
     with StrictLogging {
 
@@ -47,7 +49,7 @@ class DefaultRabbitMQConnection[F[_]](connection: ServerConnection,
                                                           monitor: Monitor): Resource[F, RabbitMQStreamingConsumer[F, A]] = {
     createChannel().flatMap { channel =>
       DefaultRabbitMQClientFactory.StreamingConsumer
-        .create[F, A](consumerConfig, channel, createChannelF, info, blocker, monitor, consumerListener)
+        .create[F, A](consumerConfig, channel, createChannelF, info, republishStrategy, blocker, monitor, consumerListener)
         .map(identity[RabbitMQStreamingConsumer[F, A]]) // type inference... :-(
     }
   }
@@ -56,7 +58,7 @@ class DefaultRabbitMQConnection[F[_]](connection: ServerConnection,
       readAction: DeliveryReadAction[F, A]): Resource[F, RabbitMQConsumer[F]] = {
     createChannel().map { channel =>
       DefaultRabbitMQClientFactory.Consumer
-        .create[F, A](consumerConfig, channel, info, blocker, monitor, consumerListener, readAction)
+        .create[F, A](consumerConfig, channel, info, republishStrategy, blocker, monitor, consumerListener, readAction)
     }
   }
 
@@ -64,7 +66,7 @@ class DefaultRabbitMQConnection[F[_]](connection: ServerConnection,
                                             monitor: Monitor): Resource[F, RabbitMQPullConsumer[F, A]] = {
     createChannel().map { channel =>
       DefaultRabbitMQClientFactory.PullConsumer
-        .create[F, A](pullConsumerConfig, channel, info, blocker, monitor)
+        .create[F, A](pullConsumerConfig, channel, info, republishStrategy, blocker, monitor)
     }
   }
 
@@ -100,5 +102,47 @@ class DefaultRabbitMQConnection[F[_]](connection: ServerConnection,
 
   def withChannel[A](f: ServerChannel => F[A]): F[A] = {
     createChannel().use(f)
+  }
+}
+
+object DefaultRabbitMQConnection {
+  def make[F[_]](connection: ServerConnection,
+                 info: RabbitMQConnectionInfo,
+                 republishStrategy: RepublishStrategyConfig,
+                 connectionListener: ConnectionListener,
+                 channelListener: ChannelListener,
+                 consumerListener: ConsumerListener,
+                 blocker: Blocker)(implicit F: ConcurrentEffect[F], timer: Timer[F], cs: ContextShift[F]): F[DefaultRabbitMQConnection[F]] =
+    F.delay {
+        new DefaultRabbitMQConnection(connection, info, republishStrategy, connectionListener, channelListener, consumerListener, blocker)
+      }
+      .flatTap { conn =>
+        conn.withChannel { channel =>
+          setUpRepublishing(republishStrategy, info, channel)
+        }
+      }
+
+  // prepare exchange for republishing
+  private def setUpRepublishing[F[_]: Sync](republishStrategyConfig: RepublishStrategyConfig,
+                                            connectionInfo: RabbitMQConnectionInfo,
+                                            channel: ServerChannel): F[Unit] = Sync[F].delay {
+    republishStrategyConfig match {
+      case RepublishStrategyConfig.CustomExchange(exchangeName, exchangeDeclare, _) =>
+        if (exchangeDeclare) {
+          DefaultRabbitMQClientFactory.declareExchange(
+            name = exchangeName,
+            `type` = ExchangeType.Direct,
+            durable = true,
+            autoDelete = false,
+            arguments = DeclareArgumentsConfig(),
+            channel = channel,
+            connectionInfo = connectionInfo
+          )
+        }
+
+        ()
+
+      case _ => () // no-op
+    }
   }
 }

@@ -5,8 +5,8 @@ import java.util.concurrent.atomic.AtomicInteger
 import cats.effect._
 import cats.implicits._
 import com.avast.bytes.Bytes
+import com.avast.clients.rabbitmq.JavaConverters._
 import com.avast.clients.rabbitmq.api._
-import JavaConverters._
 import com.avast.metrics.scalaapi.Monitor
 import com.rabbitmq.client.{AMQP, GetResponse}
 import com.typesafe.scalalogging.StrictLogging
@@ -21,6 +21,7 @@ class DefaultRabbitMQPullConsumer[F[_]: Effect, A: DeliveryConverter](
     protected override val connectionInfo: RabbitMQConnectionInfo,
     failureAction: DeliveryResult,
     protected override val monitor: Monitor,
+    override protected val republishStrategy: RepublishStrategy,
     protected override val blocker: Blocker)(implicit override protected val cs: ContextShift[F])
     extends RabbitMQPullConsumer[F, A]
     with ConsumerBase[F]

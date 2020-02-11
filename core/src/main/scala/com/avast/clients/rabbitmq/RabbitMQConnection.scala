@@ -5,6 +5,7 @@ import java.util
 import java.util.concurrent.ExecutorService
 
 import cats.effect._
+import cats.syntax.functor._
 import com.avast.clients.rabbitmq.api._
 import com.avast.metrics.scalaapi.Monitor
 import com.rabbitmq.client._
@@ -86,26 +87,32 @@ object RabbitMQConnection extends StrictLogging {
       connectionListener: ConnectionListener = DefaultListeners.DefaultConnectionListener,
       channelListener: ChannelListener = DefaultListeners.DefaultChannelListener,
       consumerListener: ConsumerListener = DefaultListeners.DefaultConsumerListener): Resource[F, RabbitMQConnection[F]] = {
-    createConnection(connectionConfig, blockingExecutor, sslContext, connectionListener, channelListener, consumerListener).map {
-      connection =>
+    val connectionInfo = RabbitMQConnectionInfo(
+      hosts = connectionConfig.hosts.toVector,
+      virtualHost = connectionConfig.virtualHost,
+      username = if (connectionConfig.credentials.enabled) Option(connectionConfig.credentials.username) else None
+    )
+
+    createConnection(connectionConfig, connectionInfo, blockingExecutor, sslContext, connectionListener, channelListener, consumerListener)
+      .evalMap { connection =>
         val blocker = Blocker.liftExecutorService(blockingExecutor)
 
-        new DefaultRabbitMQConnection(
-          connection = connection,
-          info = RabbitMQConnectionInfo(
-            hosts = connectionConfig.hosts.toVector,
-            virtualHost = connectionConfig.virtualHost,
-            username = if (connectionConfig.credentials.enabled) Option(connectionConfig.credentials.username) else None
-          ),
-          connectionListener = connectionListener,
-          channelListener = channelListener,
-          consumerListener = consumerListener,
-          blocker = blocker
-        )
-    }
+        DefaultRabbitMQConnection
+          .make(
+            connection = connection,
+            info = connectionInfo,
+            connectionListener = connectionListener,
+            channelListener = channelListener,
+            consumerListener = consumerListener,
+            blocker = blocker,
+            republishStrategy = connectionConfig.republishStrategy
+          )
+          .map(identity[RabbitMQConnection[F]]) // sad story about type inference
+      }
   }
 
   protected def createConnection[F[_]: Sync](connectionConfig: RabbitMQConnectionConfig,
+                                             connectionInfo: RabbitMQConnectionInfo,
                                              executor: ExecutorService,
                                              sslContext: Option[SSLContext],
                                              connectionListener: ConnectionListener,
@@ -114,18 +121,10 @@ object RabbitMQConnection extends StrictLogging {
     Resource.make {
       Sync[F].delay {
         import connectionConfig._
-        import com.avast.clients.rabbitmq.AddressResolverType._
-        val factory = new ConnectionFactory {
-          override def createAddressResolver(addresses: util.List[Address]): AddressResolver = addressResolverType match {
-            case Default => super.createAddressResolver(addresses)
-            case List => new ListAddressResolver(addresses)
-            case DnsRecord if addresses.size() == 1 => new DnsRecordIpAddressResolver(addresses.get(0))
-            case DnsRecord => throw new IllegalArgumentException(s"DnsRecord configured but more hosts specified")
-            case DnsSrvRecord if addresses.size() == 1 => new DnsSrvRecordAddressResolver(addresses.get(0).getHost)
-            case DnsSrvRecord => throw new IllegalArgumentException(s"DnsSrvRecord configured but more hosts specified")
-          }
-        }
+
+        val factory = createConnectionFactory(addressResolverType)
         val exceptionHandler = createExceptionHandler(connectionListener, channelListener, consumerListener)
+
         setUpConnection(connectionConfig, factory, exceptionHandler, sslContext, executor)
 
         val addresses = try {
@@ -153,6 +152,21 @@ object RabbitMQConnection extends StrictLogging {
         }
       }
     }(c => Sync[F].delay(c.close()))
+
+  private def createConnectionFactory[F[_]: Sync](addressResolverType: AddressResolverType): ConnectionFactory = {
+    import com.avast.clients.rabbitmq.AddressResolverType._
+
+    new ConnectionFactory {
+      override def createAddressResolver(addresses: util.List[Address]): AddressResolver = addressResolverType match {
+        case Default => super.createAddressResolver(addresses)
+        case List => new ListAddressResolver(addresses)
+        case DnsRecord if addresses.size() == 1 => new DnsRecordIpAddressResolver(addresses.get(0))
+        case DnsRecord => throw new IllegalArgumentException(s"DnsRecord configured but more hosts specified")
+        case DnsSrvRecord if addresses.size() == 1 => new DnsSrvRecordAddressResolver(addresses.get(0).getHost)
+        case DnsSrvRecord => throw new IllegalArgumentException(s"DnsSrvRecord configured but more hosts specified")
+      }
+    }
+  }
 
   private def setUpConnection(connectionConfig: RabbitMQConnectionConfig,
                               factory: ConnectionFactory,

@@ -1,11 +1,11 @@
 package com.avast.clients.rabbitmq
 
 import cats.effect.{Blocker, ContextShift, Sync}
+import cats.syntax.flatMap._
 import com.avast.clients.rabbitmq.DefaultRabbitMQConsumer._
 import com.avast.clients.rabbitmq.api.DeliveryResult
 import com.avast.metrics.scalaapi.Monitor
 import com.rabbitmq.client.AMQP.BasicProperties
-import com.rabbitmq.client.ShutdownSignalException
 import com.typesafe.scalalogging.StrictLogging
 
 import scala.collection.JavaConverters._
@@ -17,6 +17,7 @@ private[rabbitmq] trait ConsumerBase[F[_]] extends StrictLogging {
   protected def queueName: String
   protected def channel: ServerChannel
   protected def blocker: Blocker
+  protected def republishStrategy: RepublishStrategy
   protected implicit def F: Sync[F] // scalastyle:ignore
   protected implicit def cs: ContextShift[F]
   protected def connectionInfo: RabbitMQConnectionInfo
@@ -78,18 +79,11 @@ private[rabbitmq] trait ConsumerBase[F[_]] extends StrictLogging {
       }
     }
 
-  protected def republish(messageId: String, deliveryTag: Long, properties: BasicProperties, body: Array[Byte]): F[Unit] =
-    blocker.delay {
-      try {
-        logger.debug(s"[$name] Republishing delivery (ID $messageId, deliveryTag $deliveryTag) to end of queue '$queueName'")
-        if (!channel.isOpen) throw new IllegalStateException("Cannot republish delivery on closed channel")
-        channel.basicPublish("", queueName, properties, body)
-        channel.basicAck(deliveryTag, false)
-        resultRepublishMeter.mark()
-      } catch {
-        case NonFatal(e) => logger.warn(s"[$name] Error while republishing the delivery", e)
-      }
-    }
+  protected def republish(messageId: String, deliveryTag: Long, properties: BasicProperties, body: Array[Byte]): F[Unit] = {
+    republishStrategy
+      .republish(blocker, channel, name)(queueName, messageId, deliveryTag, properties, body)
+      .flatTap(_ => F.delay(resultRepublishMeter.mark()))
+  }
 
   protected def createPropertiesForRepublish(newHeaders: Map[String, AnyRef],
                                              properties: BasicProperties,

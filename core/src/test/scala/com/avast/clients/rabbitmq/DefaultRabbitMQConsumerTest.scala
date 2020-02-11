@@ -46,6 +46,7 @@ class DefaultRabbitMQConsumerTest extends TestBase {
       Monitor.noOp,
       DeliveryResult.Reject,
       DefaultListeners.DefaultConsumerListener,
+      RepublishStrategy.DefaultExchange,
       TestBase.testBlocker
     )({ delivery =>
       assertResult(Some(messageId))(delivery.properties.messageId)
@@ -86,6 +87,7 @@ class DefaultRabbitMQConsumerTest extends TestBase {
       Monitor.noOp,
       DeliveryResult.Reject,
       DefaultListeners.DefaultConsumerListener,
+      RepublishStrategy.DefaultExchange,
       TestBase.testBlocker
     )({ delivery =>
       assertResult(Some(messageId))(delivery.properties.messageId)
@@ -126,6 +128,7 @@ class DefaultRabbitMQConsumerTest extends TestBase {
       Monitor.noOp,
       DeliveryResult.Reject,
       DefaultListeners.DefaultConsumerListener,
+      RepublishStrategy.DefaultExchange,
       TestBase.testBlocker
     )({ delivery =>
       assertResult(Some(messageId))(delivery.properties.messageId)
@@ -166,6 +169,7 @@ class DefaultRabbitMQConsumerTest extends TestBase {
       Monitor.noOp,
       DeliveryResult.Reject,
       DefaultListeners.DefaultConsumerListener,
+      RepublishStrategy.DefaultExchange,
       TestBase.testBlocker
     )({ delivery =>
       assertResult(Some(messageId))(delivery.properties.messageId)
@@ -208,6 +212,7 @@ class DefaultRabbitMQConsumerTest extends TestBase {
       Monitor.noOp,
       DeliveryResult.Retry,
       DefaultListeners.DefaultConsumerListener,
+      RepublishStrategy.DefaultExchange,
       TestBase.testBlocker
     )({ delivery =>
       assertResult(Some(messageId))(delivery.properties.messageId)
@@ -245,6 +250,7 @@ class DefaultRabbitMQConsumerTest extends TestBase {
       Monitor.noOp,
       DeliveryResult.Retry,
       DefaultListeners.DefaultConsumerListener,
+      RepublishStrategy.DefaultExchange,
       TestBase.testBlocker
     )({ delivery =>
       assertResult(Some(messageId))(delivery.properties.messageId)
@@ -303,6 +309,7 @@ class DefaultRabbitMQConsumerTest extends TestBase {
         monitor,
         DeliveryResult.Retry,
         DefaultListeners.DefaultConsumerListener,
+        RepublishStrategy.DefaultExchange,
         TestBase.testBlocker
       )({ delivery =>
         assertResult(Some(messageId))(delivery.properties.messageId)
@@ -331,6 +338,7 @@ class DefaultRabbitMQConsumerTest extends TestBase {
         monitor,
         DeliveryResult.Retry,
         DefaultListeners.DefaultConsumerListener,
+        RepublishStrategy.DefaultExchange,
         TestBase.testBlocker
       )({ delivery =>
         assertResult(Some(messageId))(delivery.properties.messageId)
@@ -392,6 +400,7 @@ class DefaultRabbitMQConsumerTest extends TestBase {
         monitor,
         DeliveryResult.Retry,
         DefaultListeners.DefaultConsumerListener,
+        RepublishStrategy.DefaultExchange,
         TestBase.testBlocker
       )({ delivery =>
         assertResult(Some(messageId))(delivery.properties.messageId)
@@ -420,6 +429,7 @@ class DefaultRabbitMQConsumerTest extends TestBase {
         monitor,
         DeliveryResult.Retry,
         DefaultListeners.DefaultConsumerListener,
+        RepublishStrategy.DefaultExchange,
         TestBase.testBlocker
       )({ delivery =>
         assertResult(Some(messageId))(delivery.properties.messageId)
