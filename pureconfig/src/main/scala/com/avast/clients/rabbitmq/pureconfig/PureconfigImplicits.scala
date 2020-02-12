@@ -59,6 +59,12 @@ class PureconfigImplicits(implicit namingConvention: NamingConvention = CamelCas
   private implicit def hint[T]: ProductHint[T] =
     ProductHint[T](ConfigFieldMapping(CamelCase, namingConvention), allowUnknownKeys = allowUnknownKeys)
 
+  private implicit val declareArgumentsHint: ProductHint[DeclareArgumentsConfig] =
+    ProductHint[DeclareArgumentsConfig](ConfigFieldMapping(CamelCase, namingConvention), allowUnknownKeys = true)
+
+  private implicit val bindArgumentsHint: ProductHint[BindArgumentsConfig] =
+    ProductHint[BindArgumentsConfig](ConfigFieldMapping(CamelCase, namingConvention), allowUnknownKeys = true)
+
   // connection, producer, consumers:
   implicit val connectionConfigReader: ConfigReader[RabbitMQConnectionConfig] = {
     if (!allowUnknownKeys) StrictConnectionConfigReader else deriveReader[RabbitMQConnectionConfig]
