@@ -20,6 +20,7 @@ class DefaultRabbitMQConsumer[F[_]: Effect](
     override protected val monitor: Monitor,
     failureAction: DeliveryResult,
     consumerListener: ConsumerListener,
+    override protected val republishStrategy: RepublishStrategy,
     override protected val blocker: Blocker)(readAction: DeliveryReadAction[F, Bytes])(implicit override protected val cs: ContextShift[F])
     extends ConsumerWithCallbackBase(channel, failureAction, consumerListener)
     with RabbitMQConsumer[F]

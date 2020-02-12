@@ -22,6 +22,7 @@ SSL without custom (key|trust)store; it's now disabled by default (`None`)!
 1. You are now able to specify network recovery strategy.
 1. You are now able to specify timeout log level.
 1. Additional declarations: `bindQueue` now has more consistent API. The only change is `bindArguments` were renamed to `arguments`.
+1. You are now able to configure custom exchange for republishing.
 
 ---
 

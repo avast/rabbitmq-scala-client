@@ -49,6 +49,7 @@ class DefaultRabbitMQPullConsumerTest extends TestBase {
       connectionInfo,
       DeliveryResult.Reject,
       Monitor.noOp,
+      RepublishStrategy.DefaultExchange,
       TestBase.testBlocker
     )
 
@@ -93,6 +94,7 @@ class DefaultRabbitMQPullConsumerTest extends TestBase {
       connectionInfo,
       DeliveryResult.Reject,
       Monitor.noOp,
+      RepublishStrategy.DefaultExchange,
       TestBase.testBlocker
     )
 
@@ -137,6 +139,7 @@ class DefaultRabbitMQPullConsumerTest extends TestBase {
       connectionInfo,
       DeliveryResult.Ack,
       Monitor.noOp,
+      RepublishStrategy.DefaultExchange,
       TestBase.testBlocker
     )
 
@@ -181,6 +184,7 @@ class DefaultRabbitMQPullConsumerTest extends TestBase {
       connectionInfo,
       DeliveryResult.Reject,
       Monitor.noOp,
+      RepublishStrategy.DefaultExchange,
       TestBase.testBlocker
     )
 
@@ -233,6 +237,7 @@ class DefaultRabbitMQPullConsumerTest extends TestBase {
       connectionInfo,
       DeliveryResult.Retry,
       Monitor.noOp,
+      RepublishStrategy.DefaultExchange,
       TestBase.testBlocker
     )
 
@@ -279,6 +284,7 @@ class DefaultRabbitMQPullConsumerTest extends TestBase {
       connectionInfo,
       DeliveryResult.Ack,
       Monitor.noOp,
+      RepublishStrategy.DefaultExchange,
       TestBase.testBlocker
     )
 

@@ -15,7 +15,8 @@ final case class RabbitMQConnectionConfig(name: String,
                                           heartBeatInterval: FiniteDuration = 30.seconds,
                                           topologyRecovery: Boolean = true,
                                           networkRecovery: NetworkRecoveryConfig = NetworkRecoveryConfig(),
-                                          credentials: CredentialsConfig)
+                                          credentials: CredentialsConfig,
+                                          republishStrategy: RepublishStrategyConfig = RepublishStrategyConfig.DefaultExchange)
 
 final case class NetworkRecoveryConfig(enabled: Boolean = true, handler: RecoveryDelayHandler = RecoveryDelayHandlers.Linear())
 
@@ -123,4 +124,19 @@ object ExchangeType {
   case object Direct extends ExchangeType { val value: String = "direct" }
   case object Fanout extends ExchangeType { val value: String = "fanout" }
   case object Topic extends ExchangeType { val value: String = "topic" }
+}
+
+trait RepublishStrategyConfig {
+  def toRepublishStrategy: RepublishStrategy
+}
+
+object RepublishStrategyConfig {
+  case class CustomExchange(exchangeName: String, exchangeDeclare: Boolean = true, exchangeAutoBind: Boolean = true)
+      extends RepublishStrategyConfig {
+    override def toRepublishStrategy: RepublishStrategy = RepublishStrategy.CustomExchange(exchangeName)
+  }
+
+  case object DefaultExchange extends RepublishStrategyConfig {
+    override def toRepublishStrategy: RepublishStrategy = RepublishStrategy.DefaultExchange
+  }
 }

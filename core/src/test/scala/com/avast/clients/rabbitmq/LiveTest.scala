@@ -37,9 +37,10 @@ class LiveTest extends TestBase with ScalaFutures {
     val exchange2: String = randomString(4) + "_EX2"
     val exchange3: String = randomString(4) + "_EX3"
     val exchange4: String = randomString(4) + "_EX4"
+    val exchange5: String = randomString(4) + "_EX5"
 
-    testHelper.deleteQueue(queueName1)
-    testHelper.deleteQueue(queueName2)
+    testHelper.queue.delete(queueName1)
+    testHelper.queue.delete(queueName2)
 
     private val original = ConfigFactory.load().getConfig("myConfig")
 
@@ -48,6 +49,7 @@ class LiveTest extends TestBase with ScalaFutures {
     bindConfigs(1) = bindConfigs(1).withValue("exchange.name", ConfigValueFactory.fromAnyRef(exchange2))
 
     val config: Config = original
+      .withValue("republishStrategy.exchangeName", ConfigValueFactory.fromAnyRef(exchange5))
       .withValue("consumers.testing.queueName", ConfigValueFactory.fromAnyRef(queueName1))
       .withValue("consumers.testing.processTimeout", ConfigValueFactory.fromAnyRef("500ms"))
       .withValue("consumers.testing.bindings", ConfigValueFactory.fromIterable(bindConfigs.toSeq.map(_.root()).asJava))
@@ -101,7 +103,7 @@ class LiveTest extends TestBase with ScalaFutures {
 
           eventually {
             assertResult(1)(counter.get())
-            assertResult(0)(testHelper.getMessagesCount(queueName1))
+            assertResult(0)(testHelper.queue.getMessagesCount(queueName1))
           }
         }
       }
@@ -145,12 +147,12 @@ class LiveTest extends TestBase with ScalaFutures {
 
           // it takes some time before the stats appear... :-|
           eventually(timeout(Span(3, Seconds)), interval(Span(0.1, Seconds))) {
-            assertResult(count)(testHelper.getPublishedCount(queueName1))
+            assertResult(count)(testHelper.queue.getPublishedCount(queueName1))
           }
 
           eventually(timeout(Span(3, Seconds)), interval(Span(0.1, Seconds))) {
             assertResult(true)(latch.await(1000, TimeUnit.MILLISECONDS))
-            assertResult(0)(testHelper.getMessagesCount(queueName1))
+            assertResult(0)(testHelper.queue.getMessagesCount(queueName1))
           }
         }
       }
@@ -178,7 +180,7 @@ class LiveTest extends TestBase with ScalaFutures {
             }
 
             assertResult(true, latch.getCount)(latch.await(1000, TimeUnit.MILLISECONDS))
-            assertResult(0)(testHelper.getMessagesCount(queueName1))
+            assertResult(0)(testHelper.queue.getMessagesCount(queueName1))
           }
         }
       }
@@ -208,7 +210,7 @@ class LiveTest extends TestBase with ScalaFutures {
 
           eventually(timeout(Span(3, Seconds)), interval(Span(0.25, Seconds))) {
             assert(cnt.get() >= 40)
-            assert(testHelper.getMessagesCount(queueName1) <= 20)
+            assert(testHelper.queue.getMessagesCount(queueName1) <= 20)
           }
         }
       }
@@ -239,7 +241,7 @@ class LiveTest extends TestBase with ScalaFutures {
 
           eventually(timeout(Span(5, Seconds)), interval(Span(0.25, Seconds))) {
             assert(cnt.get() >= 40)
-            assert(testHelper.getMessagesCount(queueName1) <= 20)
+            assert(testHelper.queue.getMessagesCount(queueName1) <= 20)
           }
         }
       }
@@ -279,8 +281,8 @@ class LiveTest extends TestBase with ScalaFutures {
             _ <- rabbitConnection.bindQueue("bindQueue")
           } yield ()).unsafeRunSync()
 
-          assertResult(0)(testHelper.getMessagesCount(queueName1))
-          assertResult(0)(testHelper.getMessagesCount(queueName2))
+          assertResult(0)(testHelper.queue.getMessagesCount(queueName1))
+          assertResult(0)(testHelper.queue.getMessagesCount(queueName2))
 
           for (_ <- 1 to 10) {
             sender.send("test", Bytes.copyFromUtf8(Random.nextString(10))).unsafeRunSync()
@@ -289,8 +291,8 @@ class LiveTest extends TestBase with ScalaFutures {
           eventually(timeout(Span(2, Seconds)), interval(Span(200, Milliseconds))) {
             assertResult(true)(latch.await(500, TimeUnit.MILLISECONDS))
 
-            assertResult(0)(testHelper.getMessagesCount(queueName1))
-            assertResult(10)(testHelper.getMessagesCount(queueName2))
+            assertResult(0)(testHelper.queue.getMessagesCount(queueName1))
+            assertResult(10)(testHelper.queue.getMessagesCount(queueName2))
           }
         }
       }
@@ -325,7 +327,7 @@ class LiveTest extends TestBase with ScalaFutures {
 
           eventually(timeout(Span(2, Seconds)), interval(Span(0.25, Seconds))) {
             assertResult(20)(processed.get())
-            assertResult(0)(testHelper.getMessagesCount(queueName1))
+            assertResult(0)(testHelper.queue.getMessagesCount(queueName1))
             assertResult(10)(poisoned.get())
           }
         }
@@ -350,7 +352,7 @@ class LiveTest extends TestBase with ScalaFutures {
           }
 
           eventually(timeout = timeout(Span(5, Seconds))) {
-            assertResult(10)(testHelper.getMessagesCount(queueName1))
+            assertResult(10)(testHelper.queue.getMessagesCount(queueName1))
           }
 
           for (_ <- 1 to 3) {
@@ -359,7 +361,7 @@ class LiveTest extends TestBase with ScalaFutures {
           }
 
           eventually(timeout = timeout(Span(5, Seconds))) {
-            assertResult(7)(testHelper.getMessagesCount(queueName1))
+            assertResult(7)(testHelper.queue.getMessagesCount(queueName1))
           }
 
           for (_ <- 1 to 7) {
@@ -368,7 +370,7 @@ class LiveTest extends TestBase with ScalaFutures {
           }
 
           eventually(timeout = timeout(Span(5, Seconds))) {
-            assertResult(0)(testHelper.getMessagesCount(queueName1))
+            assertResult(0)(testHelper.queue.getMessagesCount(queueName1))
           }
 
           for (_ <- 1 to 10) {
@@ -417,7 +419,7 @@ class LiveTest extends TestBase with ScalaFutures {
 
           // it takes some time before the stats appear... :-|
           eventually(timeout(Span(50, Seconds)), interval(Span(1, Seconds))) {
-            assertResult(count)(testHelper.getPublishedCount(queueName1))
+            assertResult(count)(testHelper.queue.getPublishedCount(queueName1))
           }
 
           stream.compile.drain.runToFuture // run the stream
@@ -427,7 +429,7 @@ class LiveTest extends TestBase with ScalaFutures {
             assertResult(count + 10000)(d.get())
             println("LATCH: " + latch.getCount)
             assertResult(true)(latch.await(1000, TimeUnit.MILLISECONDS))
-            assertResult(0)(testHelper.getMessagesCount(queueName1))
+            assertResult(0)(testHelper.queue.getMessagesCount(queueName1))
           }
         }
       }
@@ -474,7 +476,7 @@ class LiveTest extends TestBase with ScalaFutures {
 
             // it takes some time before the stats appear... :-|
             eventually(timeout(Span(50, Seconds)), interval(Span(1, Seconds))) {
-              assertResult(count)(testHelper.getPublishedCount(queueName1))
+              assertResult(count)(testHelper.queue.getPublishedCount(queueName1))
             }
 
             stream1.compile.drain.runToFuture // run the stream 1
@@ -487,7 +489,7 @@ class LiveTest extends TestBase with ScalaFutures {
               assert(d2.get() > 0)
               println("LATCH: " + latch.getCount)
               assertResult(true)(latch.await(1000, TimeUnit.MILLISECONDS))
-              assertResult(0)(testHelper.getMessagesCount(queueName1))
+              assertResult(0)(testHelper.queue.getMessagesCount(queueName1))
             }
           }
         }
@@ -535,7 +537,7 @@ class LiveTest extends TestBase with ScalaFutures {
 
             // it takes some time before the stats appear... :-|
             eventually(timeout(Span(50, Seconds)), interval(Span(0.5, Seconds))) {
-              assertResult(count)(testHelper.getPublishedCount(queueName1))
+              assertResult(count)(testHelper.queue.getPublishedCount(queueName1))
             }
 
             stream.compile.drain.runToFuture // run the consumer stream
@@ -543,7 +545,7 @@ class LiveTest extends TestBase with ScalaFutures {
             eventually(timeout(Span(5, Minutes)), interval(Span(1, Seconds))) {
               println("D: " + d.get())
               assert(d.get() > count) // can't say exact number, number of redeliveries is unpredictable
-              assertResult(0)(testHelper.getMessagesCount(queueName1))
+              assertResult(0)(testHelper.queue.getMessagesCount(queueName1))
             }
           }
         }
@@ -589,11 +591,44 @@ class LiveTest extends TestBase with ScalaFutures {
           sender.send("test", Bytes.copyFromUtf8(randomString(10))).unsafeRunSync()
 
           eventually(timeout = timeout(Span(5, Seconds))) {
-            assertResult(0)(testHelper.getMessagesCount(queueName1))
+            assertResult(0)(testHelper.queue.getMessagesCount(queueName1))
 
             assertResult(0)(processing.get())
             assertResult(4)(parsingFailures.get())
 
+          }
+        }
+      }
+    }
+  }
+
+  test("custom exchange republish strategy works") {
+    val c = createConfig()
+    import c._
+
+    val count = 100
+
+    RabbitMQConnection.fromConfig[Task](config, ex).withResource { rabbitConnection =>
+      val counter = new AtomicInteger(0)
+
+      val cons = rabbitConnection.newConsumer("testing", Monitor.noOp()) { _: Delivery[Bytes] =>
+        val c = counter.incrementAndGet()
+        Task {
+          if (c <= 10) DeliveryResult.Republish() else DeliveryResult.Ack // republish first 10 messages
+        }
+      }
+
+      cons.withResource { _ =>
+        rabbitConnection.newProducer[Bytes]("testing", Monitor.noOp()).withResource { sender =>
+          for (_ <- 1 to count) {
+            sender.send("test", Bytes.copyFromUtf8(Random.nextString(10))).await
+          }
+
+          eventually {
+            assertResult(count + 10)(counter.get())
+            assertResult(0)(testHelper.queue.getMessagesCount(queueName1))
+            assertResult(count + 10)(testHelper.queue.getPublishedCount(queueName1))
+            assertResult(10)(testHelper.exchange.getPublishedCount(exchange5))
           }
         }
       }
