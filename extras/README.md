@@ -16,18 +16,10 @@ with [PoisonedMessageHandler](src/main/scala/com/avast/clients/rabbitmq/extras/P
 of attempts and won't let the message to be republished again and again (above the limit you set).  
 _Note: it works ONLY for `Republish` and not for `Retry`!_
 
-The `PoisonedMessageHandler` is _finally tagless_ for Scala (see [related info](../README.md#scala-usage)) and bound to `CompletableFuture` for Java.
-
-Scala:
+### Basic consumer
 
 ```scala
 val newReadAction = PoisonedMessageHandler[Task, MyDeliveryType](3)(myReadAction)
-```
-
-Java:
-
-```java
-newReadAction = PoisonedMessageHandler.forJava(3, myReadAction, executor);
 ```
 
 You can even pretend lower number of attempts when you want to rise the republishing count (for some special message):
@@ -46,3 +38,18 @@ val newReadAction = PoisonedMessageHandler.withCustomPoisonedAction[Task, MyDeli
 ```
 
 After the execution of the poisoned-message action (no matter whether default or custom one), the delivery is REJECTed.
+
+### Streaming consumer
+
+The usage and capabilities of poisoned message handler is very similar as for [basic consumer](#basic-consumer).
+
+```scala
+val cons: RabbitMQStreamingConsumer[IO, String] = ???
+
+val poisonedHandler: fs2.Pipe[IO, StreamedDelivery[IO, String], StreamedResult] = StreamingPoisonedMessageHandler[IO, String](3) { delivery =>
+  // do your stuff
+  IO.pure(DeliveryResult.Ack)
+}
+
+val stream: fs2.Stream[IO, StreamedResult] = cons.deliveryStream.through(poisonedHandler)
+```

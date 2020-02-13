@@ -24,13 +24,17 @@ import scala.util.Random
 class LiveTest extends TestBase with ScalaFutures {
   import pureconfig._
 
+  def randomString(length: Int): String = {
+    Random.alphanumeric.take(length).mkString("")
+  }
+
   private implicit val p: PatienceConfig = PatienceConfig(timeout = Span(5, Seconds))
 
   private lazy val testHelper = new TestHelper(System.getProperty("rabbit.host", System.getenv("rabbit.host")),
                                                System.getProperty("rabbit.tcp.15672", System.getenv("rabbit.tcp.15672")).toInt)
 
+  //noinspection ScalaStyle
   private def createConfig() = new {
-
     val queueName1: String = randomString(4) + "_QU1"
     val queueName2: String = randomString(4) + "_QU2"
     val exchange1: String = randomString(4) + "_EX1"
@@ -51,13 +55,15 @@ class LiveTest extends TestBase with ScalaFutures {
     val config: Config = original
       .withValue("republishStrategy.exchangeName", ConfigValueFactory.fromAnyRef(exchange5))
       .withValue("consumers.testing.queueName", ConfigValueFactory.fromAnyRef(queueName1))
-      .withValue("consumers.testing.processTimeout", ConfigValueFactory.fromAnyRef("500ms"))
       .withValue("consumers.testing.bindings", ConfigValueFactory.fromIterable(bindConfigs.toSeq.map(_.root()).asJava))
       .withValue("consumers.testingPull.queueName", ConfigValueFactory.fromAnyRef(queueName1))
       .withValue("consumers.testingPull.bindings", ConfigValueFactory.fromIterable(bindConfigs.toSeq.map(_.root()).asJava))
       .withValue("consumers.testingStreaming.queueName", ConfigValueFactory.fromAnyRef(queueName1))
       .withValue("consumers.testingStreaming.queueBufferSize", ConfigValueFactory.fromAnyRef(200))
       .withValue("consumers.testingStreaming.bindings", ConfigValueFactory.fromIterable(bindConfigs.toSeq.map(_.root()).asJava))
+      .withValue("consumers.testingStreamingWithTimeout.queueName", ConfigValueFactory.fromAnyRef(queueName1))
+      .withValue("consumers.testingStreamingWithTimeout.queueBufferSize", ConfigValueFactory.fromAnyRef(200))
+      .withValue("consumers.testingStreamingWithTimeout.bindings", ConfigValueFactory.fromIterable(bindConfigs.toSeq.map(_.root()).asJava))
       .withValue("producers.testing.exchange", ConfigValueFactory.fromAnyRef(exchange1))
       .withValue("producers.testing2.exchange", ConfigValueFactory.fromAnyRef(exchange2))
       .withValue("producers.testing3.exchange", ConfigValueFactory.fromAnyRef(exchange4))
@@ -69,10 +75,6 @@ class LiveTest extends TestBase with ScalaFutures {
       .withValue("declarations.declareQueue.name", ConfigValueFactory.fromAnyRef(queueName2))
       .withValue("declarations.bindQueue.exchangeName", ConfigValueFactory.fromAnyRef(exchange3))
       .withValue("declarations.bindQueue.queueName", ConfigValueFactory.fromAnyRef(queueName2))
-
-    def randomString(length: Int): String = {
-      Random.alphanumeric.take(length).mkString("")
-    }
 
     val ex: ExecutorService = ExecutionContext.fromExecutorService(Executors.newCachedThreadPool())
 
@@ -396,19 +398,18 @@ class LiveTest extends TestBase with ScalaFutures {
 
       rabbitConnection.newStreamingConsumer[Bytes]("testingStreaming", Monitor.noOp()).withResource { cons =>
         val stream = cons.deliveryStream
-          .mapAsyncUnordered(20) { del =>
+          .mapAsyncUnordered(50) { del =>
             Task.delay(d.incrementAndGet()).flatMap { n =>
-              Task.sleep((if (n % 500 == 0) Random.nextInt(100) else 0).millis) >> // random slowdown 0-100 ms for every 500th message
-                del.handle {
-                  latch.countDown()
+              del.handle {
+                latch.countDown()
 
-                  if (n <= (count - 10000) || n > count) Ack
-                  else {
-                    if (n <= (count - 5000)) Retry else Republish()
-                  }
-
-                  // ^ example: 100000 messages in total => 6500 * Ack, 5000 * Retry, 5000 * Republish => processing 110000 (== +10000) messages in total
+                if (n <= (count - 10000) || n > count) Ack
+                else {
+                  if (n <= (count - 5000)) Retry else Republish()
                 }
+
+                // ^ example: 100000 messages in total => 6500 * Ack, 5000 * Retry, 5000 * Republish => processing 110000 (== +10000) messages in total
+              }
             }
           }
 
@@ -547,6 +548,48 @@ class LiveTest extends TestBase with ScalaFutures {
               assert(d.get() > count) // can't say exact number, number of redeliveries is unpredictable
               assertResult(0)(testHelper.queue.getMessagesCount(queueName1))
             }
+          }
+        }
+      }
+    }
+  }
+
+  test("streaming consumer timeouts") {
+    val c = createConfig()
+    import c._
+
+    RabbitMQConnection.fromConfig[Task](config, ex).withResource { rabbitConnection =>
+      val count = 100
+
+      logger.info(s"Sending $count messages")
+
+      val d = new AtomicInteger(0)
+
+      rabbitConnection.newStreamingConsumer[Bytes]("testingStreamingWithTimeout", Monitor.noOp()).withResource { cons =>
+        val stream = cons.deliveryStream
+          .mapAsyncUnordered(50) { del =>
+            Task.delay(d.incrementAndGet()) >>
+              del
+                .handle(Ack)
+                .delayExecution(800.millis)
+          }
+
+        rabbitConnection.newProducer[Bytes]("testing", Monitor.noOp()).withResource { sender =>
+          for (_ <- 1 to count) {
+            sender.send("test", Bytes.copyFromUtf8(Random.nextString(10))).await
+          }
+
+          // it takes some time before the stats appear... :-|
+          eventually(timeout(Span(50, Seconds)), interval(Span(1, Seconds))) {
+            assertResult(count)(testHelper.queue.getPublishedCount(queueName1))
+          }
+
+          stream.compile.drain.runToFuture // run the stream
+
+          eventually(timeout(Span(20, Seconds)), interval(Span(1, Seconds))) {
+            println("D: " + d.get())
+            assert(d.get() > count + 200) // more than sent messages
+            assert(testHelper.exchange.getPublishedCount(exchange5) > 0)
           }
         }
       }
