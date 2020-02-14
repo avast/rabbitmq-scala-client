@@ -283,6 +283,8 @@ class LiveTest extends TestBase with ScalaFutures {
             _ <- rabbitConnection.bindQueue("bindQueue")
           } yield ()).unsafeRunSync()
 
+          assertResult(Map("x-max-length" -> 10000))(testHelper.queue.getArguments(queueName2))
+
           assertResult(0)(testHelper.queue.getMessagesCount(queueName1))
           assertResult(0)(testHelper.queue.getMessagesCount(queueName2))
 

@@ -89,8 +89,6 @@ class PureconfigImplicits(implicit namingConvention: NamingConvention = CamelCas
   implicit val autoBindQueueConfigReader: ConfigReader[AutoBindQueueConfig] = deriveReader
   implicit val autoBindExchangeConfigReader: ConfigReader[AutoBindExchangeConfig] = deriveReader
   implicit val producerPropertiesConfigReader: ConfigReader[ProducerPropertiesConfig] = deriveReader
-  implicit val declareArgumentsConfigReader: ConfigReader[DeclareArgumentsConfig] = deriveReader
-  implicit val bindArgumentsConfigReader: ConfigReader[BindArgumentsConfig] = deriveReader
 
   implicit val logLevelReader: ConfigReader[Level] = ConfigReader.stringConfigReader.map(Level.valueOf)
   implicit val recoveryDelayHandlerReader: ConfigReader[RecoveryDelayHandler] = RecoveryDelayHandlerReader
@@ -118,6 +116,9 @@ class PureconfigImplicits(implicit namingConvention: NamingConvention = CamelCas
 
     cur.asObjectCursor.map(_.value.asScala.toMap.mapValues(_.unwrapped()))
   }
+
+  implicit val declareArgumentsConfigReader: ConfigReader[DeclareArgumentsConfig] = mapStringAnyReader.map(DeclareArgumentsConfig)
+  implicit val bindArgumentsConfigReader: ConfigReader[BindArgumentsConfig] = mapStringAnyReader.map(BindArgumentsConfig)
 
   private def withType[A](cur: ConfigCursor)(f: (Config, String) => Result[A]): Result[A] = {
     cur.asObjectCursor.right.map(_.value.toConfig).flatMap { config =>
