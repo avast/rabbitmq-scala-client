@@ -43,7 +43,7 @@ object ConnectionListener {
       if (cause.isInitiatedByApplication) {
         logger.debug(s"Connection shutdown: $connection (name ${connection.getClientProvidedName})")
       } else {
-        logger.info(s"Connection shutdown: $connection (name ${connection.getClientProvidedName})", cause)
+        logger.warn(s"Connection shutdown: $connection (name ${connection.getClientProvidedName})", cause)
       }
     }
   }
