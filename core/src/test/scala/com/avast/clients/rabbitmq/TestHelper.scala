@@ -3,9 +3,12 @@ package com.avast.clients.rabbitmq
 import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
 
+import io.circe.Decoder
 import io.circe.generic.auto._
 import io.circe.parser._
 import scalaj.http.Http
+
+import scala.util.Success
 
 //noinspection ScalaStyle
 class TestHelper(host: String, port: Int) {
@@ -46,6 +49,21 @@ class TestHelper(host: String, port: Int) {
       }
     }
 
+    def getArguments(queueName: String): Map[String, Any] = {
+      val encoded = URLEncoder.encode(queueName, StandardCharsets.UTF_8.toString)
+
+      val resp = Http(s"$RootUri/queues/%2f/$encoded").auth("guest", "guest").asString.body
+
+      decode[QueueProperties](resp) match {
+        case Right(p) =>
+          p.arguments.getOrElse {
+            Console.err.println(s"Could not extract arguments for $queueName!")
+            Map.empty
+          }
+        case r => throw new IllegalStateException(s"Wrong response $r")
+      }
+    }
+
     def delete(queueName: String, ifEmpty: Boolean = false, ifUnused: Boolean = false): Unit = {
       println(s"Deleting queue: $queueName")
       val encoded = URLEncoder.encode(queueName, StandardCharsets.UTF_8.toString)
@@ -63,7 +81,16 @@ class TestHelper(host: String, port: Int) {
       }
     }
 
-    private case class QueueProperties(messages: Int, message_stats: Option[MessagesStats])
+    private implicit val anyDecoder: Decoder[Any] = Decoder.decodeJson.emapTry { json =>
+      // we are in test, it's enough to support just Int and String here
+      if (json.isNumber) {
+        json.as[Int].toTry
+      } else if (json.isString) {
+        json.as[String].toTry
+      } else Success(null)
+    }
+
+    private case class QueueProperties(messages: Int, message_stats: Option[MessagesStats], arguments: Option[Map[String, Any]])
     private case class MessagesStats(publish: Int, ack: Option[Int])
   }
 
