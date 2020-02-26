@@ -12,7 +12,7 @@ import io.circe.generic.extras.Configuration
 import io.circe.generic.extras.auto._
 import org.scalatest.concurrent.ScalaFutures
 
-import scala.collection.JavaConverters._
+import scala.jdk.CollectionConverters._
 import scala.concurrent.Future
 
 class MultiFormatConsumerTest extends TestBase with ScalaFutures {
