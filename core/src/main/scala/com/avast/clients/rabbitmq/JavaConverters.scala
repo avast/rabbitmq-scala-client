@@ -7,7 +7,7 @@ import com.avast.clients.rabbitmq.api.{DeliveryMode, MessageProperties => ScalaP
 import com.rabbitmq.client.AMQP
 import com.rabbitmq.client.AMQP.BasicProperties
 
-import scala.collection.JavaConverters._
+import scala.jdk.CollectionConverters._
 import scala.concurrent._
 import scala.util.{Failure, Success}
 

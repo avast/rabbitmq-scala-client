@@ -405,7 +405,7 @@ import com.avast.clients.rabbitmq.extras.format._
 import io.circe.Decoder
 import io.circe.generic.auto._ // to auto derive `io.circe.Decoder[A]` with https://circe.github.io/circe/codec.html#fully-automatic-derivation
 import scala.concurrent.Future
-import scala.collection.JavaConverters._
+import scala.jdk.CollectionConverters._ // <-- for Scala 2.12 use scala.collection.JavaConverters
 
 private implicit val d: Decoder[Bytes] = Decoder.decodeString.map(???)
 

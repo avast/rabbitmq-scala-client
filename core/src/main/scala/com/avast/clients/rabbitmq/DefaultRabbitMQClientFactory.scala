@@ -12,9 +12,10 @@ import com.rabbitmq.client.{AMQP, Consumer}
 import com.typesafe.scalalogging.LazyLogging
 import org.slf4j.event.Level
 
-import scala.collection.JavaConverters._
+import scala.collection.compat._
 import scala.collection.immutable
 import scala.concurrent.duration.Duration
+import scala.jdk.CollectionConverters._
 import scala.language.{higherKinds, implicitConversions}
 import scala.util.control.NonFatal
 
@@ -498,7 +499,7 @@ private[rabbitmq] object DefaultRabbitMQClientFactory extends LazyLogging {
   }
 
   private implicit def argsAsJava(value: ArgumentsMap): java.util.Map[String, Object] = {
-    value.mapValues(_.asInstanceOf[Object]).asJava
+    value.view.mapValues(_.asInstanceOf[Object]).toMap.asJava
   }
 
 }

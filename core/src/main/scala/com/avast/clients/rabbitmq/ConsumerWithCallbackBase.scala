@@ -13,7 +13,7 @@ import com.avast.metrics.scalaapi._
 import com.rabbitmq.client.AMQP.BasicProperties
 import com.rabbitmq.client.{DefaultConsumer, ShutdownSignalException}
 
-import scala.collection.JavaConverters._
+import scala.jdk.CollectionConverters._
 import scala.language.higherKinds
 import scala.util.control.NonFatal
 

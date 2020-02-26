@@ -15,7 +15,7 @@ import org.mockito.{ArgumentCaptor, Matchers}
 import org.mockito.Mockito._
 import org.scalatest.time.{Seconds, Span}
 
-import scala.collection.JavaConverters._
+import scala.jdk.CollectionConverters._
 import scala.collection.immutable
 import scala.concurrent.{ExecutionContext, Future}
 import scala.util._

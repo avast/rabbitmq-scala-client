@@ -9,7 +9,7 @@ import com.rabbitmq.client.AMQP.BasicProperties
 import com.rabbitmq.client.{Delivery => _, _}
 import com.typesafe.scalalogging.StrictLogging
 
-import scala.collection.JavaConverters._
+import scala.jdk.CollectionConverters._
 import scala.language.higherKinds
 
 class DefaultRabbitMQConsumer[F[_]: Effect](

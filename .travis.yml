@@ -1,6 +1,9 @@
-language: java
+language: scala
 jdk:
   - oraclejdk11
+scala:
+    - 2.12.10
+    - 2.13.1
 sudo: required
 services:
   - docker
