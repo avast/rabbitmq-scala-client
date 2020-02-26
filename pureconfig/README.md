@@ -35,7 +35,7 @@ This is required format for configuration of a connection and derived consumers 
 rabbitConfig {
   // connection config
   
-  consumers {
+  consumers { // required even if empty!
     consumer1 {
       //consumer config
     }
@@ -45,7 +45,7 @@ rabbitConfig {
     }
   }
 
-  producers {
+  producers { // required even if empty!
     producer1 {
       //producer config
     }
@@ -55,7 +55,7 @@ rabbitConfig {
     }
   }
   
-  declarations {
+  declarations { // required even if empty!
     bindMyAnotherQueue {
       // bindQueue config
     } 
@@ -167,6 +167,7 @@ myConfig {
   }
 }
 ```
+
 Checkout [configuration caseclasses](../core/src/main/scala/com/avast/clients/rabbitmq/configuration.scala) for all possible values along
 with their defaults.
 

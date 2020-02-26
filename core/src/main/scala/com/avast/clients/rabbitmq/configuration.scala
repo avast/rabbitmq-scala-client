@@ -7,6 +7,7 @@ import org.slf4j.event.Level
 import scala.collection.immutable
 import scala.concurrent.duration._
 
+// Beside actual fields if this case class, `producers` + `consumers` + `declarations elems are requires in the configuration, even if empty
 final case class RabbitMQConnectionConfig(name: String,
                                           hosts: immutable.Seq[String],
                                           virtualHost: String,

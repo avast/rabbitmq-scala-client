@@ -36,6 +36,8 @@ There is a [migration guide](Migration-6-6_1.md) between versions 6.0.x and 6.1.
 There is a [migration guide](Migration-6_1-7.md) between versions 6.1.x and 7.0.x.  
 There is a [migration guide](Migration-6_1-8.md) between versions 6.1.x and 8.0.x.
 
+Please note that configuration from Typesafe/Lightbend config has been moved to [pureconfig module](pureconfig) since 8.x.
+
 ## Usage
 
 The API is _finally tagless_ (read more e.g. [here](https://www.beyondthelines.net/programming/introduction-to-tagless-final/)) with
