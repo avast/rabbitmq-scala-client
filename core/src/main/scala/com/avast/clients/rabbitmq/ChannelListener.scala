@@ -53,7 +53,7 @@ object ChannelListener {
       if (cause.isInitiatedByApplication) {
         logger.debug(s"Channel shutdown: $channel")
       } else {
-        logger.info(s"Channel shutdown: $channel", cause)
+        logger.warn(s"Channel shutdown: $channel", cause)
       }
     }
   }

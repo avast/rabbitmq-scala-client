@@ -24,7 +24,7 @@ object ConsumerListener {
       if (cause.isInitiatedByApplication) {
         logger.debug(s"[$consumerName] Shutdown of consumer on channel $channel")
       } else {
-        logger.info(s"[$consumerName] Shutdown of consumer on channel $channel", cause)
+        logger.warn(s"[$consumerName] Shutdown of consumer on channel $channel", cause)
       }
     }
   }
