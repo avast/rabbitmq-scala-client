@@ -8,7 +8,7 @@ configuration classes.
 
 ## Dependency
 SBT:
-`'com.avast.clients.rabbitmq' %% 'rabbitmq-client-pureconfig' % 'x.x.x'`
+`"com.avast.clients.rabbitmq" %% "rabbitmq-client-pureconfig" % "x.x.x"`
 
 Gradle:
 `compile 'com.avast.clients.rabbitmq:rabbitmq-client-pureconfig_$scalaVersion:x.x.x'`

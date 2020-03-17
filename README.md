@@ -15,7 +15,7 @@ can be closed separately while closing _connection_ causes closing all derived c
 
 ## Dependency
 SBT:
-`'com.avast.clients.rabbitmq' %% 'rabbitmq-client-core' % 'x.x.x'`
+`"com.avast.clients.rabbitmq" %% "rabbitmq-client-core" % "x.x.x"`
 
 Gradle:
 `compile 'com.avast.clients.rabbitmq:rabbitmq-client-core_$scalaVersion:x.x.x'`
