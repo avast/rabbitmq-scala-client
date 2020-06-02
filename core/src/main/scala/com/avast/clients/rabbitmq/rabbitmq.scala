@@ -3,6 +3,7 @@ package com.avast.clients
 import java.util.concurrent.Executors
 
 import com.avast.bytes.Bytes
+import com.avast.clients.rabbitmq.DefaultRabbitMQConsumer.{FederationOriginalRoutingKeyHeaderName, RepublishOriginalRoutingKeyHeaderName}
 import com.avast.clients.rabbitmq.api._
 import com.rabbitmq.client.{RecoverableChannel, RecoverableConnection}
 
@@ -34,6 +35,18 @@ package object rabbitmq {
     def toMalformed(ce: ConversionException): Delivery.MalformedContent = d match {
       case ok: Delivery.Ok[Bytes] => Delivery.MalformedContent(ok.body, ok.properties, ok.routingKey, ce)
       case m: Delivery.MalformedContent => m.copy(ce = ce)
+    }
+  }
+
+  private[rabbitmq] implicit class BasicPropertiesOps(val props: com.rabbitmq.client.AMQP.BasicProperties) extends AnyVal {
+    def getOriginalRoutingKey: Option[String] = {
+      for {
+        headers <- Option(props.getHeaders)
+        ork <- {
+          Option(headers.get(RepublishOriginalRoutingKeyHeaderName))
+            .orElse(Option(headers.get(FederationOriginalRoutingKeyHeaderName)))
+        }
+      } yield ork.toString
     }
   }
 

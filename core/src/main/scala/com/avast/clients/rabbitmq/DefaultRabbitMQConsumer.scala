@@ -9,7 +9,6 @@ import com.rabbitmq.client.AMQP.BasicProperties
 import com.rabbitmq.client.{Delivery => _, _}
 import com.typesafe.scalalogging.StrictLogging
 
-import scala.jdk.CollectionConverters._
 import scala.language.higherKinds
 
 class DefaultRabbitMQConsumer[F[_]: Effect](
@@ -27,17 +26,12 @@ class DefaultRabbitMQConsumer[F[_]: Effect](
     with ConsumerBase[F]
     with StrictLogging {
 
-  import DefaultRabbitMQConsumer._
-
   override def handleDelivery(consumerTag: String, envelope: Envelope, properties: BasicProperties, body: Array[Byte]): Unit = {
     processingCount.incrementAndGet()
 
     val deliveryTag = envelope.getDeliveryTag
     val messageId = properties.getMessageId
-    val routingKey = Option(properties.getHeaders).flatMap(p => Option(p.get(RepublishOriginalRoutingKeyHeaderName))) match {
-      case Some(originalRoutingKey) => originalRoutingKey.toString
-      case None => envelope.getRoutingKey
-    }
+    val routingKey = properties.getOriginalRoutingKey.getOrElse(envelope.getRoutingKey)
 
     val action = handleDelivery(messageId, deliveryTag, properties, routingKey, body)(readAction)
       .flatTap(_ =>
@@ -64,4 +58,5 @@ class DefaultRabbitMQConsumer[F[_]: Effect](
 object DefaultRabbitMQConsumer {
   final val RepublishOriginalRoutingKeyHeaderName = "X-Original-Routing-Key"
   final val RepublishOriginalUserId = "X-Original-User-Id"
+  final val FederationOriginalRoutingKeyHeaderName = "x-original-routing-key"
 }
