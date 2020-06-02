@@ -88,18 +88,28 @@ private[rabbitmq] trait ConsumerBase[F[_]] extends StrictLogging {
   protected def createPropertiesForRepublish(newHeaders: Map[String, AnyRef],
                                              properties: BasicProperties,
                                              routingKey: String): BasicProperties = {
-    // values in newHeaders will overwrite values in original headers
-    // we must also ensure that UserID will be the same as current username (or nothing): https://www.rabbitmq.com/validated-user-id.html
     val originalUserId = Option(properties.getUserId).filter(_.nonEmpty)
-    val h = originalUserId match {
-      case Some(uid) => newHeaders + (RepublishOriginalRoutingKeyHeaderName -> routingKey) + (RepublishOriginalUserId -> uid)
-      case None => newHeaders + (RepublishOriginalRoutingKeyHeaderName -> routingKey)
+
+    val allNewHeaders = Map.newBuilder[String, AnyRef]
+
+    // copy original headers
+    allNewHeaders ++= Option(properties.getHeaders).map(_.asScala.map { case (k, v) => k.toLowerCase -> v }).getOrElse(Map.empty)
+
+    // values in newHeaders will overwrite values in original headers
+    allNewHeaders ++= newHeaders.map { case (k, v) => k.toLowerCase -> v }
+
+    // add republish-specifig headers
+    originalUserId.foreach { uid =>
+      allNewHeaders += RepublishOriginalUserId.toLowerCase -> uid
     }
-    val headers = Option(properties.getHeaders).map(_.asScala ++ h).getOrElse(h)
+    allNewHeaders += RepublishOriginalRoutingKeyHeaderName.toLowerCase -> routingKey
+
+    // we must ensure that UserID will be the same as current username (or nothing): https://www.rabbitmq.com/validated-user-id.html
     val newUserId = originalUserId match {
       case Some(_) => connectionInfo.username.orNull
       case None => null
     }
-    properties.builder().headers(headers.asJava).userId(newUserId).build()
+
+    properties.builder().headers(allNewHeaders.result().asJava).userId(newUserId).build()
   }
 }

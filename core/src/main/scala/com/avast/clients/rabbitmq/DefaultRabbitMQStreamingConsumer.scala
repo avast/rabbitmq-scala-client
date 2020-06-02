@@ -204,10 +204,7 @@ class DefaultRabbitMQStreamingConsumer[F[_]: ConcurrentEffect: Timer, A: Deliver
 
       val deliveryTag = envelope.getDeliveryTag
       val messageId = properties.getMessageId
-      val routingKey = Option(properties.getHeaders).flatMap(p => Option(p.get(RepublishOriginalRoutingKeyHeaderName))) match {
-        case Some(originalRoutingKey) => originalRoutingKey.toString
-        case None => envelope.getRoutingKey
-      }
+      val routingKey = properties.getHeaderValue(RepublishOriginalRoutingKeyHeaderName).getOrElse(envelope.getRoutingKey)
 
       val task: F[Unit] = receivingEnabled.get.flatMap {
         case false =>

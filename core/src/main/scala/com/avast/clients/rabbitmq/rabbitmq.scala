@@ -6,6 +6,7 @@ import com.avast.bytes.Bytes
 import com.avast.clients.rabbitmq.api._
 import com.rabbitmq.client.{RecoverableChannel, RecoverableConnection}
 
+import scala.jdk.CollectionConverters._
 import scala.language.{higherKinds, implicitConversions}
 
 package object rabbitmq {
@@ -34,6 +35,17 @@ package object rabbitmq {
     def toMalformed(ce: ConversionException): Delivery.MalformedContent = d match {
       case ok: Delivery.Ok[Bytes] => Delivery.MalformedContent(ok.body, ok.properties, ok.routingKey, ce)
       case m: Delivery.MalformedContent => m.copy(ce = ce)
+    }
+  }
+
+  private[rabbitmq] implicit class BasicPropertiesOps(val props: com.rabbitmq.client.AMQP.BasicProperties) extends AnyVal {
+    def getHeaderValue(name: String): Option[String] = {
+      val nameLow = name.toLowerCase
+
+      for {
+        headers <- Option(props.getHeaders).map(_.asScala)
+        value <- headers.find(_._1.toLowerCase == nameLow)
+      } yield value.toString()
     }
   }
 
