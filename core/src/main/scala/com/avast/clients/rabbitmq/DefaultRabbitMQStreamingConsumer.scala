@@ -6,7 +6,6 @@ import cats.effect.concurrent._
 import cats.effect.{Blocker, CancelToken, Concurrent, ConcurrentEffect, ContextShift, Effect, ExitCase, IO, Resource, Sync, Timer}
 import cats.syntax.all._
 import com.avast.bytes.Bytes
-import com.avast.clients.rabbitmq.DefaultRabbitMQConsumer.RepublishOriginalRoutingKeyHeaderName
 import com.avast.clients.rabbitmq.DefaultRabbitMQStreamingConsumer.DeliveryQueue
 import com.avast.clients.rabbitmq.api._
 import com.avast.metrics.scalaapi.Monitor
@@ -204,10 +203,7 @@ class DefaultRabbitMQStreamingConsumer[F[_]: ConcurrentEffect: Timer, A: Deliver
 
       val deliveryTag = envelope.getDeliveryTag
       val messageId = properties.getMessageId
-      val routingKey = Option(properties.getHeaders).flatMap(p => Option(p.get(RepublishOriginalRoutingKeyHeaderName))) match {
-        case Some(originalRoutingKey) => originalRoutingKey.toString
-        case None => envelope.getRoutingKey
-      }
+      val routingKey = properties.getOriginalRoutingKey.getOrElse(envelope.getRoutingKey)
 
       val task: F[Unit] = receivingEnabled.get.flatMap {
         case false =>
