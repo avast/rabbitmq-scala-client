@@ -164,7 +164,7 @@ class PureconfigImplicits(implicit namingConvention: NamingConvention = CamelCas
 
             forbiddenProducerConsumerKeys.map(cur.fluent.at(_).cursor).sequence.flatMap { cursors =>
               // generate error for all found keys, which are probably just misplaced
-              val failures = cursors.map(c => ConvertFailure(UnknownProducerConsumerKey(c.path), c.location, c.path))
+              val failures = cursors.map(c => ConvertFailure(UnknownProducerConsumerKey(c.path), c))
 
               // remove allowed keys and keys that are being already reported
               val strippedConfig = (AllowedRootConfigKeys ++ forbiddenProducerConsumerKeys.toList).foldLeft(config)(_.withoutPath(_))
@@ -175,7 +175,7 @@ class PureconfigImplicits(implicit namingConvention: NamingConvention = CamelCas
                 case _ => List.empty
               })
 
-              Left(ConfigReaderFailures(allFailures.head, allFailures.tail))
+              Left(ConfigReaderFailures(allFailures.head, allFailures.tail: _*))
             }
 
           case None =>
@@ -197,8 +197,8 @@ class PureconfigImplicits(implicit namingConvention: NamingConvention = CamelCas
           case "defaultexchange" => ConfigReader[RepublishStrategyConfig.DefaultExchange.type].from(config.root())
           case "customexchange" => ConfigReader[RepublishStrategyConfig.CustomExchange].from(config.root())
           case t =>
-            cur.fluent.at("type").cursor.map(_.location).flatMap { location => // because of correct location
-              Left(ConfigReaderFailures(CannotParse(s"Unknown republish strategy type: $t", location)))
+            cur.fluent.at("type").cursor.flatMap { cursor => // because of correct location
+              Left(ConfigReaderFailures(CannotParse(s"Unknown republish strategy type: $t", cursor.origin)))
             }
         }
       }
