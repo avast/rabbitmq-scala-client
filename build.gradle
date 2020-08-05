@@ -32,7 +32,7 @@ allprojects {
         catsVersion = "2.1.1"
         catsEffectVersion = "2.1.4"
         fs2Version = "2.4.2"
-        monixVersion = "3.2.2" // just for tests!
+        monixVersion = "3.0.0" // just for tests!
     }
 }
 
