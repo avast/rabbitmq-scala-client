@@ -1,8 +1,10 @@
+syntax = "proto3";
+
 package com.avast.clients.rabbitmq.test;
 
 message FileSource {
-    optional bytes file_id = 1;
-    optional string source = 2;
+    bytes file_id = 1;
+    string source = 2;
 }
 
 message NewFileSourceAdded {
