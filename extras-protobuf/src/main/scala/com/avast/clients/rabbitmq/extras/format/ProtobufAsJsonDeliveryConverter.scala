@@ -32,7 +32,7 @@ object ProtobufAsJsonDeliveryConverter {
         } catch {
           case NonFatal(e) =>
             Left {
-              ConversionException(s"Could not decode class ${implicitly[ClassTag[A]].runtimeClass.getName} to json", e)
+              ConversionException(s"Could not decode class ${implicitly[ClassTag[A]].runtimeClass.getName} from json", e)
             }
         }
 
