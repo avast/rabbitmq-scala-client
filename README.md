@@ -27,7 +27,8 @@ Gradle:
 1. [pureconfig](pureconfig) - Module for configuration from [`Config`](https://github.com/lightbend/config).
 1. [extras](extras/README.md) - Module with some extra feature.
 1. [extras-circe](extras-circe/README.md) Adds some circe-dependent functionality.
-1. [extras-cactus](extras-cactus/README.md) Aadds some cactus-dependent functionality.
+1. [extras-cactus](extras-cactus/README.md) Adds some cactus-dependent functionality.
+1. [extras-protobuf](extras-protobuf/README.md) Allows to publish and consume events defined as [Google Protocol Buffers](https://developers.google.com/protocol-buffers/) messages.
 
 ## Migration
 

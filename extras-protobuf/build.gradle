@@ -1,0 +1,8 @@
+archivesBaseName = "rabbitmq-client-extras-protobuf_$scalaVersion"
+
+dependencies {
+    compile project(":core")
+
+    compile "com.google.protobuf:protobuf-java:$protobufVersion"
+    compile "com.google.protobuf:protobuf-java-util:$protobufVersion"
+}

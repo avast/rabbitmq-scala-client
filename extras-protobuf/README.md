@@ -1,0 +1,16 @@
+# RabbitMQ client extras - Protobuf
+
+This is an extra module that allows to publish and consume events defined as [Google Protocol Buffers](https://developers.google.com/protocol-buffers/) messages.
+```groovy
+compile 'com.avast.clients.rabbitmq:rabbitmq-client-extras-protobuf_$scalaVersion:x.x.x'
+```
+
+## JsonDeliveryConverter
+
+This is an implementation of [DeliveryConverter](../core/src/main/scala/com/avast/clients/rabbitmq/DeliveryConverter.scala) which adds support
+for JSON decoding done by [Circe](https://github.com/circe/circe).
+
+The suitability of the converter for concrete message is decided based on Content-Type property - `application/json` is supported.
+
+See [Providing converters](../README.md#providing-converters-for-producer/consumer) and [MultiFormatConsumer](../README.md#multiformatconsumer)
+description for usage.
