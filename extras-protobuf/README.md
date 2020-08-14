@@ -5,12 +5,11 @@ This is an extra module that allows to publish and consume events defined as [Go
 compile 'com.avast.clients.rabbitmq:rabbitmq-client-extras-protobuf_$scalaVersion:x.x.x'
 ```
 
-## JsonDeliveryConverter
+## Converters
+* `ProtobufAsBinaryDeliveryConverter`
+* `ProtobufAsBinaryProductConverter`
+* `ProtobufAsJsonDeliveryConverter`
+* `ProtobufAsJsonProductConverter`
 
-This is an implementation of [DeliveryConverter](../core/src/main/scala/com/avast/clients/rabbitmq/DeliveryConverter.scala) which adds support
-for JSON decoding done by [Circe](https://github.com/circe/circe).
-
-The suitability of the converter for concrete message is decided based on Content-Type property - `application/json` is supported.
-
-See [Providing converters](../README.md#providing-converters-for-producer/consumer) and [MultiFormatConsumer](../README.md#multiformatconsumer)
-description for usage.
+## Consumers
+There is `ProtobufConsumer` consumer that is able to consume both binary and JSON events defined as a Protobuf message.
