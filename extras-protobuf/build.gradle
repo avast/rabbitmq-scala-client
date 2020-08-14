@@ -1,3 +1,5 @@
+apply plugin: 'com.google.protobuf'
+
 archivesBaseName = "rabbitmq-client-extras-protobuf_$scalaVersion"
 
 dependencies {
@@ -6,3 +8,10 @@ dependencies {
     compile "com.google.protobuf:protobuf-java:$protobufVersion"
     compile "com.google.protobuf:protobuf-java-util:$protobufVersion"
 }
+
+protobuf {
+    protoc {
+        artifact = "com.google.protobuf:protoc:$protobufVersion"
+    }
+}
+

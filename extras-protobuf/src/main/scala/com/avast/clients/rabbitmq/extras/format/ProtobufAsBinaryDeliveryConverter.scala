@@ -16,7 +16,7 @@ object ProtobufAsBinaryDeliveryConverter {
   def derive[A <: GeneratedMessageV3: ProtobufAsBinaryDeliveryConverter](): ProtobufAsBinaryDeliveryConverter[A] =
     implicitly[ProtobufAsBinaryDeliveryConverter[A]]
 
-  implicit def createJsonDeliveryConverter[A <: GeneratedMessageV3: ClassTag]: ProtobufAsBinaryDeliveryConverter[A] =
+  implicit def createBinaryDeliveryConverter[A <: GeneratedMessageV3: ClassTag]: ProtobufAsBinaryDeliveryConverter[A] =
     new ProtobufAsBinaryDeliveryConverter[A] {
 
       private val newBuilderMethod = implicitly[ClassTag[A]].runtimeClass.getMethod("newBuilder")
