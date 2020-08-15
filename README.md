@@ -29,6 +29,7 @@ Gradle:
 1. [extras-circe](extras-circe/README.md) Adds some circe-dependent functionality.
 1. [extras-cactus](extras-cactus/README.md) Adds some cactus-dependent functionality.
 1. [extras-protobuf](extras-protobuf/README.md) Allows to publish and consume events defined as [Google Protocol Buffers](https://developers.google.com/protocol-buffers/) messages.
+1. [extras-scalapb](extras-scalapb/README.md) Allows to publish and consume events defined as [Google Protocol Buffers](https://developers.google.com/protocol-buffers/) messages, generated to Scala using [ScalaPB](https://scalapb.github.io/).
 
 ## Migration
 

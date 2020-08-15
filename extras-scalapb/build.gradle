@@ -1,0 +1,40 @@
+apply plugin: 'com.google.protobuf'
+
+archivesBaseName = "rabbitmq-client-extras-scalapb_$scalaVersion"
+
+dependencies {
+    compile project(":core")
+
+    compile "com.thesamet.scalapb:scalapb-runtime_$scalaVersion:$scalapbVersion"
+    compile "com.thesamet.scalapb:scalapb-json4s_$scalaVersion:$scalapbJson4sVersion"
+}
+
+protobuf {
+    protoc {
+        artifact = "com.google.protobuf:protoc:$protobufVersion"
+    }
+    plugins {
+        scalapb {
+            artifact = (org.gradle.nativeplatform.platform.internal.DefaultNativePlatform.getCurrentOperatingSystem().isWindows()) ?
+                    "com.thesamet.scalapb:protoc-gen-scala:${scalapbVersion}:windows@bat" :
+                    "com.thesamet.scalapb:protoc-gen-scala:${scalapbVersion}:unix@sh"
+        }
+    }
+    generateProtoTasks {
+        all().each { task ->
+            task.plugins {
+                scalapb {
+                    option 'flat_package'
+                }
+            }
+        }
+    }
+}
+
+sourceSets {
+    test {
+        scala {
+            srcDir "${protobuf.generatedFilesBaseDir}/test/scalapb"
+        }
+    }
+}

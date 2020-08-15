@@ -8,7 +8,7 @@ import org.scalatest.{FlatSpec, Matchers}
 import org.scalatestplus.junit.JUnitRunner
 
 @RunWith(classOf[JUnitRunner])
-class ConvertersTest extends FlatSpec with Matchers {
+class ProtobufConvertersTest extends FlatSpec with Matchers {
   private val event = ExampleEvents.FileSource.newBuilder().setFileId("fileId").setSource("source").build()
 
   it must "deserialize binary event" in {
