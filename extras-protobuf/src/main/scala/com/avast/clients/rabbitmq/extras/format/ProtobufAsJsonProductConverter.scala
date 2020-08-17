@@ -19,7 +19,7 @@ object ProtobufAsJsonProductConverter {
 
   // Printing is intentionally configured to use integer for enums
   // because then the serialized data is valid even after values renaming.
-  private val jsonPrinter = JsonFormat.printer().printingEnumsAsInts()
+  private val jsonPrinter = JsonFormat.printer().printingEnumsAsInts().includingDefaultValueFields()
 
   implicit def createJsonProductConverter[A <: MessageOrBuilder: ClassTag]: ProtobufAsJsonProductConverter[A] =
     new ProtobufAsJsonProductConverter[A] {

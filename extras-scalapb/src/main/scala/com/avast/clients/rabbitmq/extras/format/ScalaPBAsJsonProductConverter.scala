@@ -19,7 +19,7 @@ object ScalaPBAsJsonProductConverter {
 
   // Printing is intentionally configured to use integer for enums
   // because then the serialized data is valid even after values renaming.
-  private val jsonPrinter = new Printer().formattingEnumsAsNumber
+  private val jsonPrinter = new Printer().formattingEnumsAsNumber.includingDefaultValueFields
 
   implicit def createJsonProductConverter[A <: GeneratedMessage: ClassTag]: ScalaPBAsJsonProductConverter[A] =
     new ScalaPBAsJsonProductConverter[A] {
