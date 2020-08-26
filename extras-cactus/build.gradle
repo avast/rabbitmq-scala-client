@@ -5,6 +5,6 @@ dependencies {
     compile project(":extras")
 
     compile "com.avast.cactus:cactus-common_$scalaVersion:$cactusVersion"
-    compileOnly "com.google.protobuf:protobuf-java:2.6.1" // could be replaced with 2.x.x or 3.x.x in final app
+    compileOnly "com.google.protobuf:protobuf-java:$protobufVersion"
     compile "com.avast.bytes:bytes-gpb:${bytesVersion}"
 }

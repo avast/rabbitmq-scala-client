@@ -3,10 +3,6 @@ syntax = "proto3";
 package com.avast.clients.rabbitmq.test;
 
 message FileSource {
-    bytes file_id = 1;
+    string file_id = 1;
     string source = 2;
-}
-
-message NewFileSourceAdded {
-    repeated FileSource file_sources = 1;
 }

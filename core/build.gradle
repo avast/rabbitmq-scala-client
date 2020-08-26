@@ -1,16 +1,11 @@
 apply plugin: 'com.google.protobuf'
-apply plugin: 'idea'
 
 archivesBaseName = "rabbitmq-client-core_$scalaVersion"
 
 protobuf {
     protoc {
-        artifact = "com.google.protobuf:protoc:2.6.1-build2"
+        artifact = "com.google.protobuf:protoc:$protobufVersion"
     }
-}
-
-idea.module {
-    testSourceDirs += file("$buildDir/generated/source/proto/test/java")
 }
 
 dockerCompose.isRequiredBy(test)
@@ -45,5 +40,5 @@ dependencies {
     testCompile "io.circe:circe-generic-extras_$scalaVersion:$circeVersion"
     testCompile "com.avast.cactus:cactus-gpbv2_$scalaVersion:$cactusVersion"
     testCompile "com.avast.cactus:cactus-bytes-gpbv2_$scalaVersion:$cactusVersion"
-    testCompile "com.google.protobuf:protobuf-java:2.6.1"
+    testCompile "com.google.protobuf:protobuf-java:$protobufVersion"
 }

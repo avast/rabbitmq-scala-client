@@ -26,8 +26,10 @@ Gradle:
 1. [core](core) - Main module. The client, configurable by case classes.
 1. [pureconfig](pureconfig) - Module for configuration from [`Config`](https://github.com/lightbend/config).
 1. [extras](extras/README.md) - Module with some extra feature.
-1. [extras-circe](extras-circe/README.md) Adds some circe-dependent functionality.
-1. [extras-cactus](extras-cactus/README.md) Aadds some cactus-dependent functionality.
+1. [extras-circe](extras-circe/README.md) Allows to publish and consume JSON events, using [the circe library](https://circe.github.io/circe/).
+1. [extras-cactus](extras-cactus/README.md) Allows to publish and consume Protobuf events, dusing [the cactus library](https://github.com/avast/cactus) that provides mapping between Java generated classes and Scala classes.
+1. [extras-protobuf](extras-protobuf/README.md) Allows to publish and consume events defined as [Google Protocol Buffers](https://developers.google.com/protocol-buffers/) messages (as both JSON and Protobuf), represented as standard Java classes.
+1. [extras-scalapb](extras-scalapb/README.md) Allows to publish and consume events defined as [Google Protocol Buffers](https://developers.google.com/protocol-buffers/) messages (as both JSON and Protobuf), generated to Scala using [ScalaPB](https://scalapb.github.io/).
 
 ## Migration
 

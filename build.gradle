@@ -32,6 +32,9 @@ allprojects {
         catsVersion = "2.1.1"
         catsEffectVersion = "2.1.4"
         fs2Version = "2.4.2"
+        protobufVersion = "3.12.4"
+        scalapbVersion = "0.10.8"
+        scalapbJson4sVersion = "0.10.1"
         monixVersion = "3.0.0" // just for tests!
     }
 }
@@ -45,6 +48,7 @@ subprojects {
     apply plugin: 'com.jfrog.bintray'
     apply plugin: 'maven'
     apply plugin: 'maven-publish'
+    apply plugin: 'idea'
 
     task sourceJar(type: Jar) {
         from sourceSets.main.allSource
