@@ -1,6 +1,7 @@
 package com.avast.clients.rabbitmq.extras.format
 
 import com.avast.bytes.Bytes
+import com.avast.bytes.gpb.ByteStringBytes
 import com.avast.clients.rabbitmq.ProductConverter
 import com.avast.clients.rabbitmq.api.{ConversionException, MessageProperties}
 import scalapb.GeneratedMessage
@@ -20,7 +21,7 @@ object ScalaPBAsBinaryProductConverter {
     new ScalaPBAsBinaryProductConverter[A] {
       override def convert(p: A): Either[ConversionException, Bytes] =
         try {
-          Right(Bytes.copyFrom(p.toByteArray))
+          Right(ByteStringBytes.wrap(p.toByteString))
         } catch {
           case NonFatal(e) =>
             Left {
