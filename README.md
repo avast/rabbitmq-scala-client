@@ -159,7 +159,7 @@ val deliveryStream: Resource[Task, fs2.Stream[Task, StreamedResult]] = for {
       // TODO log the error - something is going wrong!
       resilientStream
     }
-    
+
     resilientStream
   }
 ```
