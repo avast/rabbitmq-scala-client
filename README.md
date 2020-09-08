@@ -148,21 +148,17 @@ val processMyStream: fs2.Pipe[Task, StreamedDelivery[Task, Bytes], StreamedResul
     in.evalMap(delivery => delivery.handle(DeliveryResult.Ack)) // TODO you probably want to do some real stuff here
   }
 
-def resilientStream(consumer: RabbitMQStreamingConsumer[Task, Bytes]): fs2.Stream[Task, StreamedResult] = {
-      consumer.deliveryStream
-        .through(processMyStream)
-        .handleErrorWith(
-          e => {
-            // logging
-            resilientStream(consumer)
-          })
-    }
-
 val deliveryStream: Resource[Task, fs2.Stream[Task, StreamedResult]] = for {
     connection <- RabbitMQConnection.make[Task](connectionConfig, blockingExecutor, Some(sslContext))
     streamingConsumer <- connection.newStreamingConsumer[Bytes](consumerConfig, monitor)
   } yield {
-    resilientStream(streamingConsumer)
+    val stream: fs2.Stream[Task, StreamedResult] = streamingConsumer.deliveryStream.through(processMyStream)
+    // create resilient (self-restarting) stream; see more information below
+    def resilientStream: fs2.Stream[Task, StreamedResult] = stream.handleErrorWith { e =>
+      // TODO log the error - something is going wrong!
+      resilientStream
+    }
+    resilientStream
   }
 ```
 
