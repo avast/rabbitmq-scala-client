@@ -155,7 +155,7 @@ val deliveryStream: Resource[Task, fs2.Stream[Task, StreamedResult]] = for {
     val stream: fs2.Stream[Task, StreamedResult] = streamingConsumer.deliveryStream.through(processMyStream)
     
     // create resilient (self-restarting) stream; see more information below
-    val resilientStream: fs2.Stream[Task, StreamedResult] = stream.handleErrorWith { e =>
+    lazy val resilientStream: fs2.Stream[Task, StreamedResult] = stream.handleErrorWith { e =>
       // TODO log the error - something is going wrong!
       resilientStream
     }
