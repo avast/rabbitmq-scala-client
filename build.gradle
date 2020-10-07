@@ -30,8 +30,8 @@ allprojects {
         circeVersion = "0.13.0"
         cactusVersion = "0.17.0"
         catsVersion = "2.1.1"
-        catsEffectVersion = "2.1.4"
-        fs2Version = "2.4.2"
+        catsEffectVersion = "2.2.0"
+        fs2Version = "2.4.4"
         protobufVersion = "3.12.4"
         scalapbVersion = "0.10.8"
         scalapbJson4sVersion = "0.10.1"
@@ -122,7 +122,7 @@ subprojects {
     dependencies {
         scalaCompilerPlugin "org.typelevel:kind-projector_$scalaVersionFull:0.11.0"
 
-        compile "org.scala-lang.modules:scala-collection-compat_$scalaVersion:2.1.6"
+        compile "org.scala-lang.modules:scala-collection-compat_$scalaVersion:2.2.0"
 
         testCompile "io.monix:monix_$scalaVersion:$monixVersion"
 
