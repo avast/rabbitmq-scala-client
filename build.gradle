@@ -35,7 +35,7 @@ allprojects {
         protobufVersion = "3.12.4"
         scalapbVersion = "0.10.8"
         scalapbJson4sVersion = "0.10.1"
-        monixVersion = "3.2.2" // just for tests!
+        monixVersion = "3.0.0" // just for tests!
     }
 }
 
