@@ -13,8 +13,8 @@ import com.typesafe.config.Config
 import org.slf4j.event.Level
 import pureconfig.error._
 
-import scala.jdk.CollectionConverters._
 import scala.collection.compat._
+import scala.jdk.CollectionConverters._
 import scala.util.{Failure, Success}
 
 // scalastyle:off
@@ -113,14 +113,14 @@ class PureconfigImplicits(implicit namingConvention: NamingConvention = CamelCas
   }
 
   implicit val mapStringAnyReader: ConfigReader[Map[String, Any]] = ConfigReader.fromCursor { cur =>
-    cur.asObjectCursor.map(_.value.asScala.view.mapValues(_.unwrapped()).toMap)
+    cur.asObjectCursor.map(_.objValue.asScala.view.mapValues(_.unwrapped()).toMap)
   }
 
   implicit val declareArgumentsConfigReader: ConfigReader[DeclareArgumentsConfig] = mapStringAnyReader.map(DeclareArgumentsConfig)
   implicit val bindArgumentsConfigReader: ConfigReader[BindArgumentsConfig] = mapStringAnyReader.map(BindArgumentsConfig)
 
   private def withType[A](cur: ConfigCursor)(f: (Config, String) => Result[A]): Result[A] = {
-    cur.asObjectCursor.map(_.value.toConfig).flatMap { config =>
+    cur.asObjectCursor.map(_.objValue.toConfig).flatMap { config =>
       val `type` = config.getString("type")
       val strippedConfig = config.withoutPath("type")
 
@@ -146,7 +146,7 @@ class PureconfigImplicits(implicit namingConvention: NamingConvention = CamelCas
     private val DerivedReader: ConfigReader[RabbitMQConnectionConfig] = deriveReader[RabbitMQConnectionConfig]
 
     override def from(cur: ConfigCursor): Result[RabbitMQConnectionConfig] = {
-      cur.asObjectCursor.map(_.value.toConfig).flatMap { config =>
+      cur.asObjectCursor.map(_.objValue.toConfig).flatMap { config =>
         val configKeys = config.entrySet.asScala.map(_.getKey.split("\\.").head).toSet
         val classKeys = fieldsOf[RabbitMQConnectionConfig].map(_.name.toString).map(CamelCase.toTokens).map(namingConvention.fromTokens)
 
