@@ -1,8 +1,5 @@
 package com.avast.clients.rabbitmq
 
-import java.util.concurrent._
-import java.util.concurrent.atomic.AtomicInteger
-
 import cats.effect.{ContextShift, IO, Timer}
 import com.avast.bytes.Bytes
 import com.avast.clients.rabbitmq.api.DeliveryResult._
@@ -16,9 +13,11 @@ import monix.execution.Scheduler
 import org.scalatest.concurrent.ScalaFutures
 import org.scalatest.time._
 
-import scala.jdk.CollectionConverters._
+import java.util.concurrent._
+import java.util.concurrent.atomic.AtomicInteger
 import scala.concurrent.ExecutionContext
 import scala.concurrent.duration._
+import scala.jdk.CollectionConverters._
 import scala.util.Random
 
 class LiveTest extends TestBase with ScalaFutures {
@@ -121,7 +120,7 @@ class LiveTest extends TestBase with ScalaFutures {
 
       logger.info(s"Sending $count messages")
 
-      val latch = new CountDownLatch(count + 100) // explanation below
+      val latch = new CountDownLatch(count + 100) // +100 explanation below
 
       val d = new AtomicInteger(0)
 
@@ -132,7 +131,7 @@ class LiveTest extends TestBase with ScalaFutures {
           Thread.sleep(if (n % 2 == 0) 300 else 0)
           latch.countDown()
 
-          if (n < (count - 100) || n > count) Ack
+          if (n < (count - 100) || n >= count) Ack
           else {
             if (n < (count - 50)) Retry else Republish()
           }
@@ -148,13 +147,14 @@ class LiveTest extends TestBase with ScalaFutures {
           }
 
           // it takes some time before the stats appear... :-|
-          eventually(timeout(Span(3, Seconds)), interval(Span(0.1, Seconds))) {
-            assertResult(count)(testHelper.queue.getPublishedCount(queueName1))
+          eventually(timeout(Span(15, Seconds)), interval(Span(0.1, Seconds))) {
+            assertResult(count + 50)(testHelper.queue.getPublishedCount(queueName1)) // +50 for republishes, explanation above
           }
 
-          eventually(timeout(Span(3, Seconds)), interval(Span(0.1, Seconds))) {
+          eventually(timeout(Span(15, Seconds)), interval(Span(0.1, Seconds))) {
             assertResult(true)(latch.await(1000, TimeUnit.MILLISECONDS))
             assertResult(0)(testHelper.queue.getMessagesCount(queueName1))
+            assertResult(count + 100)(d.get) // +100 explanation above
           }
         }
       }
@@ -181,8 +181,10 @@ class LiveTest extends TestBase with ScalaFutures {
               sender2.send("test2", Bytes.copyFromUtf8(Random.nextString(10))).await(500.millis)
             }
 
-            assertResult(true, latch.getCount)(latch.await(1000, TimeUnit.MILLISECONDS))
-            assertResult(0)(testHelper.queue.getMessagesCount(queueName1))
+            eventually(timeout(Span(15, Seconds)), interval(Span(0.1, Seconds))) {
+              assertResult(true, latch.getCount)(latch.await(1000, TimeUnit.MILLISECONDS))
+              assertResult(0)(testHelper.queue.getMessagesCount(queueName1))
+            }
           }
         }
       }
@@ -210,7 +212,7 @@ class LiveTest extends TestBase with ScalaFutures {
             sender.send("test", Bytes.copyFromUtf8(Random.nextString(10))).await
           }
 
-          eventually(timeout(Span(3, Seconds)), interval(Span(0.25, Seconds))) {
+          eventually(timeout(Span(15, Seconds)), interval(Span(0.25, Seconds))) {
             assert(cnt.get() >= 40)
             assert(testHelper.queue.getMessagesCount(queueName1) <= 20)
           }
@@ -283,16 +285,18 @@ class LiveTest extends TestBase with ScalaFutures {
             _ <- rabbitConnection.bindQueue("bindQueue")
           } yield ()).unsafeRunSync()
 
-          assertResult(Map("x-max-length" -> 10000))(testHelper.queue.getArguments(queueName2))
+          eventually(timeout(Span(15, Seconds)), interval(Span(0.1, Seconds))) {
+            assertResult(Map("x-max-length" -> 10000))(testHelper.queue.getArguments(queueName2))
 
-          assertResult(0)(testHelper.queue.getMessagesCount(queueName1))
-          assertResult(0)(testHelper.queue.getMessagesCount(queueName2))
+            assertResult(0)(testHelper.queue.getMessagesCount(queueName1))
+            assertResult(0)(testHelper.queue.getMessagesCount(queueName2))
+          }
 
           for (_ <- 1 to 10) {
             sender.send("test", Bytes.copyFromUtf8(Random.nextString(10))).unsafeRunSync()
           }
 
-          eventually(timeout(Span(2, Seconds)), interval(Span(200, Milliseconds))) {
+          eventually(timeout(Span(15, Seconds)), interval(Span(200, Milliseconds))) {
             assertResult(true)(latch.await(500, TimeUnit.MILLISECONDS))
 
             assertResult(0)(testHelper.queue.getMessagesCount(queueName1))
@@ -329,7 +333,7 @@ class LiveTest extends TestBase with ScalaFutures {
             sender.send("test", Bytes.copyFromUtf8(Random.nextString(10))).await
           }
 
-          eventually(timeout(Span(2, Seconds)), interval(Span(0.25, Seconds))) {
+          eventually(timeout(Span(15, Seconds)), interval(Span(0.25, Seconds))) {
             assertResult(20)(processed.get())
             assertResult(0)(testHelper.queue.getMessagesCount(queueName1))
             assertResult(10)(poisoned.get())
@@ -355,7 +359,7 @@ class LiveTest extends TestBase with ScalaFutures {
             sender.send("test", Bytes.copyFromUtf8(Random.nextString(10))).unsafeRunSync()
           }
 
-          eventually(timeout = timeout(Span(5, Seconds))) {
+          eventually(timeout = timeout(Span(15, Seconds))) {
             assertResult(10)(testHelper.queue.getMessagesCount(queueName1))
           }
 
@@ -364,7 +368,7 @@ class LiveTest extends TestBase with ScalaFutures {
             dwh.handle(DeliveryResult.Ack).unsafeRunSync()
           }
 
-          eventually(timeout = timeout(Span(5, Seconds))) {
+          eventually(timeout = timeout(Span(15, Seconds))) {
             assertResult(7)(testHelper.queue.getMessagesCount(queueName1))
           }
 
@@ -373,7 +377,7 @@ class LiveTest extends TestBase with ScalaFutures {
             dwh.handle(DeliveryResult.Ack).unsafeRunSync()
           }
 
-          eventually(timeout = timeout(Span(5, Seconds))) {
+          eventually(timeout = timeout(Span(15, Seconds))) {
             assertResult(0)(testHelper.queue.getMessagesCount(queueName1))
           }
 

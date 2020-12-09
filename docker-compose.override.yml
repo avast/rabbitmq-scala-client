@@ -1,4 +1,7 @@
-rabbit:
-  ports:
-    - "5672:5672"
-    - "15672:15672"
+version: '2'
+
+services:
+  rabbit:
+    ports:
+      - "5672:5672"
+      - "15672:15672"
