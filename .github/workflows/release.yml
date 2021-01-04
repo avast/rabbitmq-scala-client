@@ -1,0 +1,33 @@
+name: Release
+on:
+  push:
+#    branches: [ master ]
+    tags: ["*"]
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        scala-version: [2.12.10, 2.13.1]
+    steps:
+      - uses: actions/checkout@v2.3.4
+        with:
+          fetch-depth: 100
+      - name: Fetch tags
+        run: git fetch --depth=100 origin +refs/tags/*:refs/tags/*
+      - uses: olafurpg/setup-scala@v10
+        with:
+          java-version: adopt@1.11
+      - name: Coursier cache
+        uses: coursier/cache-action@v5
+      - uses: olafurpg/setup-gpg@v3
+#      - name: sbt ci-release ${{ github.ref }}
+#        run: ./sbt ci-release
+      - name: gradle bintrayUpload ${{ github.ref }}
+        run: ./gradlew bintrayUpload -Pversion="$GITHUB_REF" --info
+        env:
+          PGP_PASSPHRASE: ${{ secrets.PGP_PASSPHRASE }}
+          PGP_SECRET: ${{ secrets.PGP_SECRET }}
+          SONATYPE_PASSWORD: ${{ secrets.SONATYPE_PASSWORD }}
+          SONATYPE_USERNAME: ${{ secrets.SONATYPE_USERNAME }}
+          SCALA_VERSION: ${{ matrix.scala-version }}
