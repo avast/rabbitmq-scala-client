@@ -22,20 +22,20 @@ allprojects {
     ext {
         def scalaVersionEnv = System.getenv("SCALA_VERSION")
 
-        scalaVersionFull = scalaVersionEnv != null ? scalaVersionEnv : "2.12.12"
+        scalaVersionFull = scalaVersionEnv != null ? scalaVersionEnv : "2.12.13"
         scalaVersion = "${scalaVersionFull}".split("\\.").dropRight(1).join(".")
 
-        metricsVersion = "2.7.5"
-        bytesVersion = "2.0.6"
+        metricsVersion = "2.8.5"
+        bytesVersion = "2.2.0"
         circeVersion = "0.13.0"
         cactusVersion = "0.17.0"
-        catsVersion = "2.1.1"
-        catsEffectVersion = "2.2.0"
-        fs2Version = "2.4.4"
-        protobufVersion = "3.12.4"
-        scalapbVersion = "0.10.8"
-        scalapbJson4sVersion = "0.10.1"
-        monixVersion = "3.0.0" // just for tests!
+        catsVersion = "2.4.2"
+        catsEffectVersion = "2.3.3"
+        fs2Version = "2.5.3"
+        protobufVersion = "3.15.1"
+        scalapbVersion = "0.10.11"
+        scalapbJson4sVersion = "0.10.3"
+        monixVersion = "3.3.0" // just for tests!
     }
 }
 
@@ -120,9 +120,9 @@ subprojects {
     }
 
     dependencies {
-        scalaCompilerPlugin "org.typelevel:kind-projector_$scalaVersionFull:0.11.0"
+        scalaCompilerPlugin "org.typelevel:kind-projector_$scalaVersionFull:0.11.3"
 
-        compile "org.scala-lang.modules:scala-collection-compat_$scalaVersion:2.2.0"
+        compile "org.scala-lang.modules:scala-collection-compat_$scalaVersion:2.4.2"
 
         testCompile "io.monix:monix_$scalaVersion:$monixVersion"
 
@@ -144,7 +144,7 @@ subprojects {
     tasks.withType(ScalaCompile) {
         List plugins = configurations.scalaCompilerPlugin.files.collect { "-Xplugin:${it.getAbsolutePath()}".toString() }
         if (scalaVersion.startsWith("2.12")) {
-            println("Using -Ypartial-unification for Scala ${scalaVersion}")
+            logger.info("Using -Ypartial-unification for Scala ${scalaVersion}")
             plugins.add("-Ypartial-unification")
         }
         scalaCompileOptions.additionalParameters = plugins
