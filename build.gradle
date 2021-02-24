@@ -29,13 +29,13 @@ allprojects {
         bytesVersion = "2.2.0"
         circeVersion = "0.13.0"
         cactusVersion = "0.17.0"
-        catsVersion = "2.4.2"
-        catsEffectVersion = "2.3.3"
-        fs2Version = "2.5.3"
+        catsVersion = "2.1.1"
+        catsEffectVersion = "2.2.0"
+        fs2Version = "2.4.4"
         protobufVersion = "3.15.2"
         scalapbVersion = "0.10.11"
         scalapbJson4sVersion = "0.10.3"
-        monixVersion = "3.3.0" // just for tests!
+        monixVersion = "3.0.0" // just for tests!
     }
 }
 
