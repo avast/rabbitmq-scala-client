@@ -26,7 +26,7 @@ allprojects {
         scalaVersion = "${scalaVersionFull}".split("\\.").dropRight(1).join(".")
 
         metricsVersion = "2.7.5"
-        bytesVersion = "2.0.6"
+        bytesVersion = "2.2.0"
         circeVersion = "0.13.0"
         cactusVersion = "0.17.0"
         catsVersion = "2.1.1"
