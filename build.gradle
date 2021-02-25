@@ -133,7 +133,7 @@ subprojects {
         testCompile "io.circe:circe-generic_$scalaVersion:$circeVersion"
         testCompile "io.circe:circe-parser_$scalaVersion:$circeVersion"
 
-        testCompile 'junit:junit:4.12'
+        testCompile 'junit:junit:4.13.2'
         testCompile "org.scalatest:scalatest_$scalaVersion:3.0.8"
         testCompile 'org.mockito:mockito-all:1.10.19'
         testCompile 'ch.qos.logback:logback-classic:1.2.3'
