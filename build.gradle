@@ -1,24 +1,29 @@
 buildscript {
     repositories {
         mavenCentral()
-        jcenter()
     }
-
     dependencies {
         classpath 'com.google.protobuf:protobuf-gradle-plugin:0.8.15'
         classpath 'com.avast.gradle:gradle-docker-compose-plugin:0.14.1'
         classpath 'com.github.ben-manes:gradle-versions-plugin:0.36.0'
-        classpath 'com.jfrog.bintray.gradle:gradle-bintray-plugin:1.8.5'
     }
 }
 
-apply plugin: 'idea'
+plugins {
+    id "io.github.gradle-nexus.publish-plugin" version '1.0.0'
+}
 apply plugin: 'docker-compose'
 
-group = "com.avast.clients.rabbitmq"
-version = version == 'unspecified' ? 'DEVELOPER-SNAPSHOT' : version
+nexusPublishing {
+    repositories {
+        sonatype()
+    }
+}
 
 allprojects {
+    apply plugin: 'idea'
+    group = 'com.avast.clients.rabbitmq'
+    version = version == 'unspecified' ? 'DEVELOPER-SNAPSHOT' : version
     ext {
         def scalaVersionEnv = System.getenv("SCALA_VERSION")
 
@@ -44,11 +49,10 @@ println("Scala version: ${scalaVersion} (${scalaVersionFull})") // will display 
 subprojects {
     apply plugin: 'java'
     apply plugin: 'scala'
-    apply plugin: 'com.github.ben-manes.versions'
-    apply plugin: 'com.jfrog.bintray'
-    apply plugin: 'maven'
+    apply plugin: 'java-library'
     apply plugin: 'maven-publish'
-    apply plugin: 'idea'
+    apply plugin: 'signing'
+    apply plugin: 'com.github.ben-manes.versions'
 
     task sourceJar(type: Jar) {
         from sourceSets.main.allSource
@@ -57,43 +61,50 @@ subprojects {
 
     group = "com.avast.clients.rabbitmq"
 
-    publishing {
-        publications {
-            MyPublication(MavenPublication) {
-                from components.java
-                groupId project.group
-                version project.version
-                artifact sourceJar
+    java {
+        withJavadocJar()
+        withSourcesJar()
+    }
+
+    afterEvaluate {
+        publishing {
+            publications {
+                mavenJava(MavenPublication) {
+                    from(components.java)
+                    artifactId = archivesBaseName
+                    pom {
+                        name = 'RabbitMQ client for Scala'
+                        description = 'Scala wrapper over standard RabbitMQ Java client library'
+                        url = 'https://github.com/avast/rabbitmq-scala-client'
+                        licenses {
+                            license {
+                                name = 'The MIT License'
+                                url = 'http://www.opensource.org/licenses/mit-license.php'
+                            }
+                        }
+                        developers {
+                            developer {
+                                id = 'jendakol'
+                                name = 'Jenda Kolena'
+                                email = 'jan.kolena@avast.com'
+                            }
+                        }
+                        scm {
+                            connection = 'scm:git:git://github.com/avast/rabbitmq-scala-client.git'
+                            developerConnection = 'scm:git:ssh://github.com/avast/rabbitmq-scala-client.git'
+                            url = 'https://github.com/avast/rabbitmq-scala-client'
+                        }
+                    }
+                }
             }
         }
     }
 
-    artifacts {
-        archives jar
-        archives sourceJar
-    }
-
-    bintray {
-        user = System.getenv('BINTRAY_USER')
-        key = System.getenv('BINTRAY_KEY')
-        publish = true // auto publish
-        configurations = ['archives']
-
-        pkg {
-            repo = 'maven'
-            name = 'rabbitmq-scala-client'
-            userOrg = 'avast'
-            desc = 'Scala wrapper over standard RabbitMQ Java client library'
-            licenses = ['Apache-2.0']
-            vcsUrl = 'https://github.com/avast/rabbitmq-scala-client.git'
-            githubRepo = 'avast/rabbitmq-scala-client'
-            websiteUrl = 'https://github.com/avast/rabbitmq-scala-client'
-            issueTrackerUrl = 'https://github.com/avast/rabbitmq-scala-client/issues'
-            labels = ['rabbitmq', 'client', 'amqp', 'scala']
-            version {
-                name = project.version
-                vcsTag = project.version
-            }
+    signing {
+        String base64Key = System.getenv('SIGNING_KEY')
+        if (base64Key) {
+            useInMemoryPgpKeys(new String(Base64.decoder.decode(base64Key)), System.getenv('SIGNING_PASSWORD'))
+            sign publishing.publications
         }
     }
 

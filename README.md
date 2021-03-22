@@ -1,8 +1,4 @@
-# RabbitMQ client
-
-[![Release](https://github.com/avast/rabbitmq-scala-client/workflows/Release/badge.svg)](https://github.com/avast/rabbitmq-scala-client/actions?query=workflow%3ARelease)
-[![Download](https://api.bintray.com/packages/avast/maven/rabbitmq-scala-client/images/download.svg) ](https://bintray.com/avast/maven/rabbitmq-scala-client/_latestVersion)
-
+# RabbitMQ client [![CI](https://github.com/avast/rabbitmq-scala-client/actions/workflows/ci.yml/badge.svg)](https://github.com/avast/rabbitmq-scala-client/actions/workflows/ci.yml) [![Version](https://badgen.net/maven/v/maven-central/com.avast.clients.rabbitmq/rabbitmq-client-api_2.13)](https://repo1.maven.org/maven2/com/avast/clients/rabbitmq/rabbitmq-client-api_2.13/)
 
 This client is Scala wrapper over the standard [RabbitMQ Java client](https://www.rabbitmq.com/java-client.html). Goal of this library is
 to simplify basic use cases - to provide FP-oriented API for programmers and to shadow the programmer from an underlying client.
