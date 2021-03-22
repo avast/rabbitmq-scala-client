@@ -67,32 +67,34 @@ subprojects {
         withSourcesJar()
     }
 
-    publishing {
-        publications {
-            mavenJava(MavenPublication) {
-                from(components.java)
-                artifactId = archivesBaseName
-                pom {
-                    name = 'RabbitMQ client for Scala'
-                    description = 'Scala wrapper over standard RabbitMQ Java client library'
-                    url = 'https://github.com/avast/rabbitmq-scala-client'
-                    licenses {
-                        license {
-                            name = 'The MIT License'
-                            url = 'http://www.opensource.org/licenses/mit-license.php'
-                        }
-                    }
-                    developers {
-                        developer {
-                            id = 'jendakol'
-                            name = 'Jenda Kolena'
-                            email = 'jan.kolena@avast.com'
-                        }
-                    }
-                    scm {
-                        connection = 'scm:git:git://github.com/avast/rabbitmq-scala-client.git'
-                        developerConnection = 'scm:git:ssh://github.com/avast/rabbitmq-scala-client.git'
+    afterEvaluate {
+        publishing {
+            publications {
+                mavenJava(MavenPublication) {
+                    from(components.java)
+                    artifactId = archivesBaseName
+                    pom {
+                        name = 'RabbitMQ client for Scala'
+                        description = 'Scala wrapper over standard RabbitMQ Java client library'
                         url = 'https://github.com/avast/rabbitmq-scala-client'
+                        licenses {
+                            license {
+                                name = 'The MIT License'
+                                url = 'http://www.opensource.org/licenses/mit-license.php'
+                            }
+                        }
+                        developers {
+                            developer {
+                                id = 'jendakol'
+                                name = 'Jenda Kolena'
+                                email = 'jan.kolena@avast.com'
+                            }
+                        }
+                        scm {
+                            connection = 'scm:git:git://github.com/avast/rabbitmq-scala-client.git'
+                            developerConnection = 'scm:git:ssh://github.com/avast/rabbitmq-scala-client.git'
+                            url = 'https://github.com/avast/rabbitmq-scala-client'
+                        }
                     }
                 }
             }
