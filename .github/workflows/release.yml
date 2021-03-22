@@ -17,17 +17,11 @@ jobs:
       - uses: olafurpg/setup-scala@v10
         with:
           java-version: adopt@1.11
-      - name: Coursier cache
-        uses: coursier/cache-action@v6
-#      - name: sbt ci-release ${{ github.ref }}
-#        run: ./sbt ci-release
-      - name: gradle bintrayUpload ${{ github.ref }}
-        run: ./gradlew bintrayUpload -Pversion="${{ github.event.release.tag_name }}" --info
+      - name: Sonatype publishing ${{ github.ref }}
+        run: ./gradlew publishToSonatype closeAndReleaseSonatypeStagingRepository -Pversion="${{ github.event.release.tag_name }}" --info
         env:
-#          PGP_PASSPHRASE: ${{ secrets.PGP_PASSPHRASE }}
-#          PGP_SECRET: ${{ secrets.PGP_SECRET }}
-#          SONATYPE_PASSWORD: ${{ secrets.SONATYPE_PASSWORD }}
-#          SONATYPE_USERNAME: ${{ secrets.SONATYPE_USERNAME }}
           SCALA_VERSION: ${{ matrix.scala-version }}
-          BINTRAY_USER: ${{ secrets.BINTRAY_USER }}
-          BINTRAY_KEY: ${{ secrets.BINTRAY_KEY }}
+          SIGNING_KEY: ${{ secrets.SIGNING_KEY }}
+          SIGNING_PASSWORD: ${{ secrets.SIGNING_PASSWORD }}
+          ORG_GRADLE_PROJECT_sonatypeUsername: ${{ secrets.SONATYPE_USERNAME }}
+          ORG_GRADLE_PROJECT_sonatypePassword : ${{ secrets.SONATYPE_PASSWORD }}
