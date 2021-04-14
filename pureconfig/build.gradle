@@ -1,8 +1,8 @@
 archivesBaseName = "rabbitmq-client-pureconfig_$scalaVersion"
 
 dependencies {
-    compile project(":core")
+    api project(":core")
 
-    compile 'com.typesafe:config:1.4.1'
-    compile "com.github.pureconfig:pureconfig_${scalaVersion}:0.14.0"
+    api 'com.typesafe:config:1.4.1'
+    api "com.github.pureconfig:pureconfig_${scalaVersion}:0.14.0"
 }

@@ -3,12 +3,12 @@ apply plugin: 'com.google.protobuf'
 archivesBaseName = "rabbitmq-client-extras-scalapb_$scalaVersion"
 
 dependencies {
-    compile project(":core")
+    api project(":core")
 
-    compile "com.avast.bytes:bytes-gpb:${bytesVersion}"
+    api "com.avast.bytes:bytes-gpb:${bytesVersion}"
 
-    compile "com.thesamet.scalapb:scalapb-runtime_$scalaVersion:$scalapbVersion"
-    compile "com.thesamet.scalapb:scalapb-json4s_$scalaVersion:$scalapbJson4sVersion"
+    api "com.thesamet.scalapb:scalapb-runtime_$scalaVersion:$scalapbVersion"
+    api "com.thesamet.scalapb:scalapb-json4s_$scalaVersion:$scalapbJson4sVersion"
 }
 
 protobuf {

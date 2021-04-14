@@ -3,12 +3,12 @@ apply plugin: 'com.google.protobuf'
 archivesBaseName = "rabbitmq-client-extras-protobuf_$scalaVersion"
 
 dependencies {
-    compile project(":core")
+    api project(":core")
 
-    compile "com.avast.bytes:bytes-gpb:${bytesVersion}"
+    api "com.avast.bytes:bytes-gpb:${bytesVersion}"
 
-    compile "com.google.protobuf:protobuf-java:$protobufVersion"
-    compile "com.google.protobuf:protobuf-java-util:$protobufVersion"
+    api "com.google.protobuf:protobuf-java:$protobufVersion"
+    api "com.google.protobuf:protobuf-java-util:$protobufVersion"
 }
 
 protobuf {

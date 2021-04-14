@@ -1,9 +1,9 @@
 archivesBaseName = "rabbitmq-client-extras-circe_$scalaVersion"
 
 dependencies {
-    compile project(":core")
-    compile project(":extras")
+    api project(":core")
+    api project(":extras")
 
-    compile "io.circe:circe-core_$scalaVersion:$circeVersion"
-    compile "io.circe:circe-parser_$scalaVersion:$circeVersion"
+    api "io.circe:circe-core_$scalaVersion:$circeVersion"
+    api "io.circe:circe-parser_$scalaVersion:$circeVersion"
 }

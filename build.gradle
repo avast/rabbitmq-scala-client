@@ -133,23 +133,23 @@ subprojects {
     dependencies {
         scalaCompilerPlugin "org.typelevel:kind-projector_$scalaVersionFull:0.11.3"
 
-        compile "org.scala-lang.modules:scala-collection-compat_$scalaVersion:2.4.2"
+        api "org.scala-lang.modules:scala-collection-compat_$scalaVersion:2.4.2"
 
-        testCompile "io.monix:monix_$scalaVersion:$monixVersion"
+        testImplementation "io.monix:monix_$scalaVersion:$monixVersion"
 
-        testCompile "com.avast.metrics:metrics-jmx:${metricsVersion}"
+        testImplementation "com.avast.metrics:metrics-jmx:${metricsVersion}"
 
-        testCompile "org.scalaj:scalaj-http_$scalaVersion:2.4.2"
-        testCompile "io.circe:circe-core_$scalaVersion:$circeVersion"
-        testCompile "io.circe:circe-generic_$scalaVersion:$circeVersion"
-        testCompile "io.circe:circe-parser_$scalaVersion:$circeVersion"
+        testImplementation "org.scalaj:scalaj-http_$scalaVersion:2.4.2"
+        testImplementation "io.circe:circe-core_$scalaVersion:$circeVersion"
+        testImplementation "io.circe:circe-generic_$scalaVersion:$circeVersion"
+        testImplementation "io.circe:circe-parser_$scalaVersion:$circeVersion"
 
-        testCompile 'junit:junit:4.13.2'
-        testCompile "org.scalatest:scalatest_$scalaVersion:3.0.8"
-        testCompile 'org.mockito:mockito-all:1.10.19'
-        testCompile 'ch.qos.logback:logback-classic:1.2.3'
+        testImplementation 'junit:junit:4.13.2'
+        testImplementation "org.scalatest:scalatest_$scalaVersion:3.0.8"
+        testImplementation 'org.mockito:mockito-all:1.10.19'
+        testImplementation 'ch.qos.logback:logback-classic:1.2.3'
 
-        testRuntime 'org.pegdown:pegdown:1.6.0'
+        testImplementation 'org.pegdown:pegdown:1.6.0'
     }
 
     tasks.withType(ScalaCompile) {
