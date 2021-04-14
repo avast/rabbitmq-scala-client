@@ -1,10 +1,10 @@
 archivesBaseName = "rabbitmq-client-extras-cactus_$scalaVersion"
 
 dependencies {
-    compile project(":core")
-    compile project(":extras")
+    api project(":core")
+    api project(":extras")
 
-    compile "com.avast.cactus:cactus-common_$scalaVersion:$cactusVersion"
+    api "com.avast.cactus:cactus-common_$scalaVersion:$cactusVersion"
     compileOnly "com.google.protobuf:protobuf-java:$protobufVersion"
-    compile "com.avast.bytes:bytes-gpb:${bytesVersion}"
+    api "com.avast.bytes:bytes-gpb:${bytesVersion}"
 }

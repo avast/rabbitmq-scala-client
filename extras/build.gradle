@@ -1,5 +1,5 @@
 archivesBaseName = "rabbitmq-client-extras_$scalaVersion"
 
 dependencies {
-    compile project(":core")
+    api project(":core")
 }

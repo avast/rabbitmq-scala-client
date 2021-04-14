@@ -1,6 +1,6 @@
 archivesBaseName = "rabbitmq-client-api_$scalaVersion"
 
 dependencies {
-    compile "com.avast.bytes:bytes-core:${bytesVersion}"
-    compile "co.fs2:fs2-core_$scalaVersion:$fs2Version"
+    api "com.avast.bytes:bytes-core:${bytesVersion}"
+    api "co.fs2:fs2-core_$scalaVersion:$fs2Version"
 }
