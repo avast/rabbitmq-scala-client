@@ -3,7 +3,7 @@ buildscript {
         mavenCentral()
     }
     dependencies {
-        classpath 'com.google.protobuf:protobuf-gradle-plugin:0.8.15'
+        classpath 'com.google.protobuf:protobuf-gradle-plugin:0.8.16'
         classpath 'com.avast.gradle:gradle-docker-compose-plugin:0.14.3'
         classpath 'com.github.ben-manes:gradle-versions-plugin:0.38.0'
     }
