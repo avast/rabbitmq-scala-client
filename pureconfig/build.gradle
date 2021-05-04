@@ -4,5 +4,5 @@ dependencies {
     api project(":core")
 
     api 'com.typesafe:config:1.4.1'
-    api "com.github.pureconfig:pureconfig_${scalaVersion}:0.14.0"
+    api "com.github.pureconfig:pureconfig_${scalaVersion}:0.15.0"
 }
