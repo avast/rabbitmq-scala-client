@@ -71,8 +71,9 @@ abstract class ConsumerWithCallbackBase[F[_]: Effect](channel: ServerChannel,
                 val duration = taskDuration
                 logger.debug(s"[$name] Delivery ID $messageId handling failed in $duration", t)
                 processedTimer.updateFailure(duration)
+                logger.error(s"[$name] Error while executing callback for delivery with routing key $routingKey", t)
               } >>
-                handleCallbackFailure(messageId, deliveryTag, properties, routingKey, body)(t)
+                handleFailure(messageId, deliveryTag, properties, routingKey, body, t)
           }
       } catch {
         // we catch this specific exception, handling of others is up to Lyra
@@ -80,20 +81,11 @@ abstract class ConsumerWithCallbackBase[F[_]: Effect](channel: ServerChannel,
           logger.debug(s"[$name] Executor was unable to plan the handling task", e)
           handleFailure(messageId, deliveryTag, properties, routingKey, body, e)
 
-        case NonFatal(e) => handleCallbackFailure(messageId, deliveryTag, properties, routingKey, body)(e)
+        case NonFatal(e) =>
+          logger.error(s"[$name] Error while preparing callback execution for delivery with routing key $routingKey. This is probably a bug as the F construction shouldn't throw any exception", e)
+          handleFailure(messageId, deliveryTag, properties, routingKey, body, e)
       }
     }.flatten
-
-  private def handleCallbackFailure(messageId: String,
-                                    deliveryTag: Long,
-                                    properties: BasicProperties,
-                                    routingKey: String,
-                                    body: Array[Byte])(t: Throwable): F[Unit] = {
-    F.delay {
-      logger.error(s"[$name] Error while executing callback for delivery with routing key $routingKey", t)
-    } >>
-      handleFailure(messageId, deliveryTag, properties, routingKey, body, t)
-  }
 
   private def handleFailure(messageId: String,
                             deliveryTag: Long,
