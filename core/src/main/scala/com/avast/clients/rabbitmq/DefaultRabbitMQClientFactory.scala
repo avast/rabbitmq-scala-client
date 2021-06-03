@@ -1,11 +1,10 @@
 package com.avast.clients.rabbitmq
 
 import java.util.concurrent.TimeoutException
-
 import cats.effect._
 import cats.syntax.all._
 import com.avast.bytes.Bytes
-import com.avast.clients.rabbitmq.api._
+import com.avast.clients.rabbitmq.api.{Delivery, _}
 import com.avast.metrics.scalaapi.{Meter, Monitor}
 import com.rabbitmq.client.AMQP.Queue
 import com.rabbitmq.client.{AMQP, Consumer}
@@ -147,7 +146,7 @@ private[rabbitmq] object DefaultRabbitMQClientFactory extends LazyLogging {
 
     bindQueueForRepublishing(connectionInfo, channel, consumerConfig.queueName, republishStrategy)
 
-    val timeoutAction = (e: TimeoutException) => doTimeoutAction(name, consumerConfig.timeoutAction, timeoutLogLevel, timeoutsMeter, e)
+    val timeoutAction = (d: Delivery[Bytes], e: TimeoutException) => doTimeoutAction(name, d, consumerConfig.timeoutAction, timeoutLogLevel, timeoutsMeter, e)
 
     DefaultRabbitMQStreamingConsumer.make(
       name,
@@ -457,7 +456,7 @@ private[rabbitmq] object DefaultRabbitMQClientFactory extends LazyLogging {
             Concurrent
               .timeout(action, processTimeout)
               .recoverWith {
-                case e: TimeoutException => doTimeoutAction(name, timeoutAction, timeoutLogLevel, timeoutsMeter, e)
+                case e: TimeoutException => doTimeoutAction(name, delivery, timeoutAction, timeoutLogLevel, timeoutsMeter, e)
               }
           } else action
         }
@@ -466,18 +465,19 @@ private[rabbitmq] object DefaultRabbitMQClientFactory extends LazyLogging {
           .recoverWith {
             case NonFatal(e) =>
               fatalFailuresMeter.mark()
-              logger.warn(s"[$name] Error while executing callback, applying DeliveryResult.${consumerConfig.failureAction}", e)
+              logger.warn(s"[$name] Error while executing callback for delivery with routing key ${delivery.routingKey}, applying DeliveryResult.${consumerConfig.failureAction}${System.lineSeparator()}$delivery", e)
               ConcurrentEffect[F].pure(consumerConfig.failureAction)
           }
       } catch {
         case NonFatal(e) =>
           fatalFailuresMeter.mark()
-          logger.error(s"[$name] Error while executing callback, applying DeliveryResult.${consumerConfig.failureAction}", e)
+          logger.error(s"[$name] Error while executing callback for delivery with routing key ${delivery.routingKey}, applying DeliveryResult.${consumerConfig.failureAction}${System.lineSeparator()}$delivery", e)
           ConcurrentEffect[F].pure(consumerConfig.failureAction)
       }
   }
 
   private def doTimeoutAction[A, F[_]: ConcurrentEffect](consumerName: String,
+                                                         delivery: Delivery[Bytes],
                                                          timeoutAction: DeliveryResult,
                                                          timeoutLogLevel: Level,
                                                          timeoutsMeter: Meter,
@@ -485,7 +485,7 @@ private[rabbitmq] object DefaultRabbitMQClientFactory extends LazyLogging {
 
     timeoutsMeter.mark()
 
-    lazy val msg = s"[$consumerName] Task timed-out, applying DeliveryResult.$timeoutAction"
+    lazy val msg = s"[$consumerName] Task timed-out when processing delivery with routing key ${delivery.routingKey}, applying DeliveryResult.$timeoutAction${System.lineSeparator()}$delivery"
 
     timeoutLogLevel match {
       case Level.ERROR => logger.error(msg, e)

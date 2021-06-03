@@ -90,7 +90,7 @@ abstract class ConsumerWithCallbackBase[F[_]: Effect](channel: ServerChannel,
                                     routingKey: String,
                                     body: Array[Byte])(t: Throwable): F[Unit] = {
     F.delay {
-      logger.error(s"[$name] Error while executing callback, it's probably a BUG", t)
+      logger.error(s"[$name] Error while executing callback for delivery with routing key $routingKey", t)
     } >>
       handleFailure(messageId, deliveryTag, properties, routingKey, body, t)
   }
