@@ -27,7 +27,7 @@ class DefaultRabbitMQStreamingConsumer[F[_]: ConcurrentEffect: Timer, A: Deliver
     monitor: Monitor,
     republishStrategy: RepublishStrategy,
     timeout: FiniteDuration,
-    timeoutAction: TimeoutException => F[DeliveryResult],
+    timeoutAction: (Delivery[Bytes], TimeoutException) => F[DeliveryResult],
     blocker: Blocker)(createQueue: F[DeliveryQueue[F, Bytes]], newChannel: F[ServerChannel])(implicit cs: ContextShift[F])
     extends RabbitMQStreamingConsumer[F, A]
     with StrictLogging {
@@ -183,7 +183,7 @@ class DefaultRabbitMQStreamingConsumer[F[_]: ConcurrentEffect: Timer, A: Deliver
       consumerOpt <- this.consumer.get
       consumer = consumerOpt.getOrElse(throw new IllegalStateException("Consumer has to be initialized at this stage! It's probably a BUG"))
       _ <- consumer.queue.enqueue1((delivery, deferred))
-      res <- Concurrent.timeout(deferred.get, timeout).recoverWith { case e: TimeoutException => timeoutAction(e) }
+      res <- Concurrent.timeout(deferred.get, timeout).recoverWith { case e: TimeoutException => timeoutAction(delivery, e) }
     } yield {
       res
     }
@@ -274,7 +274,7 @@ object DefaultRabbitMQStreamingConsumer extends StrictLogging {
       monitor: Monitor,
       republishStrategy: RepublishStrategy,
       timeout: FiniteDuration,
-      timeoutAction: TimeoutException => F[DeliveryResult],
+      timeoutAction: (Delivery[Bytes], TimeoutException) => F[DeliveryResult],
       blocker: Blocker)(implicit cs: ContextShift[F]): Resource[F, DefaultRabbitMQStreamingConsumer[F, A]] = {
     val newQueue: F[DeliveryQueue[F, Bytes]] = createQueue(queueBufferSize)
 
