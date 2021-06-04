@@ -122,12 +122,15 @@ object ExchangeType {
     case Direct.value => Some(Direct)
     case Fanout.value => Some(Fanout)
     case Topic.value => Some(Topic)
+    case n if n.startsWith("x-") => Some(Custom(n))
     case _ => None
   }
 
   case object Direct extends ExchangeType { val value: String = "direct" }
   case object Fanout extends ExchangeType { val value: String = "fanout" }
   case object Topic extends ExchangeType { val value: String = "topic" }
+
+  case class Custom(value: String) extends ExchangeType
 }
 
 trait RepublishStrategyConfig {
