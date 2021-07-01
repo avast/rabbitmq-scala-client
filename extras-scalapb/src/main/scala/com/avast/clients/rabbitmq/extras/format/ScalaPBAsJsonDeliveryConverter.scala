@@ -18,7 +18,7 @@ object ScalaPBAsJsonDeliveryConverter {
   def derive[A <: GeneratedMessage: GeneratedMessageCompanion: ScalaPBAsJsonDeliveryConverter](): ScalaPBAsJsonDeliveryConverter[A] =
     implicitly[ScalaPBAsJsonDeliveryConverter[A]]
 
-  private val jsonParser = new Parser()
+  private val jsonParser = new Parser().ignoringUnknownFields
 
   implicit def createJsonDeliveryConverter[A <: GeneratedMessage: GeneratedMessageCompanion: ClassTag]: ScalaPBAsJsonDeliveryConverter[A] =
     new ScalaPBAsJsonDeliveryConverter[A] {

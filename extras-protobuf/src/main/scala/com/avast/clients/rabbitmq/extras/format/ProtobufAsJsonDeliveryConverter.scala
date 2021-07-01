@@ -17,7 +17,7 @@ object ProtobufAsJsonDeliveryConverter {
   def derive[A <: GeneratedMessageV3: ProtobufAsJsonDeliveryConverter](): ProtobufAsJsonDeliveryConverter[A] =
     implicitly[ProtobufAsJsonDeliveryConverter[A]]
 
-  private val jsonParser = JsonFormat.parser()
+  private val jsonParser = JsonFormat.parser().ignoringUnknownFields()
 
   implicit def createJsonDeliveryConverter[A <: GeneratedMessageV3: ClassTag]: ProtobufAsJsonDeliveryConverter[A] =
     new ProtobufAsJsonDeliveryConverter[A] {
