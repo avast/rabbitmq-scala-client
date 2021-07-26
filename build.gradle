@@ -147,7 +147,7 @@ subprojects {
         testImplementation 'junit:junit:4.13.2'
         testImplementation "org.scalatest:scalatest_$scalaVersion:3.0.8"
         testImplementation 'org.mockito:mockito-all:1.10.19'
-        testImplementation 'ch.qos.logback:logback-classic:1.2.4'
+        testImplementation 'ch.qos.logback:logback-classic:1.2.5'
 
         testImplementation 'org.pegdown:pegdown:1.6.0'
     }
