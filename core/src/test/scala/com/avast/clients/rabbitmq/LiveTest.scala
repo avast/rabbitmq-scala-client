@@ -1,8 +1,5 @@
 package com.avast.clients.rabbitmq
 
-import java.util.concurrent._
-import java.util.concurrent.atomic.AtomicInteger
-
 import cats.effect.{ContextShift, IO, Timer}
 import com.avast.bytes.Bytes
 import com.avast.clients.rabbitmq.api.DeliveryResult._
@@ -16,9 +13,11 @@ import monix.execution.Scheduler
 import org.scalatest.concurrent.ScalaFutures
 import org.scalatest.time._
 
-import scala.jdk.CollectionConverters._
+import java.util.concurrent._
+import java.util.concurrent.atomic.AtomicInteger
 import scala.concurrent.ExecutionContext
 import scala.concurrent.duration._
+import scala.jdk.CollectionConverters._
 import scala.util.Random
 
 class LiveTest extends TestBase with ScalaFutures {
@@ -425,7 +424,7 @@ class LiveTest extends TestBase with ScalaFutures {
             assertResult(count)(testHelper.queue.getPublishedCount(queueName1))
           }
 
-          stream.compile.drain.runToFuture // run the stream
+          sched.execute(() => stream.compile.drain.runSyncUnsafe()) // run the stream
 
           eventually(timeout(Span(4, Minutes)), interval(Span(1, Seconds))) {
             println("D: " + d.get())
@@ -482,8 +481,8 @@ class LiveTest extends TestBase with ScalaFutures {
               assertResult(count)(testHelper.queue.getPublishedCount(queueName1))
             }
 
-            stream1.compile.drain.runToFuture // run the stream 1
-            stream2.compile.drain.runToFuture // run the stream 2
+            sched.execute(() => stream1.compile.drain.runSyncUnsafe()) // run the stream
+            sched.execute(() => stream2.compile.drain.runSyncUnsafe()) // run the stream
 
             eventually(timeout(Span(5, Minutes)), interval(Span(1, Seconds))) {
               println(s"D: ${d1.get}/${d2.get()}")
@@ -543,7 +542,7 @@ class LiveTest extends TestBase with ScalaFutures {
               assertResult(count)(testHelper.queue.getPublishedCount(queueName1))
             }
 
-            stream.compile.drain.runToFuture // run the consumer stream
+            sched.execute(() => stream.compile.drain.runSyncUnsafe()) // run the stream
 
             eventually(timeout(Span(5, Minutes)), interval(Span(1, Seconds))) {
               println("D: " + d.get())
@@ -586,7 +585,7 @@ class LiveTest extends TestBase with ScalaFutures {
             assertResult(count)(testHelper.queue.getPublishedCount(queueName1))
           }
 
-          stream.compile.drain.runToFuture // run the stream
+          sched.execute(() => stream.compile.drain.runSyncUnsafe()) // run the stream
 
           eventually(timeout(Span(20, Seconds)), interval(Span(1, Seconds))) {
             println("D: " + d.get())
