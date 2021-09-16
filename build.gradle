@@ -33,7 +33,6 @@ allprojects {
         metricsVersion = "2.8.5"
         bytesVersion = "2.2.0"
         circeVersion = "0.14.1"
-        cactusVersion = "0.17.0"
         catsVersion = "2.4.2"
         catsEffectVersion = "2.4.1"
         fs2Version = "2.5.3"
@@ -127,7 +126,6 @@ subprojects {
 
     repositories {
         mavenCentral()
-        jcenter()
     }
 
     dependencies {

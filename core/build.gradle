@@ -31,14 +31,11 @@ dependencies {
 
     testImplementation project(":extras")
     testImplementation project(":extras-circe")
-    testImplementation project(":extras-cactus")
 
     testImplementation project(":extras")
     testImplementation project(":pureconfig")
 
     testImplementation "io.circe:circe-generic_$scalaVersion:$circeVersion"
     testImplementation "io.circe:circe-generic-extras_$scalaVersion:$circeVersion"
-    testImplementation "com.avast.cactus:cactus-gpbv2_$scalaVersion:$cactusVersion"
-    testImplementation "com.avast.cactus:cactus-bytes-gpbv2_$scalaVersion:$cactusVersion"
     testImplementation "com.google.protobuf:protobuf-java:$protobufVersion"
 }
