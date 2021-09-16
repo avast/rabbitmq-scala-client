@@ -1,7 +1,5 @@
 package com.avast.clients.rabbitmq
 
-import java.util.concurrent.TimeoutException
-
 import cats.effect.concurrent._
 import cats.effect.{Blocker, CancelToken, Concurrent, ConcurrentEffect, ContextShift, Effect, ExitCase, IO, Resource, Sync, Timer}
 import cats.syntax.all._
@@ -14,6 +12,7 @@ import com.typesafe.scalalogging.StrictLogging
 import fs2.Stream
 import fs2.concurrent.Queue
 
+import java.util.concurrent.TimeoutException
 import scala.concurrent.duration.FiniteDuration
 import scala.language.higherKinds
 import scala.util.control.NonFatal
@@ -28,6 +27,7 @@ class DefaultRabbitMQStreamingConsumer[F[_]: ConcurrentEffect: Timer, A: Deliver
     republishStrategy: RepublishStrategy,
     timeout: FiniteDuration,
     timeoutAction: (Delivery[Bytes], TimeoutException) => F[DeliveryResult],
+    recoveringMutex: Semaphore[F],
     blocker: Blocker)(createQueue: F[DeliveryQueue[F, Bytes]], newChannel: F[ServerChannel])(implicit cs: ContextShift[F])
     extends RabbitMQStreamingConsumer[F, A]
     with StrictLogging {
@@ -35,8 +35,6 @@ class DefaultRabbitMQStreamingConsumer[F[_]: ConcurrentEffect: Timer, A: Deliver
   private lazy val F: Sync[F] = Sync[F]
 
   private lazy val streamFailureMeter = monitor.meter("streamFailures")
-
-  private lazy val recoveringMutex: Semaphore[F] = newMutexSemaphore()
 
   private lazy val consumer = Ref.unsafe[F, Option[StreamingConsumer]](None)
   private lazy val isClosed = Ref.unsafe[F, Boolean](false)
@@ -189,10 +187,6 @@ class DefaultRabbitMQStreamingConsumer[F[_]: ConcurrentEffect: Timer, A: Deliver
     }
   }
 
-  private def newMutexSemaphore(): Semaphore[F] = {
-    ConcurrentEffect[F].toIO(Semaphore[F](1)).unsafeRunSync() // this doesn't block
-  }
-
   private class StreamingConsumer(override val channel: ServerChannel, val queue: DeliveryQueue[F, Bytes])
       extends ConsumerWithCallbackBase(channel, DeliveryResult.Retry, consumerListener) {
     private val receivingEnabled = Ref.unsafe[F, Boolean](true)
@@ -278,7 +272,7 @@ object DefaultRabbitMQStreamingConsumer extends StrictLogging {
       blocker: Blocker)(implicit cs: ContextShift[F]): Resource[F, DefaultRabbitMQStreamingConsumer[F, A]] = {
     val newQueue: F[DeliveryQueue[F, Bytes]] = createQueue(queueBufferSize)
 
-    Resource.make(Sync[F].delay {
+    Resource.make(Semaphore[F](1).map { mutex =>
       new DefaultRabbitMQStreamingConsumer(name,
                                            queueName,
                                            initialConsumerTag,
@@ -288,6 +282,7 @@ object DefaultRabbitMQStreamingConsumer extends StrictLogging {
                                            republishStrategy,
                                            timeout,
                                            timeoutAction,
+                                           mutex,
                                            blocker)(newQueue, newChannel)
     })(_.close)
   }
