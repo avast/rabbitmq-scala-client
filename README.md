@@ -160,19 +160,39 @@ val deliveryStream: Resource[Task, fs2.Stream[Task, StreamedResult]] = for {
   }
 ```
 
+##### Resilient stream
+
 While you should never ever let the stream fail (handle all your possible errors; see [Error handling](https://fs2.io/guide.html#error-handling)
 section in official docs how the stream can be failed), it's important you're able to recover the stream when it accidentally happens.
 You can do that by simply _requesting_ a new stream from the client:
 
 ```scala
-val stream = streamingConsumer
-             .deliveryStream // get stream from client
-             .through(processMyStream) // "run" the stream through your processing logic
+val stream = streamingConsumer.deliveryStream // get stream from client
+  .through(processMyStream) // "run" the stream through your processing logic
 
-val resilientStream = stream.handleErrorWith { _ =>  // handle the error in stream: recover by calling itself
+lazy val resilientStream: fs2.Stream[Task, StreamedResult] = stream.handleErrorWith { err =>
+  // handle the error in stream: recover by calling itself
   // TODO don't forget to add some logging/metrics here!
-  stream
+  fs2.Stream.eval(failureCounter.modify(a => (a - 1, a - 1))).flatMap { attemptsRest =>
+    if (attemptsRest < 0) fs2.Stream.raiseError[Task](err) else resilientStream
+  }
 }
+
+resilientStream
+```
+
+or use a prepared extension method:
+```scala
+import com.avast.clients.rabbitmq._
+
+streamingConsumer.deliveryStream // get stream from client
+  .through(processMyStream) // "run" the stream through your processing logic
+  .makeResilient(maxErrors = 3) { err =>
+    Task.delay {
+      // TODO don't forget to add some logging/metrics here!
+      ()
+    }
+  }
 ```
 
 Please refer to the [official guide](https://fs2.io/guide.html#overview) for understanding more deeply how the recovery of `fs2.Stream` works.

@@ -1,12 +1,15 @@
 package com.avast.clients
 
-import java.util.concurrent.Executors
-
+import cats.effect.Sync
+import cats.effect.concurrent.Ref
+import cats.implicits.catsSyntaxFlatMapOps
 import com.avast.bytes.Bytes
 import com.avast.clients.rabbitmq.DefaultRabbitMQConsumer.{FederationOriginalRoutingKeyHeaderName, RepublishOriginalRoutingKeyHeaderName}
 import com.avast.clients.rabbitmq.api._
 import com.rabbitmq.client.{RecoverableChannel, RecoverableConnection}
+import fs2.RaiseThrowable
 
+import java.util.concurrent.Executors
 import scala.language.{higherKinds, implicitConversions}
 
 package object rabbitmq {
@@ -17,6 +20,20 @@ package object rabbitmq {
 
   type DeliveryReadAction[F[_], -A] = Delivery[A] => F[DeliveryResult]
   type ParsingFailureAction[F[_]] = (String, Delivery[Bytes], ConversionException) => F[DeliveryResult]
+
+  implicit class StreamOps[F[_], A](val stream: fs2.Stream[F, A]) {
+    def makeResilient(maxErrors: Int)(logError: Throwable => F[Unit])(implicit F: Sync[F], rt: RaiseThrowable[F]): fs2.Stream[F, A] = {
+      fs2.Stream.eval(Ref[F].of(maxErrors)).flatMap { failureCounter =>
+        lazy val resilientStream: fs2.Stream[F, A] = stream.handleErrorWith { err =>
+          fs2.Stream.eval(logError(err) >> failureCounter.modify(a => (a - 1, a - 1))).flatMap { attemptsRest =>
+            if (attemptsRest <= 0) fs2.Stream.raiseError[F](err) else resilientStream
+          }
+        }
+
+        resilientStream
+      }
+    }
+  }
 
   private[rabbitmq] implicit class DeliveryOps[A](val d: Delivery[A]) extends AnyVal {
     def mapBody[B](f: A => B): Delivery[B] = d match {
