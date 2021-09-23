@@ -1,6 +1,6 @@
 package com.avast.clients.rabbitmq.api
 
-sealed trait DeliveryResult
+sealed trait DeliveryResult extends Product with Serializable
 
 object DeliveryResult {
 
