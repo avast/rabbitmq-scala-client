@@ -29,8 +29,8 @@ private[rabbitmq] class DefaultPoisonedMessageHandler[F[_]: Sync, A](maxAttempts
 
   private def republishDelivery(delivery: Delivery[A], newHeaders: Map[String, AnyRef]): F[DeliveryResult] = {
     // get current attempt no. from passed headers with fallback to original (incoming) headers - the fallback will most likely happen
-    // but we're giving the programmer chance to programatically _pretend_ lower attempt number
-    val attempt = (newHeaders ++ delivery.properties.headers)
+    // but we're giving the programmer chance to programmatically _pretend_ lower attempt number
+    val attempt = (delivery.properties.headers ++ newHeaders)
       .get(RepublishCountHeaderName)
       .flatMap(v => Try(v.toString.toInt).toOption)
       .getOrElse(0) + 1
