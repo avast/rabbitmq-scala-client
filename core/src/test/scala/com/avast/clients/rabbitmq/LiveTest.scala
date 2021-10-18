@@ -4,8 +4,8 @@ import cats.effect.{ContextShift, IO, Timer}
 import com.avast.bytes.Bytes
 import com.avast.clients.rabbitmq.api.DeliveryResult._
 import com.avast.clients.rabbitmq.api._
-import com.avast.clients.rabbitmq.extras.PoisonedMessageHandler
 import com.avast.clients.rabbitmq.extras.format.JsonDeliveryConverter
+import com.avast.clients.rabbitmq.extras.{PoisonedMessageHandler, StreamingPoisonedMessageHandler}
 import com.avast.metrics.scalaapi.Monitor
 import com.typesafe.config._
 import monix.eval.Task
@@ -323,6 +323,83 @@ class LiveTest extends TestBase with ScalaFutures {
       }
 
       rabbitConnection.newConsumer("testing", Monitor.noOp())(h).withResource { _ =>
+        rabbitConnection.newProducer[Bytes]("testing", Monitor.noOp()).withResource { sender =>
+          for (_ <- 1 to 10) {
+            sender.send("test", Bytes.copyFromUtf8(Random.nextString(10))).await
+          }
+
+          eventually(timeout(Span(2, Seconds)), interval(Span(0.25, Seconds))) {
+            assertResult(20)(processed.get())
+            assertResult(0)(testHelper.queue.getMessagesCount(queueName1))
+            assertResult(10)(poisoned.get())
+          }
+        }
+      }
+    }
+  }
+
+  test("PoisonedMessageHandler streaming") {
+    val c = createConfig()
+    import c._
+
+    RabbitMQConnection.fromConfig[Task](config, ex).withResource { rabbitConnection =>
+      val poisoned = new AtomicInteger(0)
+      val processed = new AtomicInteger(0)
+
+      val pmh = StreamingPoisonedMessageHandler.piped[Task, Bytes](2)
+
+      rabbitConnection.newStreamingConsumer[Bytes]("testingStreaming", Monitor.noOp()).withResource { cons =>
+        cons.deliveryStream
+          .through(pmh)
+          .evalMap { d =>
+            Task { processed.incrementAndGet() } >>
+              d.handle(DeliveryResult.Republish())
+          }
+          .compile
+          .drain
+          .runToFuture
+
+        rabbitConnection.newProducer[Bytes]("testing", Monitor.noOp()).withResource { sender =>
+          for (_ <- 1 to 10) {
+            sender.send("test", Bytes.copyFromUtf8(Random.nextString(10))).await
+          }
+
+          eventually(timeout(Span(2, Seconds)), interval(Span(0.25, Seconds))) {
+            assertResult(20)(processed.get())
+            assertResult(0)(testHelper.queue.getMessagesCount(queueName1))
+//            assertResult(10)(poisoned.get())
+          }
+        }
+      }
+    }
+  }
+
+  test("PoisonedMessageHandler streaming custom") {
+    val c = createConfig()
+    import c._
+
+    RabbitMQConnection.fromConfig[Task](config, ex).withResource { rabbitConnection =>
+      val poisoned = new AtomicInteger(0)
+      val processed = new AtomicInteger(0)
+
+      val pmh = StreamingPoisonedMessageHandler.pipedWithCustomPoisonedAction[Task, Bytes](2) { _ =>
+        Task {
+          logger.debug("Poisoned received!")
+          poisoned.incrementAndGet()
+        }
+      }
+
+      rabbitConnection.newStreamingConsumer[Bytes]("testingStreaming", Monitor.noOp()).withResource { cons =>
+        cons.deliveryStream
+          .through(pmh)
+          .evalMap { d =>
+            Task { processed.incrementAndGet() } >>
+              d.handle(DeliveryResult.Republish())
+          }
+          .compile
+          .drain
+          .runToFuture
+
         rabbitConnection.newProducer[Bytes]("testing", Monitor.noOp()).withResource { sender =>
           for (_ <- 1 to 10) {
             sender.send("test", Bytes.copyFromUtf8(Random.nextString(10))).await
