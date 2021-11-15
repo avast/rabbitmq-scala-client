@@ -22,7 +22,7 @@ dependencies {
 
     api "com.avast.bytes:bytes-core:${bytesVersion}"
 
-    api 'com.rabbitmq:amqp-client:5.13.1'
+    api 'com.rabbitmq:amqp-client:5.14.0'
 
     api "org.typelevel:cats-core_$scalaVersion:$catsVersion"
     api "org.typelevel:cats-effect_$scalaVersion:$catsEffectVersion"
