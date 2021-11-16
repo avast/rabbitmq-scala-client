@@ -1,15 +1,14 @@
 package com.avast.clients.rabbitmq
 
-import java.util.concurrent.ExecutorService
-
 import _root_.pureconfig._
 import _root_.pureconfig.error.ConfigReaderException
 import cats.effect.{ConcurrentEffect, ContextShift, Resource, Sync, Timer}
 import com.avast.clients.rabbitmq.RabbitMQConnection.DefaultListeners
 import com.typesafe.config.Config
-import javax.net.ssl.SSLContext
 
-import scala.language.{higherKinds, implicitConversions}
+import java.util.concurrent.ExecutorService
+import javax.net.ssl.SSLContext
+import scala.language.implicitConversions
 
 package object pureconfig {
 
@@ -38,7 +37,7 @@ package object pureconfig {
       val configSource = ConfigSource.fromConfig(config)
 
       for {
-        connectionConfig <- Resource.liftF(Sync[F].delay { configSource.loadOrThrow[RabbitMQConnectionConfig] })
+        connectionConfig <- Resource.eval(Sync[F].delay { configSource.loadOrThrow[RabbitMQConnectionConfig] })
         connection <- RabbitMQConnection.make(connectionConfig,
                                               blockingExecutor,
                                               sslContext,

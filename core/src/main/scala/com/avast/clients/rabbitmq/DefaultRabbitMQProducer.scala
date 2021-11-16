@@ -11,7 +11,6 @@ import com.rabbitmq.client.AMQP.BasicProperties
 import com.rabbitmq.client.{AlreadyClosedException, ReturnListener}
 import com.typesafe.scalalogging.StrictLogging
 
-import scala.language.higherKinds
 import scala.util.control.NonFatal
 
 class DefaultRabbitMQProducer[F[_]: Sync, A: ProductConverter](name: String,

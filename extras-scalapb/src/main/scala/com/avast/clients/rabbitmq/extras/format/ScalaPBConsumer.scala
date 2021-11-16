@@ -5,12 +5,10 @@ import com.avast.clients.rabbitmq.MultiFormatConsumer
 import com.avast.clients.rabbitmq.api.{Delivery, DeliveryResult}
 import scalapb.{GeneratedMessage, GeneratedMessageCompanion}
 
-import scala.language.higherKinds
 import scala.reflect.ClassTag
 
 object ScalaPBConsumer {
-  def create[F[_], A <: GeneratedMessage: GeneratedMessageCompanion: ClassTag](action: Delivery[A] => F[DeliveryResult]): (Delivery[Bytes] => F[DeliveryResult]) =
-    MultiFormatConsumer.forType[F, A](
-      ScalaPBAsJsonDeliveryConverter.derive(),
-      ScalaPBAsBinaryDeliveryConverter.derive())(action)
+  def create[F[_], A <: GeneratedMessage: GeneratedMessageCompanion: ClassTag](
+      action: Delivery[A] => F[DeliveryResult]): (Delivery[Bytes] => F[DeliveryResult]) =
+    MultiFormatConsumer.forType[F, A](ScalaPBAsJsonDeliveryConverter.derive(), ScalaPBAsBinaryDeliveryConverter.derive())(action)
 }

@@ -41,12 +41,12 @@ class RepublishStrategyTest extends TestBase {
       channel,
       "queueName",
       connectionInfo,
-      Monitor.noOp,
+      Monitor.noOp(),
       DeliveryResult.Reject,
       DefaultListeners.DefaultConsumerListener,
       RepublishStrategy.DefaultExchange,
       TestBase.testBlocker
-    )({ delivery =>
+    )({ (delivery, _, _, _) =>
       assertResult(Some(messageId))(delivery.properties.messageId)
 
       Task.now(DeliveryResult.Republish())
@@ -85,12 +85,12 @@ class RepublishStrategyTest extends TestBase {
       channel,
       "queueName",
       connectionInfo,
-      Monitor.noOp,
+      Monitor.noOp(),
       DeliveryResult.Reject,
       DefaultListeners.DefaultConsumerListener,
       RepublishStrategy.CustomExchange("myCustomExchange"),
       TestBase.testBlocker
-    )({ delivery =>
+    )({ (delivery, _, _, _) =>
       assertResult(Some(messageId))(delivery.properties.messageId)
 
       Task.now(DeliveryResult.Republish())

@@ -24,7 +24,6 @@ import com.avast.clients.rabbitmq.{
 }
 import com.avast.metrics.scalaapi.Monitor
 
-import scala.language.higherKinds
 import scala.reflect.ClassTag
 
 trait ConfigRabbitMQConnection[F[_]] {
@@ -120,20 +119,20 @@ class DefaultConfigRabbitMQConnection[F[_]](config: ConfigCursor, wrapped: Rabbi
 
   override def newConsumer[A: DeliveryConverter](configName: String, monitor: Monitor)(
       readAction: DeliveryReadAction[F, A]): Resource[F, RabbitMQConsumer[F]] = {
-    Resource.liftF(loadConfig[ConsumerConfig](ConsumersRootName, configName)) >>= (wrapped.newConsumer(_, monitor)(readAction))
+    Resource.eval(loadConfig[ConsumerConfig](ConsumersRootName, configName)) >>= (wrapped.newConsumer(_, monitor)(readAction))
   }
 
   override def newProducer[A: ProductConverter](configName: String, monitor: Monitor): Resource[F, RabbitMQProducer[F, A]] = {
-    Resource.liftF(loadConfig[ProducerConfig](ProducersRootName, configName)) >>= (wrapped.newProducer(_, monitor))
+    Resource.eval(loadConfig[ProducerConfig](ProducersRootName, configName)) >>= (wrapped.newProducer(_, monitor))
   }
 
   override def newPullConsumer[A: DeliveryConverter](configName: String, monitor: Monitor): Resource[F, RabbitMQPullConsumer[F, A]] = {
-    Resource.liftF(loadConfig[PullConsumerConfig](ConsumersRootName, configName)) >>= (wrapped.newPullConsumer(_, monitor))
+    Resource.eval(loadConfig[PullConsumerConfig](ConsumersRootName, configName)) >>= (wrapped.newPullConsumer(_, monitor))
   }
 
   override def newStreamingConsumer[A: DeliveryConverter](configName: String,
                                                           monitor: Monitor): Resource[F, RabbitMQStreamingConsumer[F, A]] = {
-    Resource.liftF(loadConfig[StreamingConsumerConfig](ConsumersRootName, configName)) >>= (wrapped.newStreamingConsumer(_, monitor))
+    Resource.eval(loadConfig[StreamingConsumerConfig](ConsumersRootName, configName)) >>= (wrapped.newStreamingConsumer(_, monitor))
   }
 
   override def declareExchange(configName: String): F[Unit] = {

@@ -14,7 +14,7 @@ import com.rabbitmq.client.AMQP.BasicProperties
 import com.rabbitmq.client.{DefaultConsumer, ShutdownSignalException}
 
 import scala.jdk.CollectionConverters._
-import scala.language.higherKinds
+
 import scala.util.control.NonFatal
 
 abstract class ConsumerWithCallbackBase[F[_]: Effect](channel: ServerChannel,
@@ -59,9 +59,9 @@ abstract class ConsumerWithCallbackBase[F[_]: Effect](channel: ServerChannel,
         val st = Instant.now()
 
         @inline
-        def taskDuration: Duration = Duration.between(st, Instant.now())
+        val taskDuration = () => Duration.between(st, Instant.now())
 
-        unsafeExecuteReadAction(delivery, messageId, correlationId, deliveryTag, properties, routingKey, body, readAction, taskDuration _)
+        unsafeExecuteReadAction(delivery, messageId, correlationId, deliveryTag, properties, routingKey, body, readAction, taskDuration)
       } catch {
         // we catch this specific exception, handling of others is up to Lyra
         case e: RejectedExecutionException =>

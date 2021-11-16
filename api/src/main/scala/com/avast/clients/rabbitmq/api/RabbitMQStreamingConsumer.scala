@@ -1,7 +1,5 @@
 package com.avast.clients.rabbitmq.api
 
-import scala.language.higherKinds
-
 trait RabbitMQStreamingConsumer[F[_], A] {
   def deliveryStream: fs2.Stream[F, StreamedDelivery[F, A]]
 }

@@ -9,18 +9,16 @@ import com.rabbitmq.client.AMQP.BasicProperties
 import com.rabbitmq.client.{Delivery => _, _}
 import com.typesafe.scalalogging.StrictLogging
 
-import scala.language.higherKinds
-
-class DefaultRabbitMQConsumer[F[_]: Effect](
-    override val name: String,
-    override protected val channel: ServerChannel,
-    override protected val queueName: String,
-    override protected val connectionInfo: RabbitMQConnectionInfo,
-    override protected val monitor: Monitor,
-    failureAction: DeliveryResult,
-    consumerListener: ConsumerListener,
-    override protected val republishStrategy: RepublishStrategy,
-    override protected val blocker: Blocker)(readAction: DeliveryReadAction[F, Bytes])(implicit override protected val cs: ContextShift[F])
+class DefaultRabbitMQConsumer[F[_]: Effect](override val name: String,
+                                            override protected val channel: ServerChannel,
+                                            override protected val queueName: String,
+                                            override protected val connectionInfo: RabbitMQConnectionInfo,
+                                            override protected val monitor: Monitor,
+                                            failureAction: DeliveryResult,
+                                            consumerListener: ConsumerListener,
+                                            override protected val republishStrategy: RepublishStrategy,
+                                            override protected val blocker: Blocker)(readAction: DeliveryReadActionWithMeta[F, Bytes])(
+    implicit override protected val cs: ContextShift[F])
     extends ConsumerWithCallbackBase(channel, failureAction, consumerListener)
     with RabbitMQConsumer[F]
     with ConsumerBase[F]
@@ -32,21 +30,22 @@ class DefaultRabbitMQConsumer[F[_]: Effect](
     val metadata = DeliveryMetadata.from(envelope, properties)
     import metadata._
 
-    val action = handleDelivery(messageId, correlationId, deliveryTag, properties, routingKey, body)(readAction)
-      .flatTap(_ =>
-        F.delay {
-          processingCount.decrementAndGet()
-          logger.debug(s"Delivery processed successfully $messageId/$correlationId ($deliveryTag)")
-      })
-      .recoverWith {
-        case e =>
+    val action =
+      handleDelivery(messageId, correlationId, deliveryTag, properties, routingKey, body)(readAction(_, messageId, correlationId, logger))
+        .flatTap(_ =>
           F.delay {
             processingCount.decrementAndGet()
-            processingFailedMeter.mark()
-            logger.debug(s"Could not process delivery $messageId/$correlationId ($deliveryTag)", e)
-          } >>
-            F.raiseError(e)
-      }
+            logger.debug(s"Delivery processed successfully $messageId/$correlationId ($deliveryTag)")
+        })
+        .recoverWith {
+          case e =>
+            F.delay {
+              processingCount.decrementAndGet()
+              processingFailedMeter.mark()
+              logger.debug(s"Could not process delivery $messageId/$correlationId ($deliveryTag)", e)
+            } >>
+              F.raiseError(e)
+        }
 
     Effect[F].toIO(action).unsafeToFuture() // actually start the processing
 

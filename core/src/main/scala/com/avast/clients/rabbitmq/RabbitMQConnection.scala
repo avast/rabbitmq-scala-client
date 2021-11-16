@@ -13,7 +13,7 @@ import com.typesafe.scalalogging.StrictLogging
 import javax.net.ssl.SSLContext
 
 import scala.collection.immutable
-import scala.language.higherKinds
+
 import scala.util.control.NonFatal
 
 trait RabbitMQConnection[F[_]] {

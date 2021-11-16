@@ -1,18 +1,13 @@
 package com.avast.clients.rabbitmq
 
 import com.avast.bytes.Bytes
-import com.avast.bytes.gpb.ByteStringBytes
-import com.avast.cactus.bytes._
-import com.avast.clients.rabbitmq.api.{ConversionException, Delivery, DeliveryResult, MessageProperties}
+import com.avast.clients.rabbitmq.api._
 import com.avast.clients.rabbitmq.extras.format._
-import com.avast.clients.rabbitmq.test.ExampleEvents.{FileSource => FileSourceGpb, NewFileSourceAdded => NewFileSourceAddedGpb}
-import com.google.protobuf.ByteString
 import io.circe.Decoder
 import io.circe.generic.extras.Configuration
 import io.circe.generic.extras.auto._
 import org.scalatest.concurrent.ScalaFutures
 
-import scala.jdk.CollectionConverters._
 import scala.concurrent.Future
 
 class MultiFormatConsumerTest extends TestBase with ScalaFutures {
@@ -92,42 +87,6 @@ class MultiFormatConsumerTest extends TestBase with ScalaFutures {
                                    | ]}
         """.stripMargin),
       properties = MessageProperties(contentType = Some("application/json")),
-      routingKey = ""
-    )
-
-    val result = consumer.apply(delivery).futureValue
-
-    assertResult(DeliveryResult.Ack)(result)
-  }
-
-  test("gpb") {
-    val consumer = MultiFormatConsumer.forType[Future, NewFileSourceAdded](JsonDeliveryConverter.derive(),
-                                                                           GpbDeliveryConverter[NewFileSourceAddedGpb].derive()) {
-      case d: Delivery.Ok[NewFileSourceAdded] =>
-        assertResult(
-          NewFileSourceAdded(
-            Seq(
-              FileSource(Bytes.copyFromUtf8("abc"), "theSource"),
-              FileSource(Bytes.copyFromUtf8("def"), "theSource")
-            )))(d.body)
-
-        Future.successful(DeliveryResult.Ack)
-
-      case _ => fail()
-    }
-
-    val delivery = Delivery(
-      body = ByteStringBytes.wrap {
-        NewFileSourceAddedGpb
-          .newBuilder()
-          .addAllFileSources(Seq(
-            FileSourceGpb.newBuilder().setFileId(ByteString.copyFromUtf8("abc")).setSource("theSource").build(),
-            FileSourceGpb.newBuilder().setFileId(ByteString.copyFromUtf8("def")).setSource("theSource").build()
-          ).asJava)
-          .build()
-          .toByteString
-      }: Bytes,
-      properties = MessageProperties(contentType = GpbDeliveryConverter.ContentTypes.headOption.map(_.toUpperCase)),
       routingKey = ""
     )
 

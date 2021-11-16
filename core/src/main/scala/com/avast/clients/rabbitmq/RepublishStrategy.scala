@@ -4,7 +4,6 @@ import cats.effect.{Blocker, ContextShift, Sync}
 import com.rabbitmq.client.AMQP.BasicProperties
 import com.typesafe.scalalogging.StrictLogging
 
-import scala.language.higherKinds
 import scala.util.control.NonFatal
 
 trait RepublishStrategy {

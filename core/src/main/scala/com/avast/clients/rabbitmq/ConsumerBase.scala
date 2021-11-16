@@ -9,7 +9,7 @@ import com.rabbitmq.client.AMQP.BasicProperties
 import com.typesafe.scalalogging.StrictLogging
 
 import scala.jdk.CollectionConverters._
-import scala.language.higherKinds
+
 import scala.util.control.NonFatal
 
 private[rabbitmq] trait ConsumerBase[F[_]] extends StrictLogging {

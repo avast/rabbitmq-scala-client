@@ -8,7 +8,6 @@ import com.avast.clients.rabbitmq.api.{Delivery, DeliveryResult}
 import com.avast.clients.rabbitmq.extras.PoisonedMessageHandler.{defaultHandlePoisonedMessage, handleResult}
 import com.typesafe.scalalogging.StrictLogging
 
-import scala.language.higherKinds
 import scala.util.Try
 import scala.util.control.NonFatal
 

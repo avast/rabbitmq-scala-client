@@ -13,7 +13,6 @@ import com.typesafe.config.Config
 import org.slf4j.event.Level
 import pureconfig.error._
 
-import scala.collection.compat._
 import scala.jdk.CollectionConverters._
 import scala.util.{Failure, Success}
 

@@ -5,7 +5,7 @@ import com.avast.clients.rabbitmq.api.{ConversionException, Delivery, DeliveryRe
 import com.typesafe.scalalogging.StrictLogging
 
 import scala.collection.immutable
-import scala.language.higherKinds
+
 import scala.util.control.NonFatal
 
 class MultiFormatConsumer[F[_], A] private (supportedConverters: immutable.Seq[CheckedDeliveryConverter[A]],

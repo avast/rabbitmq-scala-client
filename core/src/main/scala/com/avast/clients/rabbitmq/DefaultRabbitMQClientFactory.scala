@@ -1,28 +1,27 @@
 package com.avast.clients.rabbitmq
 
-import java.util.concurrent.TimeoutException
 import cats.effect._
 import cats.syntax.all._
 import com.avast.bytes.Bytes
-import com.avast.clients.rabbitmq.api.{Delivery, _}
+import com.avast.clients.rabbitmq.api._
 import com.avast.metrics.scalaapi.{Meter, Monitor}
 import com.rabbitmq.client.AMQP.Queue
 import com.rabbitmq.client.{AMQP, Consumer}
-import com.typesafe.scalalogging.LazyLogging
+import com.typesafe.scalalogging.{LazyLogging, Logger}
 import org.slf4j.event.Level
 
-import scala.collection.compat._
+import java.util.concurrent.TimeoutException
 import scala.collection.immutable
 import scala.concurrent.duration.{Duration, FiniteDuration}
 import scala.jdk.CollectionConverters._
-import scala.language.{higherKinds, implicitConversions}
+import scala.language.implicitConversions
 import scala.util.control.NonFatal
 
 private[rabbitmq] object DefaultRabbitMQClientFactory extends LazyLogging {
 
   private type ArgumentsMap = Map[String, Any]
 
-  private type DefaultDeliveryReadAction[F[_]] = DeliveryReadAction[F, Bytes]
+  private type DefaultDeliveryReadAction[F[_]] = DeliveryReadActionWithMeta[F, Bytes]
 
   object Producer {
 
@@ -148,8 +147,8 @@ private[rabbitmq] object DefaultRabbitMQClientFactory extends LazyLogging {
 
     bindQueueForRepublishing(connectionInfo, channel, consumerConfig.queueName, republishStrategy)
 
-    val timeoutAction = (d: Delivery[Bytes], e: TimeoutException) =>
-      doTimeoutAction(name, d, processTimeout, consumerConfig.timeoutAction, timeoutLogLevel, timeoutsMeter, e)
+    val timeoutAction = (d: Delivery[Bytes], mid: MessageId, cid: CorrelationId, consumerLogger: Logger) =>
+      doTimeoutAction(name, consumerLogger, d, mid, cid, processTimeout, consumerConfig.timeoutAction, timeoutLogLevel, timeoutsMeter)
 
     DefaultRabbitMQStreamingConsumer.make(
       name,
@@ -208,7 +207,7 @@ private[rabbitmq] object DefaultRabbitMQClientFactory extends LazyLogging {
     import consumerConfig._
 
     val readAction: DefaultDeliveryReadAction[F] = {
-      val convAction: DefaultDeliveryReadAction[F] = { d: Delivery[Bytes] =>
+      val convAction: DeliveryReadAction[F, Bytes] = { d: Delivery[Bytes] =>
         try {
           userReadAction(convertDelivery(d))
         } catch {
@@ -441,37 +440,27 @@ private[rabbitmq] object DefaultRabbitMQClientFactory extends LazyLogging {
 
   private def wrapReadAction[F[_]: ConcurrentEffect, A](
       consumerConfig: ConsumerConfig,
-      userReadAction: DefaultDeliveryReadAction[F],
+      userReadAction: DeliveryReadAction[F, Bytes],
       consumerMonitor: Monitor,
       blocker: Blocker)(implicit timer: Timer[F], cs: ContextShift[F]): DefaultDeliveryReadAction[F] = {
     import consumerConfig._
 
-    val timeoutsMeter = consumerMonitor.meter("timeouts")
     val fatalFailuresMeter = consumerMonitor.meter("fatalFailures")
 
-    delivery: Delivery[Bytes] =>
+    (delivery: Delivery[Bytes], messageId: MessageId, correlationId: CorrelationId, consumerLogger: Logger) =>
       import delivery.routingKey
 
       try {
         // we try to catch also long-lasting synchronous work on the thread
         val action: F[DeliveryResult] = blocker.delay { userReadAction(delivery) }.flatten
 
-        val timedOutAction: F[DeliveryResult] = {
-          if (processTimeout != Duration.Zero) {
-            Concurrent
-              .timeout(action, processTimeout)
-              .recoverWith {
-                case e: TimeoutException =>
-                  doTimeoutAction(name, delivery, processTimeout, timeoutAction, timeoutLogLevel, timeoutsMeter, e)
-              }
-          } else action
-        }
+        val timeoutAction = createTimeoutAction(consumerConfig, consumerMonitor, action)
 
-        timedOutAction
+        timeoutAction(delivery, messageId, correlationId, consumerLogger)
           .recoverWith {
             case NonFatal(e) =>
               fatalFailuresMeter.mark()
-              logger.warn(
+              consumerLogger.warn(
                 s"[$name] Error while executing callback for delivery with routing key $routingKey, applying DeliveryResult.$failureAction. Delivery was:\n$delivery",
                 e
               )
@@ -480,7 +469,7 @@ private[rabbitmq] object DefaultRabbitMQClientFactory extends LazyLogging {
       } catch {
         case NonFatal(e) =>
           fatalFailuresMeter.mark()
-          logger.error(
+          consumerLogger.error(
             s"[$name] Error while executing callback for delivery with routing key $routingKey, applying DeliveryResult.$failureAction. Delivery was:\n$delivery",
             e
           )
@@ -488,27 +477,54 @@ private[rabbitmq] object DefaultRabbitMQClientFactory extends LazyLogging {
       }
   }
 
-  private def doTimeoutAction[A, F[_]: ConcurrentEffect](consumerName: String,
+  private def createTimeoutAction[F[_]: ConcurrentEffect: Timer, A](consumerConfig: ConsumerConfig,
+                                                                    consumerMonitor: Monitor,
+                                                                    action: F[DeliveryResult]): DefaultDeliveryReadAction[F] = {
+    (delivery: Delivery[Bytes], messageId: MessageId, correlationId: CorrelationId, consumerLogger: Logger) =>
+      import consumerConfig._
+
+      val timeoutsMeter = consumerMonitor.meter("timeouts")
+
+      if (processTimeout != Duration.Zero) {
+        Concurrent
+          .timeout(action, processTimeout)
+          .recoverWith {
+            case e: TimeoutException =>
+              consumerLogger.trace(s"[$name] Timeout for $messageId/$correlationId", e)
+              doTimeoutAction(name,
+                              consumerLogger,
+                              delivery,
+                              messageId,
+                              correlationId,
+                              processTimeout,
+                              timeoutAction,
+                              timeoutLogLevel,
+                              timeoutsMeter)
+          }
+      } else action
+  }
+
+  private def doTimeoutAction[F[_]: ConcurrentEffect, A](consumerName: String,
+                                                         consumerLogger: Logger,
                                                          delivery: Delivery[Bytes],
+                                                         messageId: MessageId,
+                                                         correlationId: CorrelationId,
                                                          timeoutLength: FiniteDuration,
                                                          timeoutAction: DeliveryResult,
                                                          timeoutLogLevel: Level,
-                                                         timeoutsMeter: Meter,
-                                                         e: TimeoutException): F[DeliveryResult] = Sync[F].delay {
+                                                         timeoutsMeter: Meter): F[DeliveryResult] = Sync[F].delay {
 
     timeoutsMeter.mark()
 
-//    lazy val msg =
-//      s"[$consumerName] Task timed-out after $timeoutLength of processing delivery with routing key ${delivery.routingKey}, applying DeliveryResult.$timeoutAction. Delivery was:\n$delivery"
-
-    lazy val msg = s"!!! TIMEOUT _${delivery.asInstanceOf[Delivery.Ok[Bytes]].body.toStringUtf8}_ !!!"
+    lazy val msg =
+      s"[$consumerName] Task timed-out after $timeoutLength of processing delivery $messageId/$correlationId with routing key ${delivery.routingKey}, applying DeliveryResult.$timeoutAction. Delivery was:\n$delivery"
 
     timeoutLogLevel match {
-      case Level.ERROR => logger.error(msg)
-      case Level.WARN => logger.warn(msg)
-      case Level.INFO => logger.info(msg)
-      case Level.DEBUG => logger.debug(msg)
-      case Level.TRACE => logger.trace(msg)
+      case Level.ERROR => consumerLogger.error(msg)
+      case Level.WARN => consumerLogger.warn(msg)
+      case Level.INFO => consumerLogger.info(msg)
+      case Level.DEBUG => consumerLogger.debug(msg)
+      case Level.TRACE => consumerLogger.trace(msg)
     }
 
     timeoutAction

@@ -1,6 +1,4 @@
 package com.avast.clients.rabbitmq
-import java.util.concurrent.Executors
-
 import cats.effect.{Blocker, IO, Resource}
 import com.typesafe.scalalogging.StrictLogging
 import monix.eval.Task
@@ -13,9 +11,10 @@ import org.scalatest.concurrent.Eventually
 import org.scalatestplus.junit.JUnitRunner
 import org.scalatestplus.mockito.MockitoSugar
 
+import java.util.concurrent.Executors
 import scala.concurrent.TimeoutException
 import scala.concurrent.duration._
-import scala.language.{higherKinds, implicitConversions}
+import scala.language.implicitConversions
 
 @RunWith(classOf[JUnitRunner])
 class TestBase extends FunSuite with MockitoSugar with Eventually with StrictLogging {

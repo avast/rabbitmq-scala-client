@@ -10,7 +10,7 @@ import com.rabbitmq.client.{AMQP, GetResponse}
 import com.typesafe.scalalogging.StrictLogging
 
 import java.util.concurrent.atomic.AtomicInteger
-import scala.language.higherKinds
+
 import scala.util.control.NonFatal
 
 class DefaultRabbitMQPullConsumer[F[_]: Effect, A: DeliveryConverter](

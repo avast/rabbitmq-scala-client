@@ -43,12 +43,12 @@ class DefaultRabbitMQConsumerTest extends TestBase {
       channel,
       "queueName",
       connectionInfo,
-      Monitor.noOp,
+      Monitor.noOp(),
       DeliveryResult.Reject,
       DefaultListeners.DefaultConsumerListener,
       RepublishStrategy.DefaultExchange,
       TestBase.testBlocker
-    )({ delivery =>
+    )({ (delivery, _, _, _) =>
       assertResult(Some(messageId))(delivery.properties.messageId)
 
       Task.now(DeliveryResult.Ack)
@@ -84,12 +84,12 @@ class DefaultRabbitMQConsumerTest extends TestBase {
       channel,
       "queueName",
       connectionInfo,
-      Monitor.noOp,
+      Monitor.noOp(),
       DeliveryResult.Reject,
       DefaultListeners.DefaultConsumerListener,
       RepublishStrategy.DefaultExchange,
       TestBase.testBlocker
-    )({ delivery =>
+    )({ (delivery, _, _, _) =>
       assertResult(Some(messageId))(delivery.properties.messageId)
 
       Task.now(DeliveryResult.Retry)
@@ -125,12 +125,12 @@ class DefaultRabbitMQConsumerTest extends TestBase {
       channel,
       "queueName",
       connectionInfo,
-      Monitor.noOp,
+      Monitor.noOp(),
       DeliveryResult.Reject,
       DefaultListeners.DefaultConsumerListener,
       RepublishStrategy.DefaultExchange,
       TestBase.testBlocker
-    )({ delivery =>
+    )({ (delivery, _, _, _) =>
       assertResult(Some(messageId))(delivery.properties.messageId)
 
       Task.now(DeliveryResult.Reject)
@@ -166,12 +166,12 @@ class DefaultRabbitMQConsumerTest extends TestBase {
       channel,
       "queueName",
       connectionInfo,
-      Monitor.noOp,
+      Monitor.noOp(),
       DeliveryResult.Reject,
       DefaultListeners.DefaultConsumerListener,
       RepublishStrategy.DefaultExchange,
       TestBase.testBlocker
-    )({ delivery =>
+    )({ (delivery, _, _, _) =>
       assertResult(Some(messageId))(delivery.properties.messageId)
 
       Task.now(DeliveryResult.Republish())
@@ -209,12 +209,12 @@ class DefaultRabbitMQConsumerTest extends TestBase {
       channel,
       "queueName",
       connectionInfo,
-      Monitor.noOp,
+      Monitor.noOp(),
       DeliveryResult.Retry,
       DefaultListeners.DefaultConsumerListener,
       RepublishStrategy.DefaultExchange,
       TestBase.testBlocker
-    )({ delivery =>
+    )({ (delivery, _, _, _) =>
       assertResult(Some(messageId))(delivery.properties.messageId)
 
       Task.raiseError(new RuntimeException)
@@ -247,12 +247,12 @@ class DefaultRabbitMQConsumerTest extends TestBase {
       channel,
       "queueName",
       connectionInfo,
-      Monitor.noOp,
+      Monitor.noOp(),
       DeliveryResult.Retry,
       DefaultListeners.DefaultConsumerListener,
       RepublishStrategy.DefaultExchange,
       TestBase.testBlocker
-    )({ delivery =>
+    )({ (delivery, _, _, _) =>
       assertResult(Some(messageId))(delivery.properties.messageId)
 
       throw new RuntimeException
@@ -281,7 +281,7 @@ class DefaultRabbitMQConsumerTest extends TestBase {
     when(channel.isOpen).thenReturn(true)
 
     val monitor = mock[Monitor]
-    when(monitor.meter(Matchers.anyString())).thenReturn(Monitor.noOp.meter(""))
+    when(monitor.meter(Matchers.anyString())).thenReturn(Monitor.noOp().meter(""))
     when(monitor.named(Matchers.eq("results"))).thenReturn(Monitor.noOp())
     val tasksMonitor = mock[Monitor]
     when(monitor.named(Matchers.eq("tasks"))).thenReturn(tasksMonitor)
@@ -311,7 +311,7 @@ class DefaultRabbitMQConsumerTest extends TestBase {
         DefaultListeners.DefaultConsumerListener,
         RepublishStrategy.DefaultExchange,
         TestBase.testBlocker
-      )({ delivery =>
+      )({ (delivery, _, _, _) =>
         assertResult(Some(messageId))(delivery.properties.messageId)
         Task.now(DeliveryResult.Ack) // immediate
       })
@@ -340,7 +340,7 @@ class DefaultRabbitMQConsumerTest extends TestBase {
         DefaultListeners.DefaultConsumerListener,
         RepublishStrategy.DefaultExchange,
         TestBase.testBlocker
-      )({ delivery =>
+      )({ (delivery, _, _, _) =>
         assertResult(Some(messageId))(delivery.properties.messageId)
         import scala.concurrent.duration._
         Task.now(DeliveryResult.Ack).delayResult(2.second)
@@ -372,7 +372,7 @@ class DefaultRabbitMQConsumerTest extends TestBase {
     when(channel.isOpen).thenReturn(true)
 
     val monitor = mock[Monitor]
-    when(monitor.meter(Matchers.anyString())).thenReturn(Monitor.noOp.meter(""))
+    when(monitor.meter(Matchers.anyString())).thenReturn(Monitor.noOp().meter(""))
     when(monitor.named(Matchers.eq("results"))).thenReturn(Monitor.noOp())
     val tasksMonitor = mock[Monitor]
     when(monitor.named(Matchers.eq("tasks"))).thenReturn(tasksMonitor)
@@ -402,7 +402,7 @@ class DefaultRabbitMQConsumerTest extends TestBase {
         DefaultListeners.DefaultConsumerListener,
         RepublishStrategy.DefaultExchange,
         TestBase.testBlocker
-      )({ delivery =>
+      )({ (delivery, _, _, _) =>
         assertResult(Some(messageId))(delivery.properties.messageId)
         Task.raiseError(new RuntimeException) // immediate
       })
@@ -431,7 +431,7 @@ class DefaultRabbitMQConsumerTest extends TestBase {
         DefaultListeners.DefaultConsumerListener,
         RepublishStrategy.DefaultExchange,
         TestBase.testBlocker
-      )({ delivery =>
+      )({ (delivery, _, _, _) =>
         assertResult(Some(messageId))(delivery.properties.messageId)
         import scala.concurrent.duration._
         Task.raiseError(new RuntimeException).delayExecution(2.second)

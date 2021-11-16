@@ -1,11 +1,12 @@
 ## Migration from 8.x.x to 9.0.x
 
-1. `extras-cactus` module was removed.
-2. `StreamedDelivery` has now only new `handleWith` method, forcing the user to correct behavior and enabling much more effective tasks
+1. Release is for Scala 2.13 only.
+2. `extras-cactus` module was removed.
+3. `StreamedDelivery` has now only new `handleWith` method, forcing the user to correct behavior and enabling much more effective tasks
    processing and canceling.
-3. Tasks handling in `StreamingConsumer` has been fixed and better tasks canceling was implemented.
-4. Client is now aware of CorrelationId, taking it from both AMQP properties and `X-Correlation-Id` header, propagating to all log messages along the MessageId.
-5. Logging in general was somewhat _hardened_.
+4. Tasks handling in `StreamingConsumer` has been fixed and better tasks canceling was implemented.
+5. Client is now aware of CorrelationId, taking it from both AMQP properties and `X-Correlation-Id` header, propagating to all log messages along the MessageId.
+6. Logging in general was somewhat _hardened_.
 
 ---
 

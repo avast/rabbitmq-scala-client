@@ -5,8 +5,6 @@ import com.avast.clients.rabbitmq.api._
 import com.avast.clients.rabbitmq.extras.PoisonedMessageHandler.defaultHandlePoisonedMessage
 import fs2.Pipe
 
-import scala.language.higherKinds
-
 object StreamingPoisonedMessageHandler {
   import cats.syntax.all._
 

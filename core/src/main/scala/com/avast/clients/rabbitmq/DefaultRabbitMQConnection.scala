@@ -7,7 +7,6 @@ import com.avast.metrics.scalaapi.Monitor
 import com.rabbitmq.client.ShutdownSignalException
 import com.typesafe.scalalogging.StrictLogging
 
-import scala.language.higherKinds
 import scala.util.control.NonFatal
 
 class DefaultRabbitMQConnection[F[_]] private (connection: ServerConnection,

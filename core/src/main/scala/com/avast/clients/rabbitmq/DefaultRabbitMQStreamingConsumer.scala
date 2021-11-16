@@ -9,14 +9,13 @@ import com.avast.clients.rabbitmq.DefaultRabbitMQStreamingConsumer.DeliveryQueue
 import com.avast.clients.rabbitmq.api._
 import com.avast.metrics.scalaapi.Monitor
 import com.rabbitmq.client.{Delivery => _, _}
-import com.typesafe.scalalogging.StrictLogging
+import com.typesafe.scalalogging.{Logger, StrictLogging}
 import fs2.Stream
 import fs2.concurrent.{Queue, SignallingRef}
 
 import java.time.Instant
 import java.util.concurrent.TimeoutException
 import scala.concurrent.duration.FiniteDuration
-import scala.language.higherKinds
 import scala.util.control.NonFatal
 
 class DefaultRabbitMQStreamingConsumer[F[_]: ConcurrentEffect: Timer, A: DeliveryConverter] private (
@@ -28,7 +27,7 @@ class DefaultRabbitMQStreamingConsumer[F[_]: ConcurrentEffect: Timer, A: Deliver
     monitor: Monitor,
     republishStrategy: RepublishStrategy,
     timeout: FiniteDuration,
-    timeoutAction: (Delivery[Bytes], TimeoutException) => F[DeliveryResult],
+    timeoutAction: (Delivery[Bytes], MessageId, CorrelationId, Logger) => F[DeliveryResult],
     recoveringMutex: Semaphore[F],
     blocker: Blocker)(createQueue: F[DeliveryQueue[F, Bytes]], newChannel: F[ServerChannel])(implicit cs: ContextShift[F])
     extends RabbitMQStreamingConsumer[F, A]
@@ -214,7 +213,7 @@ class DefaultRabbitMQStreamingConsumer[F[_]: ConcurrentEffect: Timer, A: Deliver
 
           F.delay { logger.debug(s"[$name] Timeout after being $l in queue, cancelling processing of $messageId/$correlationId") } >>
             ref.set(None) >> // try cancel the task
-            timeoutAction(delivery, e)
+            timeoutAction(delivery, messageId, correlationId, logger)
       }
     } yield {
       result
@@ -316,7 +315,7 @@ object DefaultRabbitMQStreamingConsumer extends StrictLogging {
       monitor: Monitor,
       republishStrategy: RepublishStrategy,
       timeout: FiniteDuration,
-      timeoutAction: (Delivery[Bytes], TimeoutException) => F[DeliveryResult],
+      timeoutAction: (Delivery[Bytes], MessageId, CorrelationId, Logger) => F[DeliveryResult],
       blocker: Blocker)(implicit cs: ContextShift[F]): Resource[F, DefaultRabbitMQStreamingConsumer[F, A]] = {
     val newQueue: F[DeliveryQueue[F, Bytes]] = createQueue(queueBufferSize)
 
