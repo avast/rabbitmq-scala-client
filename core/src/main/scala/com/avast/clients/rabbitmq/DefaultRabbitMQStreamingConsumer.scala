@@ -1,7 +1,8 @@
 package com.avast.clients.rabbitmq
 
 import cats.effect.concurrent._
-import cats.effect.{Blocker, CancelToken, Concurrent, ConcurrentEffect, ContextShift, Effect, ExitCase, IO, Resource, Sync, Timer}
+import cats.effect.implicits.toConcurrentOps
+import cats.effect.{Blocker, CancelToken, Concurrent, ConcurrentEffect, ContextShift, Effect, ExitCase, Fiber, IO, Resource, Sync, Timer}
 import cats.syntax.all._
 import com.avast.bytes.Bytes
 import com.avast.clients.rabbitmq.DefaultRabbitMQStreamingConsumer.DeliveryQueue
@@ -10,8 +11,9 @@ import com.avast.metrics.scalaapi.Monitor
 import com.rabbitmq.client.{Delivery => _, _}
 import com.typesafe.scalalogging.StrictLogging
 import fs2.Stream
-import fs2.concurrent.Queue
+import fs2.concurrent.{Queue, SignallingRef}
 
+import java.time.Instant
 import java.util.concurrent.TimeoutException
 import scala.concurrent.duration.FiniteDuration
 import scala.language.higherKinds
@@ -45,14 +47,37 @@ class DefaultRabbitMQStreamingConsumer[F[_]: ConcurrentEffect: Timer, A: Deliver
     Stream
       .eval { checkNotClosed >> recoverIfNeeded }
       .flatMap { queue =>
-        queue.dequeue
-          .map {
-            case (del, deff) =>
+        queue.dequeue.evalMap {
+          case (del, ref) =>
+            ref.get.map(_.map { deff =>
               new StreamedDelivery[F, A] {
-                override val delivery: Delivery[A] = DefaultRabbitMQClientFactory.convertDelivery(del)
-                override def handle(result: DeliveryResult): F[StreamedResult] = deff.complete(result).map(_ => StreamedResult)
+                private val delivery: Delivery[A] = DefaultRabbitMQClientFactory.convertDelivery(del)
+
+                override def handleWith(f: DeliveryReadAction[F, A]): F[Unit] = {
+                  ref.get.flatMap {
+                    case Some(_) =>
+                      f(delivery).start.flatMap { fiber =>
+                        val waitForCancel: F[Unit] = ref.discrete
+                          .collect {
+                            // We don't care about Some. None means cancel; Some appears only sometimes as the initial value update.
+                            case None => fiber.cancel
+                          }
+                          .take(1) // wait for a single (first) update
+                          .compile
+                          .last
+                          .map(_.getOrElse(throw new IllegalStateException("This must not happen!")))
+
+                        val waitForFinish = fiber.join.flatMap(deff.complete)
+
+                        (waitForCancel race waitForFinish).as(())
+                      }
+
+                    case None => F.unit // we're not starting tje
+                  }
+                }
               }
-          }
+            })
+        }.unNone
       }
       .onFinalizeCase(handleStreamFinalize)
   }
@@ -91,7 +116,7 @@ class DefaultRabbitMQStreamingConsumer[F[_]: ConcurrentEffect: Timer, A: Deliver
                   try {
                     oldConsumer.channel.close()
                   } catch {
-                    case NonFatal(e) => logger.debug(s"Could not close channel", e)
+                    case NonFatal(e) => logger.debug(s"[$name] Could not close channel", e)
                   }
 
                   consumerTag
@@ -100,13 +125,13 @@ class DefaultRabbitMQStreamingConsumer[F[_]: ConcurrentEffect: Timer, A: Deliver
 
             case None =>
               F.delay {
-                logger.debug("No old consumer to be cancelled!")
+                logger.debug(s"[$name] No old consumer to be cancelled")
                 initialConsumerTag
               }
           }
           .flatMap { consumerTag =>
             blocker.delay {
-              logger.debug("Starting consuming")
+              logger.debug(s"[$name] Starting consuming")
               DefaultRabbitMQClientFactory.startConsumingQueue(newChannel, queueName, consumerTag, newConsumer)
               ()
             }
@@ -175,15 +200,24 @@ class DefaultRabbitMQStreamingConsumer[F[_]: ConcurrentEffect: Timer, A: Deliver
         })
   }
 
-  private def deliveryCallback(delivery: Delivery[Bytes]): F[DeliveryResult] = {
+  private def deliveryCallback(messageId: MessageId, correlationId: CorrelationId)(delivery: Delivery[Bytes]): F[DeliveryResult] = {
     for {
       deferred <- Deferred[F, DeliveryResult]
       consumerOpt <- this.consumer.get
       consumer = consumerOpt.getOrElse(throw new IllegalStateException("Consumer has to be initialized at this stage! It's probably a BUG"))
-      _ <- consumer.queue.enqueue1((delivery, deferred))
-      res <- Concurrent.timeout(deferred.get, timeout).recoverWith { case e: TimeoutException => timeoutAction(delivery, e) }
+      ref <- SignallingRef(Option(deferred))
+      _ <- consumer.queue.enqueue1((delivery, ref))
+      enqueueTime = Instant.now()
+      result <- Concurrent.timeout(deferred.get, timeout).recoverWith {
+        case e: TimeoutException =>
+          val l = java.time.Duration.between(enqueueTime, Instant.now())
+
+          F.delay { logger.debug(s"[$name] Timeout after being $l in queue, cancelling processing of $messageId/$correlationId") } >>
+            ref.set(None) >> // try cancel the task
+            timeoutAction(delivery, e)
+      }
     } yield {
-      res
+      result
     }
   }
 
@@ -195,50 +229,64 @@ class DefaultRabbitMQStreamingConsumer[F[_]: ConcurrentEffect: Timer, A: Deliver
     override def handleDelivery(consumerTag: String, envelope: Envelope, properties: AMQP.BasicProperties, body: Array[Byte]): Unit = {
       processingCount.incrementAndGet()
 
-      val deliveryTag = envelope.getDeliveryTag
-      val messageId = properties.getMessageId
-      val routingKey = properties.getOriginalRoutingKey.getOrElse(envelope.getRoutingKey)
+      val metadata = DeliveryMetadata.from(envelope, properties)
+      import metadata._
 
-      val task: F[Unit] = receivingEnabled.get.flatMap {
-        case false =>
-          F.delay {
-            logger.trace(s"Delivery $messageId (tag $deliveryTag) was ignored because consumer is not OK - it will be redelivered later")
-            processingCount.decrementAndGet()
-            ()
-          }
-
-        case true =>
-          val action = handleDelivery(messageId, deliveryTag, properties, routingKey, body)(deliveryCallback)
-            .flatTap(_ => F.delay(logger.debug(s"Delivery $messageId processed successfully (tag $deliveryTag)")))
-            .recoverWith {
-              case e =>
-                F.delay {
-                  processingFailedMeter.mark()
-                  logger.debug("Could not process delivery", e)
-                } >> F.raiseError(e)
+      val task: F[Unit] = receivingEnabled.get
+        .flatMap {
+          case false =>
+            F.delay {
+              logger.trace(
+                s"[$name] Delivery $messageId/$correlationId ($deliveryTag) was ignored because consumer is not OK - it will be redelivered later")
+              processingCount.decrementAndGet()
+              ()
             }
 
-          recoveringMutex.withPermit(F.suspend {
-            lazy val ct: CancelToken[IO] = Effect[F]
-              .toIO(action)
-              .runCancelable(_ => {
-                processingCount.decrementAndGet()
-                tasks.update(_ - ct)
-              })
-              .unsafeRunSync()
+          case true =>
+            recoveringMutex.withPermit(F.defer {
+              lazy val ct: CancelToken[IO] = Effect[F]
+                .toIO(createHandleAction(messageId, correlationId, deliveryTag, properties, routingKey, body))
+                .runCancelable(_ => {
+                  processingCount.decrementAndGet()
+                  tasks.update(_ - ct)
+                })
+                .unsafeRunSync()
 
-            tasks.update(_ + ct).to[F]
-          })
-      }
+              tasks.update(_ + ct).to[F]
+            })
+        }
+        .recoverWith {
+          case e =>
+            F.delay {
+              logger.error(s"Error while handling incoming message $messageId/$correlationId", e)
+            }
+        }
 
       Effect[F].toIO(task).unsafeToFuture()
 
       ()
     }
 
+    private def createHandleAction(messageId: MessageId,
+                                   correlationId: CorrelationId,
+                                   deliveryTag: DeliveryTag,
+                                   properties: AMQP.BasicProperties,
+                                   routingKey: RoutingKey,
+                                   body: Array[Byte]): F[Unit] = {
+      handleDelivery(messageId, correlationId, deliveryTag, properties, routingKey, body)(deliveryCallback(messageId, correlationId))
+        .flatTap(_ => F.delay(logger.debug(s"[$name] Delivery $messageId/$correlationId processed successfully (tag $deliveryTag)")))
+        .recoverWith {
+          case e =>
+            F.delay {
+              processingFailedMeter.mark()
+              logger.debug(s"[$name] Could not process delivery $messageId/$correlationId", e)
+            } >> F.raiseError(e)
+        }
+    }
+
     def stopConsuming(): F[Unit] = {
       receivingEnabled.set(false) >> blocker.delay {
-        logger.debug(s"Stopping consummation for $getConsumerTag")
+        logger.debug(s"[$name] Stopping consummation for $getConsumerTag")
         channel.basicCancel(getConsumerTag)
         channel.setDefaultConsumer(null)
       }
@@ -255,7 +303,7 @@ class DefaultRabbitMQStreamingConsumer[F[_]: ConcurrentEffect: Timer, A: Deliver
 
 object DefaultRabbitMQStreamingConsumer extends StrictLogging {
 
-  private type DeliveryQueue[F[_], A] = Queue[F, (Delivery[A], Deferred[F, DeliveryResult])]
+  private type DeliveryQueue[F[_], A] = Queue[F, (Delivery[A], SignallingRef[F, Option[Deferred[F, DeliveryResult]]])]
 
   def make[F[_]: ConcurrentEffect: Timer, A: DeliveryConverter](
       name: String,
@@ -288,6 +336,6 @@ object DefaultRabbitMQStreamingConsumer extends StrictLogging {
   }
 
   private def createQueue[F[_]: ConcurrentEffect](queueBufferSize: Int): F[DeliveryQueue[F, Bytes]] = {
-    fs2.concurrent.Queue.bounded[F, (Delivery[Bytes], Deferred[F, DeliveryResult])](queueBufferSize)
+    fs2.concurrent.Queue.bounded[F, (Delivery[Bytes], SignallingRef[F, Option[Deferred[F, DeliveryResult]]])](queueBufferSize)
   }
 }

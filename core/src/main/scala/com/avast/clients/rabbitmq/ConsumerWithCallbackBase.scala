@@ -40,15 +40,19 @@ abstract class ConsumerWithCallbackBase[F[_]: Effect](channel: ServerChannel,
   override def handleShutdownSignal(consumerTag: String, sig: ShutdownSignalException): Unit =
     consumerListener.onShutdown(this, channel, name, consumerTag, sig)
 
-  protected def handleDelivery(messageId: String, deliveryTag: Long, properties: BasicProperties, routingKey: String, body: Array[Byte])(
-      readAction: DeliveryReadAction[F, Bytes]): F[Unit] =
+  protected def handleDelivery(messageId: MessageId,
+                               correlationId: CorrelationId,
+                               deliveryTag: DeliveryTag,
+                               properties: BasicProperties,
+                               routingKey: RoutingKey,
+                               body: Array[Byte])(readAction: DeliveryReadAction[F, Bytes]): F[Unit] =
     F.delay {
       try {
         readMeter.mark()
 
-        logger.debug(s"[$name] Read delivery with ID $messageId, deliveryTag $deliveryTag")
+        logger.debug(s"[$name] Read delivery with $messageId/$correlationId, $deliveryTag")
 
-        val delivery = Delivery(Bytes.copyFrom(body), properties.asScala, Option(routingKey).getOrElse(""))
+        val delivery = Delivery(Bytes.copyFrom(body), properties.asScala, Option(routingKey.value).getOrElse(""))
 
         logger.trace(s"[$name] Received delivery: $delivery")
 
@@ -57,40 +61,58 @@ abstract class ConsumerWithCallbackBase[F[_]: Effect](channel: ServerChannel,
         @inline
         def taskDuration: Duration = Duration.between(st, Instant.now())
 
-        readAction(delivery)
-          .flatMap { handleResult(messageId, deliveryTag, properties, routingKey, body) }
-          .flatTap(_ =>
-            F.delay {
-              val duration = taskDuration
-              logger.debug(s"[$name] Delivery ID $messageId handling succeeded in $duration")
-              processedTimer.update(duration)
-          })
-          .recoverWith {
-            case NonFatal(t) =>
-              F.delay {
-                val duration = taskDuration
-                logger.debug(s"[$name] Delivery ID $messageId handling failed in $duration", t)
-                processedTimer.updateFailure(duration)
-                logger.error(s"[$name] Error while executing callback for delivery with routing key $routingKey", t)
-              } >>
-                handleFailure(messageId, deliveryTag, properties, routingKey, body, t)
-          }
+        unsafeExecuteReadAction(delivery, messageId, correlationId, deliveryTag, properties, routingKey, body, readAction, taskDuration _)
       } catch {
         // we catch this specific exception, handling of others is up to Lyra
         case e: RejectedExecutionException =>
-          logger.debug(s"[$name] Executor was unable to plan the handling task", e)
-          handleFailure(messageId, deliveryTag, properties, routingKey, body, e)
+          logger.debug(s"[$name] Executor was unable to plan the handling task for $messageId/$correlationId, $deliveryTag", e)
+          handleFailure(messageId, correlationId, deliveryTag, properties, routingKey, body, e)
 
         case NonFatal(e) =>
-          logger.error(s"[$name] Error while preparing callback execution for delivery with routing key $routingKey. This is probably a bug as the F construction shouldn't throw any exception", e)
-          handleFailure(messageId, deliveryTag, properties, routingKey, body, e)
+          logger.error(
+            s"[$name] Error while preparing callback execution for delivery with routing key $routingKey. This is probably a bug as the F construction shouldn't throw any exception",
+            e
+          )
+          handleFailure(messageId, correlationId, deliveryTag, properties, routingKey, body, e)
       }
     }.flatten
 
-  private def handleFailure(messageId: String,
-                            deliveryTag: Long,
+  private def unsafeExecuteReadAction(delivery: Delivery.Ok[Bytes],
+                                      messageId: MessageId,
+                                      correlationId: CorrelationId,
+                                      deliveryTag: DeliveryTag,
+                                      properties: BasicProperties,
+                                      routingKey: RoutingKey,
+                                      body: Array[Byte],
+                                      readAction: DeliveryReadAction[F, Bytes],
+                                      taskDuration: () => Duration): F[Unit] = {
+    readAction(delivery)
+      .flatMap {
+        handleResult(messageId, correlationId, deliveryTag, properties, routingKey, body)
+      }
+      .flatTap(_ =>
+        F.delay {
+          val duration = taskDuration()
+          logger.debug(s"[$name] Delivery $messageId/$correlationId handling succeeded in $duration")
+          processedTimer.update(duration)
+      })
+      .recoverWith {
+        case NonFatal(t) =>
+          F.delay {
+            val duration = taskDuration()
+            logger.debug(s"[$name] Delivery $messageId/$correlationId handling failed in $duration", t)
+            processedTimer.updateFailure(duration)
+            logger.error(s"[$name] Error while executing callback for delivery $messageId/$correlationId with $routingKey", t)
+          } >>
+            handleFailure(messageId, correlationId, deliveryTag, properties, routingKey, body, t)
+      }
+  }
+
+  private def handleFailure(messageId: MessageId,
+                            correlationId: CorrelationId,
+                            deliveryTag: DeliveryTag,
                             properties: BasicProperties,
-                            routingKey: String,
+                            routingKey: RoutingKey,
                             body: Array[Byte],
                             t: Throwable): F[Unit] = {
     F.delay {
@@ -98,14 +120,15 @@ abstract class ConsumerWithCallbackBase[F[_]: Effect](channel: ServerChannel,
       processingFailedMeter.mark()
       consumerListener.onError(this, name, channel, t)
     } >>
-      executeFailureAction(messageId, deliveryTag, properties, routingKey, body)
+      executeFailureAction(messageId, correlationId, deliveryTag, properties, routingKey, body)
   }
 
-  private def executeFailureAction(messageId: String,
-                                   deliveryTag: Long,
+  private def executeFailureAction(messageId: MessageId,
+                                   correlationId: CorrelationId,
+                                   deliveryTag: DeliveryTag,
                                    properties: BasicProperties,
-                                   routingKey: String,
+                                   routingKey: RoutingKey,
                                    body: Array[Byte]): F[Unit] = {
-    handleResult(messageId, deliveryTag, properties, routingKey, body)(failureAction)
+    handleResult(messageId, correlationId, deliveryTag, properties, routingKey, body)(failureAction)
   }
 }

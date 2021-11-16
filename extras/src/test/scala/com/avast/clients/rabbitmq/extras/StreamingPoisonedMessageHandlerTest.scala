@@ -11,12 +11,14 @@ import org.scalatest.concurrent.ScalaFutures
 class StreamingPoisonedMessageHandlerTest extends TestBase with ScalaFutures {
 
   private def streamedDelivery[A](body: A, properties: MessageProperties) = new StreamedDelivery[Task, A] {
-    override val delivery: Delivery[A] = Delivery(body, properties, "")
+    private val delivery: Delivery[A] = Delivery(body, properties, "")
 
-    override def handle(result: DeliveryResult): Task[StreamedResult] = Task.now {
+    private def handle(result: DeliveryResult): Task[StreamedResult] = Task.now {
       this.result = Some(result)
       StreamedResult
     }
+
+    override def handleWith(f: Delivery[A] => Task[DeliveryResult]): Task[Unit] = f(delivery).flatMap(handle).as(())
 
     //noinspection ScalaStyle
     var result: Option[DeliveryResult] = None

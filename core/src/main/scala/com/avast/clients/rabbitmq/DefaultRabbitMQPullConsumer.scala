@@ -1,7 +1,5 @@
 package com.avast.clients.rabbitmq
 
-import java.util.concurrent.atomic.AtomicInteger
-
 import cats.effect._
 import cats.implicits._
 import com.avast.bytes.Bytes
@@ -11,6 +9,7 @@ import com.avast.metrics.scalaapi.Monitor
 import com.rabbitmq.client.{AMQP, GetResponse}
 import com.typesafe.scalalogging.StrictLogging
 
+import java.util.concurrent.atomic.AtomicInteger
 import scala.language.higherKinds
 import scala.util.control.NonFatal
 
@@ -49,15 +48,14 @@ class DefaultRabbitMQPullConsumer[F[_]: Effect, A: DeliveryConverter](
           val envelope = response.getEnvelope
           val properties = response.getProps
 
-          val deliveryTag = envelope.getDeliveryTag
-          val messageId = properties.getMessageId
-          val routingKey = envelope.getRoutingKey
+          val metadata = DeliveryMetadata.from(envelope, properties)
+          import metadata._
 
-          logger.debug(s"[$name] Read delivery with ID $messageId, deliveryTag $deliveryTag")
+          logger.debug(s"[$name] Read delivery with $messageId/$correlationId $deliveryTag")
 
-          handleMessage(response, properties, routingKey) { result =>
+          handleMessage(response, fixedProperties, routingKey) { result =>
             super
-              .handleResult(messageId, deliveryTag, properties, routingKey, response.getBody)(result)
+              .handleResult(messageId, correlationId, deliveryTag, fixedProperties, routingKey, response.getBody)(result)
               .map { _ =>
                 processingCount.decrementAndGet()
                 ()
@@ -71,19 +69,19 @@ class DefaultRabbitMQPullConsumer[F[_]: Effect, A: DeliveryConverter](
       }
   }
 
-  private def handleMessage(response: GetResponse, properties: AMQP.BasicProperties, routingKey: String)(
+  private def handleMessage(response: GetResponse, properties: AMQP.BasicProperties, routingKey: RoutingKey)(
       handleResult: DeliveryResult => F[Unit]): F[PullResult[F, A]] = {
     try {
       val bytes = Bytes.copyFrom(response.getBody)
 
       val delivery = convertMessage(bytes) match {
         case Right(a) =>
-          val delivery = Delivery(a, properties.asScala, routingKey)
+          val delivery = Delivery(a, properties.asScala, routingKey.value)
           logger.trace(s"[$name] Received delivery: ${delivery.copy(body = bytes)}")
           delivery
 
         case Left(ce) =>
-          val delivery = Delivery.MalformedContent(bytes, properties.asScala, routingKey, ce)
+          val delivery = Delivery.MalformedContent(bytes, properties.asScala, routingKey.value, ce)
           logger.trace(s"[$name] Received delivery but could not convert it: $delivery")
           delivery
       }

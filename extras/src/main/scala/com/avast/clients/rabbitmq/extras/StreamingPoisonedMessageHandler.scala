@@ -37,10 +37,12 @@ object StreamingPoisonedMessageHandler {
                                                       maxAttempts: Int,
                                                       customPoisonedAction: Delivery[A] => F[Unit]): StreamedDelivery[F, A] = {
     new StreamedDelivery[F, A] {
-      override def delivery: Delivery[A] = d.delivery
+      override def handleWith(f: Delivery[A] => F[DeliveryResult]): F[Unit] = {
+        def wrappedAction(del: Delivery[A]): F[DeliveryResult] = f(del).flatMap {
+          PoisonedMessageHandler.handleResult(del, maxAttempts, handlePoisonedMessage)
+        }
 
-      override def handle(result: DeliveryResult): F[StreamedResult] = {
-        PoisonedMessageHandler.handleResult(d.delivery, maxAttempts, handlePoisonedMessage)(result).flatMap(d.handle)
+        d.handleWith(wrappedAction)
       }
 
       private def handlePoisonedMessage(delivery: Delivery[A], ma: Int): F[Unit] = customPoisonedAction(delivery)
@@ -48,13 +50,6 @@ object StreamingPoisonedMessageHandler {
   }
 
   private def apply[F[_]: Effect, A](pmh: PoisonedMessageHandler[F, A]): Pipe[F, StreamedDelivery[F, A], StreamedResult] = {
-    _.evalMap { d =>
-      for {
-        realResult <- pmh.apply(d.delivery)
-        streamedResult <- d.handle(realResult)
-      } yield {
-        streamedResult
-      }
-    }
+    _.evalMap { _.handleWith(pmh).as(StreamedResult) }
   }
 }

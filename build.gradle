@@ -27,13 +27,12 @@ allprojects {
     ext {
         def scalaVersionEnv = System.getenv("SCALA_VERSION")
 
-        scalaVersionFull = scalaVersionEnv != null ? scalaVersionEnv : "2.12.13"
+        scalaVersionFull = scalaVersionEnv != null ? scalaVersionEnv : "2.13.5"
         scalaVersion = "${scalaVersionFull}".split("\\.").dropRight(1).join(".")
 
         metricsVersion = "2.8.6"
         bytesVersion = "2.2.0"
         circeVersion = "0.14.1"
-        cactusVersion = "0.17.0"
         catsVersion = "2.4.2"
         catsEffectVersion = "2.4.1"
         fs2Version = "2.5.3"

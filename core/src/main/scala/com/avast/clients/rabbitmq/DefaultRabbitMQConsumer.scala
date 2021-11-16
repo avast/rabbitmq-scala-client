@@ -29,22 +29,21 @@ class DefaultRabbitMQConsumer[F[_]: Effect](
   override def handleDelivery(consumerTag: String, envelope: Envelope, properties: BasicProperties, body: Array[Byte]): Unit = {
     processingCount.incrementAndGet()
 
-    val deliveryTag = envelope.getDeliveryTag
-    val messageId = properties.getMessageId
-    val routingKey = properties.getOriginalRoutingKey.getOrElse(envelope.getRoutingKey)
+    val metadata = DeliveryMetadata.from(envelope, properties)
+    import metadata._
 
-    val action = handleDelivery(messageId, deliveryTag, properties, routingKey, body)(readAction)
+    val action = handleDelivery(messageId, correlationId, deliveryTag, properties, routingKey, body)(readAction)
       .flatTap(_ =>
         F.delay {
           processingCount.decrementAndGet()
-          logger.debug(s"Delivery processed successfully (tag $deliveryTag)")
+          logger.debug(s"Delivery processed successfully $messageId/$correlationId ($deliveryTag)")
       })
       .recoverWith {
         case e =>
           F.delay {
             processingCount.decrementAndGet()
             processingFailedMeter.mark()
-            logger.debug("Could not process delivery", e)
+            logger.debug(s"Could not process delivery $messageId/$correlationId ($deliveryTag)", e)
           } >>
             F.raiseError(e)
       }
@@ -59,4 +58,5 @@ object DefaultRabbitMQConsumer {
   final val RepublishOriginalRoutingKeyHeaderName = "X-Original-Routing-Key"
   final val RepublishOriginalUserId = "X-Original-User-Id"
   final val FederationOriginalRoutingKeyHeaderName = "x-original-routing-key"
+  final val CorrelationIdHeaderName = "x-correlation-id"
 }

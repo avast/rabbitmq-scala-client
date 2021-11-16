@@ -13,7 +13,7 @@ import org.slf4j.event.Level
 
 import scala.collection.compat._
 import scala.collection.immutable
-import scala.concurrent.duration.Duration
+import scala.concurrent.duration.{Duration, FiniteDuration}
 import scala.jdk.CollectionConverters._
 import scala.language.{higherKinds, implicitConversions}
 import scala.util.control.NonFatal
@@ -79,6 +79,8 @@ private[rabbitmq] object DefaultRabbitMQClientFactory extends LazyLogging {
                                                              consumerListener: ConsumerListener)(
         implicit timer: Timer[F],
         cs: ContextShift[F]): Resource[F, DefaultRabbitMQStreamingConsumer[F, A]] = {
+
+      println(consumerConfig)
 
       prepareStreamingConsumer(consumerConfig, connectionInfo, republishStrategy, channel, newChannel, consumerListener, blocker, monitor)
     }
@@ -146,7 +148,8 @@ private[rabbitmq] object DefaultRabbitMQClientFactory extends LazyLogging {
 
     bindQueueForRepublishing(connectionInfo, channel, consumerConfig.queueName, republishStrategy)
 
-    val timeoutAction = (d: Delivery[Bytes], e: TimeoutException) => doTimeoutAction(name, d, consumerConfig.timeoutAction, timeoutLogLevel, timeoutsMeter, e)
+    val timeoutAction = (d: Delivery[Bytes], e: TimeoutException) =>
+      doTimeoutAction(name, d, processTimeout, consumerConfig.timeoutAction, timeoutLogLevel, timeoutsMeter, e)
 
     DefaultRabbitMQStreamingConsumer.make(
       name,
@@ -447,6 +450,8 @@ private[rabbitmq] object DefaultRabbitMQClientFactory extends LazyLogging {
     val fatalFailuresMeter = consumerMonitor.meter("fatalFailures")
 
     delivery: Delivery[Bytes] =>
+      import delivery.routingKey
+
       try {
         // we try to catch also long-lasting synchronous work on the thread
         val action: F[DeliveryResult] = blocker.delay { userReadAction(delivery) }.flatten
@@ -456,7 +461,8 @@ private[rabbitmq] object DefaultRabbitMQClientFactory extends LazyLogging {
             Concurrent
               .timeout(action, processTimeout)
               .recoverWith {
-                case e: TimeoutException => doTimeoutAction(name, delivery, timeoutAction, timeoutLogLevel, timeoutsMeter, e)
+                case e: TimeoutException =>
+                  doTimeoutAction(name, delivery, processTimeout, timeoutAction, timeoutLogLevel, timeoutsMeter, e)
               }
           } else action
         }
@@ -465,19 +471,26 @@ private[rabbitmq] object DefaultRabbitMQClientFactory extends LazyLogging {
           .recoverWith {
             case NonFatal(e) =>
               fatalFailuresMeter.mark()
-              logger.warn(s"[$name] Error while executing callback for delivery with routing key ${delivery.routingKey}, applying DeliveryResult.${consumerConfig.failureAction}${System.lineSeparator()}$delivery", e)
+              logger.warn(
+                s"[$name] Error while executing callback for delivery with routing key $routingKey, applying DeliveryResult.$failureAction. Delivery was:\n$delivery",
+                e
+              )
               ConcurrentEffect[F].pure(consumerConfig.failureAction)
           }
       } catch {
         case NonFatal(e) =>
           fatalFailuresMeter.mark()
-          logger.error(s"[$name] Error while executing callback for delivery with routing key ${delivery.routingKey}, applying DeliveryResult.${consumerConfig.failureAction}${System.lineSeparator()}$delivery", e)
+          logger.error(
+            s"[$name] Error while executing callback for delivery with routing key $routingKey, applying DeliveryResult.$failureAction. Delivery was:\n$delivery",
+            e
+          )
           ConcurrentEffect[F].pure(consumerConfig.failureAction)
       }
   }
 
   private def doTimeoutAction[A, F[_]: ConcurrentEffect](consumerName: String,
                                                          delivery: Delivery[Bytes],
+                                                         timeoutLength: FiniteDuration,
                                                          timeoutAction: DeliveryResult,
                                                          timeoutLogLevel: Level,
                                                          timeoutsMeter: Meter,
@@ -485,14 +498,17 @@ private[rabbitmq] object DefaultRabbitMQClientFactory extends LazyLogging {
 
     timeoutsMeter.mark()
 
-    lazy val msg = s"[$consumerName] Task timed-out when processing delivery with routing key ${delivery.routingKey}, applying DeliveryResult.$timeoutAction${System.lineSeparator()}$delivery"
+//    lazy val msg =
+//      s"[$consumerName] Task timed-out after $timeoutLength of processing delivery with routing key ${delivery.routingKey}, applying DeliveryResult.$timeoutAction. Delivery was:\n$delivery"
+
+    lazy val msg = s"!!! TIMEOUT _${delivery.asInstanceOf[Delivery.Ok[Bytes]].body.toStringUtf8}_ !!!"
 
     timeoutLogLevel match {
-      case Level.ERROR => logger.error(msg, e)
-      case Level.WARN => logger.warn(msg, e)
-      case Level.INFO => logger.info(msg, e)
-      case Level.DEBUG => logger.debug(msg, e)
-      case Level.TRACE => logger.trace(msg, e)
+      case Level.ERROR => logger.error(msg)
+      case Level.WARN => logger.warn(msg)
+      case Level.INFO => logger.info(msg)
+      case Level.DEBUG => logger.debug(msg)
+      case Level.TRACE => logger.trace(msg)
     }
 
     timeoutAction
