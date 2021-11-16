@@ -29,8 +29,10 @@ trait RabbitMQConnection[F[_]] {
     * @param monitor    Monitor for metrics.
     * @param readAction Action executed for each delivered message. You should never return a failed F.
     */
-  def newConsumer[A: DeliveryConverter](consumerConfig: ConsumerConfig, monitor: Monitor)(
-      readAction: DeliveryReadAction[F, A]): Resource[F, RabbitMQConsumer[F]]
+  def newConsumer[A: DeliveryConverter](
+      consumerConfig: ConsumerConfig,
+      monitor: Monitor,
+      middlewares: List[RabbitMQConsumerMiddleware[F, A]] = Nil)(readAction: DeliveryReadAction[F, A]): Resource[F, RabbitMQConsumer[F]]
 
   /** Creates new instance of producer, using the passed configuration.
     *
@@ -52,8 +54,10 @@ trait RabbitMQConnection[F[_]] {
     * @param consumerConfig Configuration of the consumer.
     * @param monitor Monitor for metrics.
     */
-  def newStreamingConsumer[A: DeliveryConverter](consumerConfig: StreamingConsumerConfig,
-                                                 monitor: Monitor): Resource[F, RabbitMQStreamingConsumer[F, A]]
+  def newStreamingConsumer[A: DeliveryConverter](
+      consumerConfig: StreamingConsumerConfig,
+      monitor: Monitor,
+      middlewares: List[RabbitMQStreamingConsumerMiddleware[F, A]] = Nil): Resource[F, RabbitMQStreamingConsumer[F, A]]
 
   def declareExchange(config: DeclareExchangeConfig): F[Unit]
   def declareQueue(config: DeclareQueueConfig): F[Unit]

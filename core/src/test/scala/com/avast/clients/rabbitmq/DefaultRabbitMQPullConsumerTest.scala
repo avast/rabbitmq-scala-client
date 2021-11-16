@@ -1,8 +1,8 @@
 package com.avast.clients.rabbitmq
 
 import java.util.UUID
-
 import com.avast.bytes.Bytes
+import com.avast.clients.rabbitmq.DefaultRabbitMQConsumer.CorrelationIdHeaderName
 import com.avast.clients.rabbitmq.api._
 import com.avast.metrics.scalaapi.Monitor
 import com.rabbitmq.client.AMQP.BasicProperties
@@ -30,8 +30,7 @@ class DefaultRabbitMQPullConsumerTest extends TestBase {
     val envelope = mock[Envelope]
     when(envelope.getDeliveryTag).thenReturn(deliveryTag)
 
-    val properties = mock[BasicProperties]
-    when(properties.getMessageId).thenReturn(messageId)
+    val properties = new BasicProperties.Builder().messageId(messageId).build()
 
     val channel = mock[AutorecoveringChannel]
     when(channel.isOpen).thenReturn(true)
@@ -48,7 +47,7 @@ class DefaultRabbitMQPullConsumerTest extends TestBase {
       "queueName",
       connectionInfo,
       DeliveryResult.Reject,
-      Monitor.noOp,
+      Monitor.noOp(),
       RepublishStrategy.DefaultExchange,
       TestBase.testBlocker
     )
@@ -75,8 +74,7 @@ class DefaultRabbitMQPullConsumerTest extends TestBase {
     val envelope = mock[Envelope]
     when(envelope.getDeliveryTag).thenReturn(deliveryTag)
 
-    val properties = mock[BasicProperties]
-    when(properties.getMessageId).thenReturn(messageId)
+    val properties = new BasicProperties.Builder().messageId(messageId).build()
 
     val channel = mock[AutorecoveringChannel]
     when(channel.isOpen).thenReturn(true)
@@ -93,7 +91,7 @@ class DefaultRabbitMQPullConsumerTest extends TestBase {
       "queueName",
       connectionInfo,
       DeliveryResult.Reject,
-      Monitor.noOp,
+      Monitor.noOp(),
       RepublishStrategy.DefaultExchange,
       TestBase.testBlocker
     )
@@ -120,8 +118,7 @@ class DefaultRabbitMQPullConsumerTest extends TestBase {
     val envelope = mock[Envelope]
     when(envelope.getDeliveryTag).thenReturn(deliveryTag)
 
-    val properties = mock[BasicProperties]
-    when(properties.getMessageId).thenReturn(messageId)
+    val properties = new BasicProperties.Builder().messageId(messageId).build()
 
     val channel = mock[AutorecoveringChannel]
     when(channel.isOpen).thenReturn(true)
@@ -138,7 +135,7 @@ class DefaultRabbitMQPullConsumerTest extends TestBase {
       "queueName",
       connectionInfo,
       DeliveryResult.Ack,
-      Monitor.noOp,
+      Monitor.noOp(),
       RepublishStrategy.DefaultExchange,
       TestBase.testBlocker
     )
@@ -183,7 +180,7 @@ class DefaultRabbitMQPullConsumerTest extends TestBase {
       "queueName",
       connectionInfo,
       DeliveryResult.Reject,
-      Monitor.noOp,
+      Monitor.noOp(),
       RepublishStrategy.DefaultExchange,
       TestBase.testBlocker
     )
@@ -212,8 +209,7 @@ class DefaultRabbitMQPullConsumerTest extends TestBase {
     val envelope = mock[Envelope]
     when(envelope.getDeliveryTag).thenReturn(deliveryTag)
 
-    val properties = mock[BasicProperties]
-    when(properties.getMessageId).thenReturn(messageId)
+    val properties = new BasicProperties.Builder().messageId(messageId).build()
 
     val channel = mock[AutorecoveringChannel]
     when(channel.isOpen).thenReturn(true)
@@ -236,7 +232,7 @@ class DefaultRabbitMQPullConsumerTest extends TestBase {
       "queueName",
       connectionInfo,
       DeliveryResult.Retry,
-      Monitor.noOp,
+      Monitor.noOp(),
       RepublishStrategy.DefaultExchange,
       TestBase.testBlocker
     )
@@ -259,8 +255,7 @@ class DefaultRabbitMQPullConsumerTest extends TestBase {
     val envelope = mock[Envelope]
     when(envelope.getDeliveryTag).thenReturn(deliveryTag)
 
-    val properties = mock[BasicProperties]
-    when(properties.getMessageId).thenReturn(messageId)
+    val properties = new BasicProperties.Builder().messageId(messageId).build()
 
     val channel = mock[AutorecoveringChannel]
     when(channel.isOpen).thenReturn(true)
@@ -283,7 +278,7 @@ class DefaultRabbitMQPullConsumerTest extends TestBase {
       "queueName",
       connectionInfo,
       DeliveryResult.Ack,
-      Monitor.noOp,
+      Monitor.noOp(),
       RepublishStrategy.DefaultExchange,
       TestBase.testBlocker
     )
@@ -299,5 +294,82 @@ class DefaultRabbitMQPullConsumerTest extends TestBase {
       verify(channel, times(0)).basicAck(deliveryTag, false)
       verify(channel, times(1)).basicReject(deliveryTag, true)
     }
+  }
+
+  test("passes correlation id") {
+    val correlationId = UUID.randomUUID().toString
+    val messageId = UUID.randomUUID().toString
+
+    val deliveryTag = Random.nextInt(1000)
+
+    val envelope = mock[Envelope]
+    when(envelope.getDeliveryTag).thenReturn(deliveryTag)
+
+    val properties = new BasicProperties.Builder().messageId(messageId).correlationId(correlationId).build()
+
+    val channel = mock[AutorecoveringChannel]
+    when(channel.isOpen).thenReturn(true)
+
+    val body = Random.nextString(5).getBytes
+
+    when(channel.basicGet(Matchers.eq("queueName"), Matchers.eq(false))).thenReturn(
+      new GetResponse(envelope, properties, body, 1)
+    )
+
+    val consumer = new DefaultRabbitMQPullConsumer[Task, Bytes](
+      "test",
+      channel,
+      "queueName",
+      connectionInfo,
+      DeliveryResult.Reject,
+      Monitor.noOp(),
+      RepublishStrategy.DefaultExchange,
+      TestBase.testBlocker
+    )
+
+    val PullResult.Ok(dwh) = consumer.pull().await
+
+    assertResult(Some(messageId))(dwh.delivery.properties.messageId)
+    assertResult(Some(correlationId))(dwh.delivery.properties.correlationId)
+  }
+
+  test("parses correlation id from header") {
+    val correlationId = UUID.randomUUID().toString
+    val messageId = UUID.randomUUID().toString
+
+    val deliveryTag = Random.nextInt(1000)
+
+    val envelope = mock[Envelope]
+    when(envelope.getDeliveryTag).thenReturn(deliveryTag)
+
+    val properties = new BasicProperties.Builder()
+      .messageId(messageId)
+      .headers(Map(CorrelationIdHeaderName -> correlationId.asInstanceOf[AnyRef]).asJava)
+      .build()
+
+    val channel = mock[AutorecoveringChannel]
+    when(channel.isOpen).thenReturn(true)
+
+    val body = Random.nextString(5).getBytes
+
+    when(channel.basicGet(Matchers.eq("queueName"), Matchers.eq(false))).thenReturn(
+      new GetResponse(envelope, properties, body, 1)
+    )
+
+    val consumer = new DefaultRabbitMQPullConsumer[Task, Bytes](
+      "test",
+      channel,
+      "queueName",
+      connectionInfo,
+      DeliveryResult.Reject,
+      Monitor.noOp(),
+      RepublishStrategy.DefaultExchange,
+      TestBase.testBlocker
+    )
+
+    val PullResult.Ok(dwh) = consumer.pull().await
+
+    assertResult(Some(messageId))(dwh.delivery.properties.messageId)
+    assertResult(Some(correlationId))(dwh.delivery.properties.correlationId)
   }
 }

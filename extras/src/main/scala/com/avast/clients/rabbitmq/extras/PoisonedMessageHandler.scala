@@ -4,21 +4,25 @@ import cats.Applicative
 import cats.effect.Sync
 import cats.implicits._
 import com.avast.clients.rabbitmq.api.DeliveryResult.{Reject, Republish}
-import com.avast.clients.rabbitmq.api.{Delivery, DeliveryResult}
-import com.avast.clients.rabbitmq.extras.PoisonedMessageHandler.{defaultHandlePoisonedMessage, handleResult}
+import com.avast.clients.rabbitmq.api._
+import com.avast.clients.rabbitmq.extras.PoisonedMessageHandler.defaultHandlePoisonedMessage
 import com.typesafe.scalalogging.StrictLogging
 
 import scala.util.Try
 import scala.util.control.NonFatal
 
-trait PoisonedMessageHandler[F[_], A] extends (Delivery[A] => F[DeliveryResult])
+trait PoisonedMessageHandler[F[_], A] extends RabbitMQConsumerMiddleware[F, A]
 
-private[rabbitmq] class DefaultPoisonedMessageHandler[F[_]: Sync, A](maxAttempts: Int)(wrappedAction: Delivery[A] => F[DeliveryResult])
+private[rabbitmq] class DefaultPoisonedMessageHandler[F[_], A](maxAttempts: Int)(implicit F: Sync[F])
     extends PoisonedMessageHandler[F, A]
     with StrictLogging {
 
-  override def apply(delivery: Delivery[A]): F[DeliveryResult] = {
-    wrappedAction(delivery).flatMap(handleResult(delivery, maxAttempts, (d, _) => handlePoisonedMessage(d)))
+  override def adjustDelivery(d: Delivery[A]): F[Delivery[A]] = F.pure(d)
+
+  override def adjustResult(rawDelivery: Delivery[A], r: F[DeliveryResult]): F[DeliveryResult] = {
+    r.flatMap {
+      PoisonedMessageHandler.handleResult(rawDelivery, maxAttempts, (d: Delivery[A], _) => handlePoisonedMessage(d))
+    }
   }
 
   /** This method logs the delivery by default but can be overridden. The delivery is always REJECTed after this method execution.
@@ -29,16 +33,16 @@ private[rabbitmq] class DefaultPoisonedMessageHandler[F[_]: Sync, A](maxAttempts
 object PoisonedMessageHandler extends StrictLogging {
   final val RepublishCountHeaderName: String = "X-Republish-Count"
 
-  def apply[F[_]: Sync, A](maxAttempts: Int)(wrappedAction: Delivery[A] => F[DeliveryResult]): PoisonedMessageHandler[F, A] = {
-    new DefaultPoisonedMessageHandler[F, A](maxAttempts)(wrappedAction)
+  def apply[F[_]: Sync, A](maxAttempts: Int): PoisonedMessageHandler[F, A] = {
+    new DefaultPoisonedMessageHandler[F, A](maxAttempts)
   }
 
   /**
     * @param customPoisonedAction The delivery is always REJECTed after this method execution.
     */
-  def withCustomPoisonedAction[F[_]: Sync, A](maxAttempts: Int)(wrappedAction: Delivery[A] => F[DeliveryResult])(
+  def withCustomPoisonedAction[F[_]: Sync, A](maxAttempts: Int)(
       customPoisonedAction: Delivery[A] => F[Unit]): PoisonedMessageHandler[F, A] = {
-    new DefaultPoisonedMessageHandler[F, A](maxAttempts)(wrappedAction) {
+    new DefaultPoisonedMessageHandler[F, A](maxAttempts) {
       override protected def handlePoisonedMessage(delivery: Delivery[A]): F[Unit] = customPoisonedAction(delivery)
     }
   }

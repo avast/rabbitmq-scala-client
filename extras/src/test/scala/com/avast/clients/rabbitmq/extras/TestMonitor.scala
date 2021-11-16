@@ -1,4 +1,4 @@
-package com.avast.clients.rabbitmq
+package com.avast.clients.rabbitmq.extras
 
 import com.avast.metrics.api.Naming
 import com.avast.metrics.dropwizard.MetricsMonitor

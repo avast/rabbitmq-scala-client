@@ -43,12 +43,22 @@ private[rabbitmq] object DefaultRabbitMQClientFactory extends LazyLogging {
         channel: ServerChannel,
         connectionInfo: RabbitMQConnectionInfo,
         republishStrategy: RepublishStrategyConfig,
-        blocker: Blocker,
-        monitor: Monitor,
         consumerListener: ConsumerListener,
-        readAction: DeliveryReadAction[F, A])(implicit timer: Timer[F], cs: ContextShift[F]): DefaultRabbitMQConsumer[F] = {
+        readAction: DeliveryReadAction[F, A],
+        middlewares: List[RabbitMQConsumerMiddleware[F, A]],
+        blocker: Blocker,
+        monitor: Monitor
+    )(implicit timer: Timer[F], cs: ContextShift[F]): DefaultRabbitMQConsumer[F] = {
 
-      prepareConsumer(consumerConfig, readAction, connectionInfo, republishStrategy, channel, consumerListener, blocker, monitor)
+      prepareConsumer(consumerConfig,
+                      connectionInfo,
+                      republishStrategy,
+                      channel,
+                      consumerListener,
+                      readAction,
+                      middlewares,
+                      blocker,
+                      monitor)
     }
   }
 
@@ -75,13 +85,20 @@ private[rabbitmq] object DefaultRabbitMQClientFactory extends LazyLogging {
                                                              republishStrategy: RepublishStrategyConfig,
                                                              blocker: Blocker,
                                                              monitor: Monitor,
-                                                             consumerListener: ConsumerListener)(
+                                                             consumerListener: ConsumerListener,
+                                                             middlewares: List[RabbitMQStreamingConsumerMiddleware[F, A]])(
         implicit timer: Timer[F],
         cs: ContextShift[F]): Resource[F, DefaultRabbitMQStreamingConsumer[F, A]] = {
 
-      println(consumerConfig)
-
-      prepareStreamingConsumer(consumerConfig, connectionInfo, republishStrategy, channel, newChannel, consumerListener, blocker, monitor)
+      prepareStreamingConsumer(consumerConfig,
+                               connectionInfo,
+                               republishStrategy,
+                               channel,
+                               newChannel,
+                               consumerListener,
+                               middlewares,
+                               blocker,
+                               monitor)
     }
   }
 
@@ -128,6 +145,7 @@ private[rabbitmq] object DefaultRabbitMQClientFactory extends LazyLogging {
       channel: ServerChannel,
       newChannel: F[ServerChannel],
       consumerListener: ConsumerListener,
+      middlewares: List[RabbitMQStreamingConsumerMiddleware[F, A]],
       blocker: Blocker,
       monitor: Monitor)(implicit timer: Timer[F], cs: ContextShift[F]): Resource[F, DefaultRabbitMQStreamingConsumer[F, A]] = {
     import consumerConfig._
@@ -162,17 +180,19 @@ private[rabbitmq] object DefaultRabbitMQClientFactory extends LazyLogging {
       republishStrategy.toRepublishStrategy,
       processTimeout,
       timeoutAction,
+      middlewares,
       blocker
     )
   }
 
   private def prepareConsumer[F[_]: ConcurrentEffect, A: DeliveryConverter](
       consumerConfig: ConsumerConfig,
-      readAction: DeliveryReadAction[F, A],
       connectionInfo: RabbitMQConnectionInfo,
       republishStrategy: RepublishStrategyConfig,
       channel: ServerChannel,
       consumerListener: ConsumerListener,
+      readAction: DeliveryReadAction[F, A],
+      middlewares: List[RabbitMQConsumerMiddleware[F, A]],
       blocker: Blocker,
       monitor: Monitor)(implicit timer: Timer[F], cs: ContextShift[F]): DefaultRabbitMQConsumer[F] = {
 
@@ -192,32 +212,32 @@ private[rabbitmq] object DefaultRabbitMQClientFactory extends LazyLogging {
 
     bindQueueForRepublishing(connectionInfo, channel, consumerConfig.queueName, republishStrategy)
 
-    prepareConsumer(consumerConfig, connectionInfo, republishStrategy, channel, readAction, consumerListener, blocker, monitor)
+    prepareConsumer(consumerConfig, connectionInfo, republishStrategy, channel, readAction, consumerListener, middlewares, blocker, monitor)
   }
 
-  private def prepareConsumer[F[_]: ConcurrentEffect, A: DeliveryConverter](
+  private def prepareConsumer[F[_], A: DeliveryConverter](
       consumerConfig: ConsumerConfig,
       connectionInfo: RabbitMQConnectionInfo,
       republishStrategy: RepublishStrategyConfig,
       channel: ServerChannel,
       userReadAction: DeliveryReadAction[F, A],
       consumerListener: ConsumerListener,
+      middlewares: List[RabbitMQConsumerMiddleware[F, A]],
       blocker: Blocker,
-      monitor: Monitor)(implicit timer: Timer[F], cs: ContextShift[F]): DefaultRabbitMQConsumer[F] = {
+      monitor: Monitor)(implicit F: ConcurrentEffect[F], timer: Timer[F], cs: ContextShift[F]): DefaultRabbitMQConsumer[F] = {
     import consumerConfig._
 
-    val readAction: DefaultDeliveryReadAction[F] = {
-      val convAction: DeliveryReadAction[F, Bytes] = { d: Delivery[Bytes] =>
-        try {
-          userReadAction(convertDelivery(d))
-        } catch {
-          case NonFatal(e) =>
-            ConcurrentEffect[F].raiseError(e)
-        }
+    val finalMiddleware = new RabbitMQConsumerMiddleware[F, A] {
+      override def adjustDelivery(d: Delivery[A]): F[Delivery[A]] = {
+        middlewares.foldLeft(F.pure(d)) { case (prev, m) => prev.flatMap(sd => m.adjustDelivery(sd)) }
       }
 
-      wrapReadAction(consumerConfig, convAction, monitor, blocker)
+      override def adjustResult(rawDelivery: Delivery[A], r: F[DeliveryResult]): F[DeliveryResult] = {
+        middlewares.foldLeft(r) { case (prev, m) => m.adjustResult(rawDelivery, prev) }
+      }
     }
+
+    val readAction = wrapReadAction(consumerConfig, userReadAction, finalMiddleware, monitor, blocker)
 
     val consumer = {
       new DefaultRabbitMQConsumer(name,
@@ -438,43 +458,49 @@ private[rabbitmq] object DefaultRabbitMQClientFactory extends LazyLogging {
     }
   }
 
-  private def wrapReadAction[F[_]: ConcurrentEffect, A](
+  private def wrapReadAction[F[_], A: DeliveryConverter](
       consumerConfig: ConsumerConfig,
-      userReadAction: DeliveryReadAction[F, Bytes],
+      userReadActionRaw: DeliveryReadAction[F, A],
+      finalMiddleware: RabbitMQConsumerMiddleware[F, A],
       consumerMonitor: Monitor,
-      blocker: Blocker)(implicit timer: Timer[F], cs: ContextShift[F]): DefaultDeliveryReadAction[F] = {
+      blocker: Blocker)(implicit F: ConcurrentEffect[F], timer: Timer[F], cs: ContextShift[F]): DefaultDeliveryReadAction[F] = {
     import consumerConfig._
 
     val fatalFailuresMeter = consumerMonitor.meter("fatalFailures")
 
-    (delivery: Delivery[Bytes], messageId: MessageId, correlationId: CorrelationId, consumerLogger: Logger) =>
-      import delivery.routingKey
+    (rawDelivery: Delivery[Bytes], messageId: MessageId, correlationId: CorrelationId, consumerLogger: Logger) =>
+      import rawDelivery.routingKey
 
-      try {
-        // we try to catch also long-lasting synchronous work on the thread
-        val action: F[DeliveryResult] = blocker.delay { userReadAction(delivery) }.flatten
+      val delivery = convertDelivery(rawDelivery)
 
-        val timeoutAction = createTimeoutAction(consumerConfig, consumerMonitor, action)
-
-        timeoutAction(delivery, messageId, correlationId, consumerLogger)
-          .recoverWith {
-            case NonFatal(e) =>
-              fatalFailuresMeter.mark()
-              consumerLogger.warn(
-                s"[$name] Error while executing callback for delivery with routing key $routingKey, applying DeliveryResult.$failureAction. Delivery was:\n$delivery",
-                e
-              )
-              ConcurrentEffect[F].pure(consumerConfig.failureAction)
-          }
+      val result = try {
+        (for {
+          adjustedDelivery <- finalMiddleware.adjustDelivery(delivery)
+          action = blocker.delay { userReadActionRaw(adjustedDelivery) }.flatten // we try to catch also long-lasting synchronous work on the thread
+          timeoutAction = createTimeoutAction(consumerConfig, consumerMonitor, action)
+          result <- timeoutAction(rawDelivery, messageId, correlationId, consumerLogger)
+        } yield {
+          result
+        }).recoverWith {
+          case NonFatal(e) =>
+            fatalFailuresMeter.mark()
+            consumerLogger.warn(
+              s"[$name] Error while executing callback for delivery with routing key $routingKey, applying DeliveryResult.$failureAction. Delivery was:\n$rawDelivery",
+              e
+            )
+            ConcurrentEffect[F].pure(consumerConfig.failureAction)
+        }
       } catch {
         case NonFatal(e) =>
           fatalFailuresMeter.mark()
           consumerLogger.error(
-            s"[$name] Error while executing callback for delivery with routing key $routingKey, applying DeliveryResult.$failureAction. Delivery was:\n$delivery",
+            s"[$name] Error while executing callback for delivery with routing key $routingKey, applying DeliveryResult.$failureAction. Delivery was:\n$rawDelivery",
             e
           )
           ConcurrentEffect[F].pure(consumerConfig.failureAction)
       }
+
+      finalMiddleware.adjustResult(delivery, result)
   }
 
   private def createTimeoutAction[F[_]: ConcurrentEffect: Timer, A](consumerConfig: ConsumerConfig,

@@ -31,7 +31,8 @@ class DefaultRabbitMQConsumer[F[_]: Effect](override val name: String,
     import metadata._
 
     val action =
-      handleDelivery(messageId, correlationId, deliveryTag, properties, routingKey, body)(readAction(_, messageId, correlationId, logger))
+      handleDelivery(messageId, correlationId, deliveryTag, fixedProperties, routingKey, body)(
+        readAction(_, messageId, correlationId, logger))
         .flatTap(_ =>
           F.delay {
             processingCount.decrementAndGet()

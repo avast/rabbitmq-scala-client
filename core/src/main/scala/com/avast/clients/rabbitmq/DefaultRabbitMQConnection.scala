@@ -44,20 +44,24 @@ class DefaultRabbitMQConnection[F[_]] private (connection: ServerConnection,
     }
   }
 
-  override def newStreamingConsumer[A: DeliveryConverter](consumerConfig: StreamingConsumerConfig,
-                                                          monitor: Monitor): Resource[F, RabbitMQStreamingConsumer[F, A]] = {
+  override def newStreamingConsumer[A: DeliveryConverter](
+      consumerConfig: StreamingConsumerConfig,
+      monitor: Monitor,
+      middlewares: List[RabbitMQStreamingConsumerMiddleware[F, A]]): Resource[F, RabbitMQStreamingConsumer[F, A]] = {
     createChannel().flatMap { channel =>
       DefaultRabbitMQClientFactory.StreamingConsumer
-        .create[F, A](consumerConfig, channel, createChannelF, info, republishStrategy, blocker, monitor, consumerListener)
+        .create[F, A](consumerConfig, channel, createChannelF, info, republishStrategy, blocker, monitor, consumerListener, middlewares)
         .map(identity[RabbitMQStreamingConsumer[F, A]]) // type inference... :-(
     }
   }
 
-  def newConsumer[A: DeliveryConverter](consumerConfig: ConsumerConfig, monitor: Monitor)(
-      readAction: DeliveryReadAction[F, A]): Resource[F, RabbitMQConsumer[F]] = {
+  def newConsumer[A: DeliveryConverter](
+      consumerConfig: ConsumerConfig,
+      monitor: Monitor,
+      middlewares: List[RabbitMQConsumerMiddleware[F, A]])(readAction: DeliveryReadAction[F, A]): Resource[F, RabbitMQConsumer[F]] = {
     createChannel().map { channel =>
       DefaultRabbitMQClientFactory.Consumer
-        .create[F, A](consumerConfig, channel, info, republishStrategy, blocker, monitor, consumerListener, readAction)
+        .create[F, A](consumerConfig, channel, info, republishStrategy, consumerListener, readAction, middlewares, blocker, monitor)
     }
   }
 

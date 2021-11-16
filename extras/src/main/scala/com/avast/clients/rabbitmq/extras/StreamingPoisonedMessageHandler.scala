@@ -3,51 +3,36 @@ package com.avast.clients.rabbitmq.extras
 import cats.effect.Effect
 import com.avast.clients.rabbitmq.api._
 import com.avast.clients.rabbitmq.extras.PoisonedMessageHandler.defaultHandlePoisonedMessage
-import fs2.Pipe
+
+trait StreamingPoisonedMessageHandler[F[_], A] extends RabbitMQStreamingConsumerMiddleware[F, A]
 
 object StreamingPoisonedMessageHandler {
   import cats.syntax.all._
 
-  def apply[F[_]: Effect, A](maxAttempts: Int)(
-      wrappedAction: Delivery[A] => F[DeliveryResult]): Pipe[F, StreamedDelivery[F, A], StreamedResult] = {
-    StreamingPoisonedMessageHandler {
-      PoisonedMessageHandler[F, A](maxAttempts)(wrappedAction)
-    }
-  }
+  def apply[F[_], A](maxAttempts: Int)(implicit F: Effect[F]): StreamingPoisonedMessageHandler[F, A] = {
+    new StreamingPoisonedMessageHandler[F, A] {
+      override def adjustDelivery(d: StreamedDelivery[F, A]): F[StreamedDelivery[F, A]] = F.pure(d)
 
-  def withCustomPoisonedAction[F[_]: Effect, A](maxAttempts: Int)(wrappedAction: Delivery[A] => F[DeliveryResult])(
-      customPoisonedAction: Delivery[A] => F[Unit]): Pipe[F, StreamedDelivery[F, A], StreamedResult] = {
-    StreamingPoisonedMessageHandler {
-      PoisonedMessageHandler.withCustomPoisonedAction[F, A](maxAttempts)(wrappedAction)(customPoisonedAction)
-    }
-  }
-
-  def piped[F[_]: Effect, A](maxAttempts: Int): Pipe[F, StreamedDelivery[F, A], StreamedDelivery[F, A]] = {
-    _.map(createStreamedDelivery(_, maxAttempts, defaultHandlePoisonedMessage[F, A](maxAttempts)))
-  }
-
-  def pipedWithCustomPoisonedAction[F[_]: Effect, A](maxAttempts: Int)(
-      customPoisonedAction: Delivery[A] => F[Unit]): Pipe[F, StreamedDelivery[F, A], StreamedDelivery[F, A]] = {
-    _.map(createStreamedDelivery(_, maxAttempts, customPoisonedAction))
-  }
-
-  private def createStreamedDelivery[F[_]: Effect, A](d: StreamedDelivery[F, A],
-                                                      maxAttempts: Int,
-                                                      customPoisonedAction: Delivery[A] => F[Unit]): StreamedDelivery[F, A] = {
-    new StreamedDelivery[F, A] {
-      override def handleWith(f: Delivery[A] => F[DeliveryResult]): F[Unit] = {
-        def wrappedAction(del: Delivery[A]): F[DeliveryResult] = f(del).flatMap {
-          PoisonedMessageHandler.handleResult(del, maxAttempts, handlePoisonedMessage)
+      override def adjustResult(rawDelivery: Delivery[A], r: F[DeliveryResult]): F[DeliveryResult] = {
+        r.flatMap {
+          PoisonedMessageHandler.handleResult(rawDelivery,
+                                              maxAttempts,
+                                              (d: Delivery[A], _) => defaultHandlePoisonedMessage[F, A](maxAttempts)(d))
         }
-
-        d.handleWith(wrappedAction)
       }
-
-      private def handlePoisonedMessage(delivery: Delivery[A], ma: Int): F[Unit] = customPoisonedAction(delivery)
     }
   }
 
-  private def apply[F[_]: Effect, A](pmh: PoisonedMessageHandler[F, A]): Pipe[F, StreamedDelivery[F, A], StreamedResult] = {
-    _.evalMap { _.handleWith(pmh).as(StreamedResult) }
+  def withCustomPoisonedAction[F[_], A](maxAttempts: Int)(customPoisonedAction: Delivery[A] => F[Unit])(
+      implicit F: Effect[F]): StreamingPoisonedMessageHandler[F, A] = {
+    new StreamingPoisonedMessageHandler[F, A] {
+      override def adjustDelivery(d: StreamedDelivery[F, A]): F[StreamedDelivery[F, A]] = F.pure(d)
+
+      override def adjustResult(rawDelivery: Delivery[A], r: F[DeliveryResult]): F[DeliveryResult] = {
+        r.flatMap {
+          PoisonedMessageHandler.handleResult(rawDelivery, maxAttempts, (d: Delivery[A], _) => customPoisonedAction(d))
+        }
+      }
+    }
   }
 }

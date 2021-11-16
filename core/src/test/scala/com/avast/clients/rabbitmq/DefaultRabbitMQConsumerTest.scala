@@ -1,8 +1,9 @@
 package com.avast.clients.rabbitmq
 
+import com.avast.clients.rabbitmq.DefaultRabbitMQConsumer.CorrelationIdHeaderName
+
 import java.time.Duration
 import java.util.UUID
-
 import com.avast.clients.rabbitmq.RabbitMQConnection.DefaultListeners
 import com.avast.clients.rabbitmq.api.DeliveryResult
 import com.avast.metrics.scalaapi._
@@ -32,8 +33,7 @@ class DefaultRabbitMQConsumerTest extends TestBase {
     val envelope = mock[Envelope]
     when(envelope.getDeliveryTag).thenReturn(deliveryTag)
 
-    val properties = mock[BasicProperties]
-    when(properties.getMessageId).thenReturn(messageId)
+    val properties = new BasicProperties.Builder().messageId(messageId).build()
 
     val channel = mock[AutorecoveringChannel]
     when(channel.isOpen).thenReturn(true)
@@ -73,8 +73,7 @@ class DefaultRabbitMQConsumerTest extends TestBase {
     val envelope = mock[Envelope]
     when(envelope.getDeliveryTag).thenReturn(deliveryTag)
 
-    val properties = mock[BasicProperties]
-    when(properties.getMessageId).thenReturn(messageId)
+    val properties = new BasicProperties.Builder().messageId(messageId).build()
 
     val channel = mock[AutorecoveringChannel]
     when(channel.isOpen).thenReturn(true)
@@ -114,8 +113,7 @@ class DefaultRabbitMQConsumerTest extends TestBase {
     val envelope = mock[Envelope]
     when(envelope.getDeliveryTag).thenReturn(deliveryTag)
 
-    val properties = mock[BasicProperties]
-    when(properties.getMessageId).thenReturn(messageId)
+    val properties = new BasicProperties.Builder().messageId(messageId).build()
 
     val channel = mock[AutorecoveringChannel]
     when(channel.isOpen).thenReturn(true)
@@ -198,8 +196,7 @@ class DefaultRabbitMQConsumerTest extends TestBase {
     val envelope = mock[Envelope]
     when(envelope.getDeliveryTag).thenReturn(deliveryTag)
 
-    val properties = mock[BasicProperties]
-    when(properties.getMessageId).thenReturn(messageId)
+    val properties = new BasicProperties.Builder().messageId(messageId).build()
 
     val channel = mock[AutorecoveringChannel]
     when(channel.isOpen).thenReturn(true)
@@ -236,8 +233,7 @@ class DefaultRabbitMQConsumerTest extends TestBase {
     val envelope = mock[Envelope]
     when(envelope.getDeliveryTag).thenReturn(deliveryTag)
 
-    val properties = mock[BasicProperties]
-    when(properties.getMessageId).thenReturn(messageId)
+    val properties = new BasicProperties.Builder().messageId(messageId).build()
 
     val channel = mock[AutorecoveringChannel]
     when(channel.isOpen).thenReturn(true)
@@ -274,8 +270,7 @@ class DefaultRabbitMQConsumerTest extends TestBase {
     val envelope = mock[Envelope]
     when(envelope.getDeliveryTag).thenReturn(deliveryTag)
 
-    val properties = mock[BasicProperties]
-    when(properties.getMessageId).thenReturn(messageId)
+    val properties = new BasicProperties.Builder().messageId(messageId).build()
 
     val channel = mock[AutorecoveringChannel]
     when(channel.isOpen).thenReturn(true)
@@ -365,8 +360,7 @@ class DefaultRabbitMQConsumerTest extends TestBase {
     val envelope = mock[Envelope]
     when(envelope.getDeliveryTag).thenReturn(deliveryTag)
 
-    val properties = mock[BasicProperties]
-    when(properties.getMessageId).thenReturn(messageId)
+    val properties = new BasicProperties.Builder().messageId(messageId).build()
 
     val channel = mock[AutorecoveringChannel]
     when(channel.isOpen).thenReturn(true)
@@ -448,4 +442,84 @@ class DefaultRabbitMQConsumerTest extends TestBase {
     }
   }
 
+  test("passes correlation id") {
+    val messageId = UUID.randomUUID().toString
+    val correlationId = UUID.randomUUID().toString
+
+    val deliveryTag = Random.nextInt(1000)
+
+    val envelope = mock[Envelope]
+    when(envelope.getDeliveryTag).thenReturn(deliveryTag)
+
+    val properties = new BasicProperties.Builder().messageId(messageId).correlationId(correlationId).build()
+
+    val channel = mock[AutorecoveringChannel]
+    when(channel.isOpen).thenReturn(true)
+
+    val consumer = new DefaultRabbitMQConsumer[Task](
+      "test",
+      channel,
+      "queueName",
+      connectionInfo,
+      Monitor.noOp(),
+      DeliveryResult.Reject,
+      DefaultListeners.DefaultConsumerListener,
+      RepublishStrategy.DefaultExchange,
+      TestBase.testBlocker
+    )({ (delivery, _, _, _) =>
+      assertResult(Some(messageId))(delivery.properties.messageId)
+      assertResult(Some(correlationId))(delivery.properties.correlationId)
+
+      Task.now(DeliveryResult.Ack)
+    })
+
+    val body = Random.nextString(5).getBytes
+    consumer.handleDelivery("abcd", envelope, properties, body)
+
+    eventually(timeout(Span(1, Seconds)), interval(Span(0.1, Seconds))) {
+      verify(channel, times(1)).basicAck(deliveryTag, false)
+    }
+  }
+
+  test("parses correlation id from header") {
+    val messageId = UUID.randomUUID().toString
+    val correlationId = UUID.randomUUID().toString
+
+    val deliveryTag = Random.nextInt(1000)
+
+    val envelope = mock[Envelope]
+    when(envelope.getDeliveryTag).thenReturn(deliveryTag)
+
+    val properties = new BasicProperties.Builder()
+      .messageId(messageId)
+      .headers(Map(CorrelationIdHeaderName -> correlationId.asInstanceOf[AnyRef]).asJava)
+      .build()
+
+    val channel = mock[AutorecoveringChannel]
+    when(channel.isOpen).thenReturn(true)
+
+    val consumer = new DefaultRabbitMQConsumer[Task](
+      "test",
+      channel,
+      "queueName",
+      connectionInfo,
+      Monitor.noOp(),
+      DeliveryResult.Reject,
+      DefaultListeners.DefaultConsumerListener,
+      RepublishStrategy.DefaultExchange,
+      TestBase.testBlocker
+    )({ (delivery, _, _, _) =>
+      assertResult(Some(messageId))(delivery.properties.messageId)
+      assertResult(Some(correlationId))(delivery.properties.correlationId)
+
+      Task.now(DeliveryResult.Ack)
+    })
+
+    val body = Random.nextString(5).getBytes
+    consumer.handleDelivery("abcd", envelope, properties, body)
+
+    eventually(timeout(Span(1, Seconds)), interval(Span(0.1, Seconds))) {
+      verify(channel, times(1)).basicAck(deliveryTag, false)
+    }
+  }
 }

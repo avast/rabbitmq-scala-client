@@ -25,7 +25,7 @@ class DefaultRabbitMQProducerTest extends TestBase {
       name = "test",
       exchangeName = exchangeName,
       channel = channel,
-      monitor = Monitor.noOp,
+      monitor = Monitor.noOp(),
       defaultProperties = MessageProperties.empty,
       reportUnroutable = false,
       blocker = TestBase.testBlocker
