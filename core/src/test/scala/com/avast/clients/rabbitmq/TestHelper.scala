@@ -22,9 +22,6 @@ class TestHelper(host: String, port: Int) {
 
       val resp = Http(s"$RootUri/queues/%2f/$encoded").auth("guest", "guest").asString.body
 
-      println("MESSAGES COUNT:")
-      println(resp)
-
       decode[QueueProperties](resp) match {
         case Right(p) => p.messages
         case r => throw new IllegalStateException(s"Wrong response $r")
@@ -35,9 +32,6 @@ class TestHelper(host: String, port: Int) {
       val encoded = URLEncoder.encode(queueName, StandardCharsets.UTF_8.toString)
 
       val resp = Http(s"$RootUri/queues/%2f/$encoded").auth("guest", "guest").asString.body
-
-      println("PUBLISHED COUNT:")
-      println(resp)
 
       decode[QueueProperties](resp) match {
         case Right(p) =>
@@ -100,9 +94,6 @@ class TestHelper(host: String, port: Int) {
       val encoded = URLEncoder.encode(exchangeName, StandardCharsets.UTF_8.toString)
 
       val resp = Http(s"$RootUri/exchanges/%2f/$encoded").auth("guest", "guest").asString.body
-
-      println("PUBLISHED COUNT:")
-      println(resp)
 
       decode[ExchangeProperties](resp) match {
         case Right(p) =>

@@ -2,61 +2,38 @@ package com.avast.clients.rabbitmq
 
 import cats.effect._
 import cats.implicits._
-import com.avast.bytes.Bytes
 import com.avast.clients.rabbitmq.api._
-import com.avast.metrics.scalaapi.Monitor
-import com.rabbitmq.client.AMQP.BasicProperties
-import com.rabbitmq.client.{Delivery => _, _}
-import com.typesafe.scalalogging.StrictLogging
+import com.rabbitmq.client.{Delivery => _}
+import org.slf4j.event.Level
 
-import scala.language.higherKinds
+import scala.concurrent.duration.FiniteDuration
 
-class DefaultRabbitMQConsumer[F[_]: Effect](
-    override val name: String,
-    override protected val channel: ServerChannel,
-    override protected val queueName: String,
-    override protected val connectionInfo: RabbitMQConnectionInfo,
-    override protected val monitor: Monitor,
+class DefaultRabbitMQConsumer[F[_]: ConcurrentEffect: Timer, A: DeliveryConverter](
+    private[rabbitmq] val base: ConsumerBase[F, A],
+    channelOps: ConsumerChannelOps[F, A],
+    processTimeout: FiniteDuration,
+    timeoutAction: DeliveryResult,
+    timeoutLogLevel: Level,
     failureAction: DeliveryResult,
-    consumerListener: ConsumerListener,
-    override protected val republishStrategy: RepublishStrategy,
-    override protected val blocker: Blocker)(readAction: DeliveryReadAction[F, Bytes])(implicit override protected val cs: ContextShift[F])
-    extends ConsumerWithCallbackBase(channel, failureAction, consumerListener)
-    with RabbitMQConsumer[F]
-    with ConsumerBase[F]
-    with StrictLogging {
+    consumerListener: ConsumerListener[F])(userAction: DeliveryReadAction[F, A])
+    extends ConsumerWithCallbackBase(base, channelOps, failureAction, consumerListener)
+    with RabbitMQConsumer[F] {
+  import base._
 
-  override def handleDelivery(consumerTag: String, envelope: Envelope, properties: BasicProperties, body: Array[Byte]): Unit = {
-    processingCount.incrementAndGet()
+  override protected def handleNewDelivery(d: DeliveryWithContext[A]): F[Option[ConfirmedDeliveryResult[F]]] = {
+    import d._
 
-    val deliveryTag = envelope.getDeliveryTag
-    val messageId = properties.getMessageId
-    val routingKey = properties.getOriginalRoutingKey.getOrElse(envelope.getRoutingKey)
+    // we try to catch also long-lasting synchronous work on the thread
+    val resultAction = blocker.delay { userAction(delivery).map(ConfirmedDeliveryResult(_)) }.flatten
 
-    val action = handleDelivery(messageId, deliveryTag, properties, routingKey, body)(readAction)
-      .flatTap(_ =>
-        F.delay {
-          processingCount.decrementAndGet()
-          logger.debug(s"Delivery processed successfully (tag $deliveryTag)")
-      })
-      .recoverWith {
-        case e =>
-          F.delay {
-            processingCount.decrementAndGet()
-            processingFailedMeter.mark()
-            logger.debug("Could not process delivery", e)
-          } >>
-            F.raiseError(e)
-      }
-
-    Effect[F].toIO(action).unsafeToFuture() // actually start the processing
-
-    ()
+    watchForTimeoutIfConfigured(processTimeout, timeoutAction, timeoutLogLevel)(delivery, resultAction)(F.unit).map(Some(_))
   }
+
 }
 
 object DefaultRabbitMQConsumer {
   final val RepublishOriginalRoutingKeyHeaderName = "X-Original-Routing-Key"
   final val RepublishOriginalUserId = "X-Original-User-Id"
   final val FederationOriginalRoutingKeyHeaderName = "x-original-routing-key"
+  final val CorrelationIdHeaderName = CorrelationIdStrategy.CorrelationIdKeyName
 }

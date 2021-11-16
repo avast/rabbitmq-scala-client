@@ -1,59 +1,57 @@
 package com.avast.clients.rabbitmq
 
+import cats.effect._
+import cats.implicits.{catsSyntaxApplicativeError, catsSyntaxFlatMapOps, toFlatMapOps}
+import cats.syntax.functor._
+import com.avast.clients.rabbitmq.api._
+import com.avast.clients.rabbitmq.logging.ImplicitContextLogger
+import com.avast.metrics.scalaeffectapi.Monitor
+import com.rabbitmq.client._
+
 import java.io.IOException
 import java.util
 import java.util.concurrent.ExecutorService
-
-import cats.effect._
-import cats.syntax.functor._
-import com.avast.clients.rabbitmq.api._
-import com.avast.metrics.scalaapi.Monitor
-import com.rabbitmq.client._
-import com.typesafe.scalalogging.StrictLogging
 import javax.net.ssl.SSLContext
-
 import scala.collection.immutable
-import scala.language.higherKinds
 import scala.util.control.NonFatal
 
 trait RabbitMQConnection[F[_]] {
 
-  /** Creates new channel inside this connection. Usable for some applications-specific actions which are not supported by the library.<br>
-    * The caller is responsible for closing the created channel - it's closed automatically only when the whole connection is closed.
+  /** Creates new channel inside this connection. Usable for some applications-specific actions which are not supported by the library.
     */
   def newChannel(): Resource[F, ServerChannel]
 
   /** Creates new instance of consumer, using the passed configuration.
     *
     * @param consumerConfig Configuration of the consumer.
-    * @param monitor    Monitor for metrics.
+    * @param monitor    Monitor[F] for metrics.
     * @param readAction Action executed for each delivered message. You should never return a failed F.
     */
-  def newConsumer[A: DeliveryConverter](consumerConfig: ConsumerConfig, monitor: Monitor)(
+  def newConsumer[A: DeliveryConverter](consumerConfig: ConsumerConfig, monitor: Monitor[F])(
       readAction: DeliveryReadAction[F, A]): Resource[F, RabbitMQConsumer[F]]
 
   /** Creates new instance of producer, using the passed configuration.
     *
     * @param producerConfig Configuration of the producer.
-    * @param monitor    Monitor for metrics.
+    * @param monitor    Monitor[F] for metrics.
     */
-  def newProducer[A: ProductConverter](producerConfig: ProducerConfig, monitor: Monitor): Resource[F, RabbitMQProducer[F, A]]
+  def newProducer[A: ProductConverter](producerConfig: ProducerConfig, monitor: Monitor[F]): Resource[F, RabbitMQProducer[F, A]]
 
   /** Creates new instance of pull consumer, using the passed configuration.
     *
     * @param pullConsumerConfig Configuration of the consumer.
-    * @param monitor    Monitor for metrics.
+    * @param monitor    Monitor[F] for metrics.
     */
   def newPullConsumer[A: DeliveryConverter](pullConsumerConfig: PullConsumerConfig,
-                                            monitor: Monitor): Resource[F, RabbitMQPullConsumer[F, A]]
+                                            monitor: Monitor[F]): Resource[F, RabbitMQPullConsumer[F, A]]
 
   /** Creates new instance of streaming consumer, using the passed configuration.
     *
     * @param consumerConfig Configuration of the consumer.
-    * @param monitor Monitor for metrics.
+    * @param monitor Monitor[F] for metrics.
     */
   def newStreamingConsumer[A: DeliveryConverter](consumerConfig: StreamingConsumerConfig,
-                                                 monitor: Monitor): Resource[F, RabbitMQStreamingConsumer[F, A]]
+                                                 monitor: Monitor[F]): Resource[F, RabbitMQStreamingConsumer[F, A]]
 
   def declareExchange(config: DeclareExchangeConfig): F[Unit]
   def declareQueue(config: DeclareQueueConfig): F[Unit]
@@ -67,43 +65,55 @@ trait RabbitMQConnection[F[_]] {
     */
   def withChannel[A](f: ServerChannel => F[A]): F[A]
 
-  def connectionListener: ConnectionListener
-  def channelListener: ChannelListener
-  def consumerListener: ConsumerListener
+  def connectionListener: ConnectionListener[F]
+  def channelListener: ChannelListener[F]
+  def consumerListener: ConsumerListener[F]
 }
 
-object RabbitMQConnection extends StrictLogging {
+object RabbitMQConnection {
 
   object DefaultListeners {
-    final val DefaultConnectionListener: ConnectionListener = ConnectionListener.Default
-    final val DefaultChannelListener: ChannelListener = ChannelListener.Default
-    final val DefaultConsumerListener: ConsumerListener = ConsumerListener.Default
+    def defaultConnectionListener[F[_]: Sync]: ConnectionListener[F] = ConnectionListener.default[F]
+    def defaultChannelListener[F[_]: Sync]: ChannelListener[F] = ChannelListener.default[F]
+    def defaultConsumerListener[F[_]: Sync]: ConsumerListener[F] = ConsumerListener.default[F]
   }
 
   def make[F[_]: ConcurrentEffect: Timer: ContextShift](
       connectionConfig: RabbitMQConnectionConfig,
       blockingExecutor: ExecutorService,
       sslContext: Option[SSLContext] = None,
-      connectionListener: ConnectionListener = DefaultListeners.DefaultConnectionListener,
-      channelListener: ChannelListener = DefaultListeners.DefaultChannelListener,
-      consumerListener: ConsumerListener = DefaultListeners.DefaultConsumerListener): Resource[F, RabbitMQConnection[F]] = {
+      connectionListener: Option[ConnectionListener[F]] = None,
+      channelListener: Option[ChannelListener[F]] = None,
+      consumerListener: Option[ConsumerListener[F]] = None): Resource[F, RabbitMQConnection[F]] = {
+    val logger = ImplicitContextLogger.createLogger[F, RabbitMQConnection.type]
+    val blocker = Blocker.liftExecutorService(blockingExecutor)
+
     val connectionInfo = RabbitMQConnectionInfo(
       hosts = connectionConfig.hosts.toVector,
       virtualHost = connectionConfig.virtualHost,
       username = if (connectionConfig.credentials.enabled) Option(connectionConfig.credentials.username) else None
     )
 
-    createConnection(connectionConfig, connectionInfo, blockingExecutor, sslContext, connectionListener, channelListener, consumerListener)
-      .evalMap { connection =>
-        val blocker = Blocker.liftExecutorService(blockingExecutor)
+    val finalConnectionListener = connectionListener.getOrElse(ConnectionListener.default)
+    val finalChannelListener = channelListener.getOrElse(ChannelListener.default)
+    val finalConsumerListener = consumerListener.getOrElse(ConsumerListener.default)
 
+    createConnection(connectionConfig,
+                     blockingExecutor,
+                     blocker,
+                     sslContext,
+                     finalConnectionListener,
+                     finalChannelListener,
+                     finalConsumerListener,
+                     logger)
+      .evalMap { connection =>
         DefaultRabbitMQConnection
           .make(
             connection = connection,
             info = connectionInfo,
-            connectionListener = connectionListener,
-            channelListener = channelListener,
-            consumerListener = consumerListener,
+            connectionListener = finalConnectionListener,
+            channelListener = finalChannelListener,
+            consumerListener = finalConsumerListener,
             blocker = blocker,
             republishStrategy = connectionConfig.republishStrategy
           )
@@ -111,47 +121,53 @@ object RabbitMQConnection extends StrictLogging {
       }
   }
 
-  protected def createConnection[F[_]: Sync](connectionConfig: RabbitMQConnectionConfig,
-                                             connectionInfo: RabbitMQConnectionInfo,
-                                             executor: ExecutorService,
-                                             sslContext: Option[SSLContext],
-                                             connectionListener: ConnectionListener,
-                                             channelListener: ChannelListener,
-                                             consumerListener: ConsumerListener): Resource[F, ServerConnection] =
+  protected def createConnection[F[_]: Effect: ContextShift](connectionConfig: RabbitMQConnectionConfig,
+                                                             executor: ExecutorService,
+                                                             blocker: Blocker,
+                                                             sslContext: Option[SSLContext],
+                                                             connectionListener: ConnectionListener[F],
+                                                             channelListener: ChannelListener[F],
+                                                             consumerListener: ConsumerListener[F],
+                                                             logger: ImplicitContextLogger[F]): Resource[F, ServerConnection] = {
+    import connectionConfig._
+
+    val factory = createConnectionFactory(addressResolverType)
+    val exceptionHandler = createExceptionHandler[F](connectionListener, channelListener, consumerListener)
+
     Resource.make {
-      Sync[F].delay {
-        import connectionConfig._
+      setUpConnection(connectionConfig, factory, exceptionHandler, sslContext, executor, blocker) >>
+        parseAddresses(hosts) >>= { addresses =>
+        logger.plainInfo(s"Connecting to ${hosts.mkString("[", ", ", "]")}, virtual host '$virtualHost'") >> {
+          blocker
+            .delay(factory.newConnection(addresses.toArray, name))
+            .flatMap {
+              case conn: ServerConnection =>
+                conn.addRecoveryListener(exceptionHandler)
+                conn.addShutdownListener { (cause: ShutdownSignalException) =>
+                  connectionListener.onShutdown(conn, cause).unsafeStartAndForget()
+                }
+                connectionListener.onCreate(conn).as {
+                  conn
+                }
 
-        val factory = createConnectionFactory(addressResolverType)
-        val exceptionHandler = createExceptionHandler(connectionListener, channelListener, consumerListener)
-
-        setUpConnection(connectionConfig, factory, exceptionHandler, sslContext, executor)
-
-        val addresses = try {
-          hosts.map(Address.parseAddress)
-        } catch {
-          case NonFatal(e) => throw new IllegalArgumentException("Invalid format of hosts", e)
-        }
-
-        logger.info(s"Connecting to ${hosts.mkString("[", ", ", "]")}, virtual host '$virtualHost'")
-
-        try {
-          factory.newConnection(addresses.toArray, name) match {
-            case conn: ServerConnection =>
-              conn.addRecoveryListener(exceptionHandler)
-              conn.addShutdownListener((cause: ShutdownSignalException) => connectionListener.onShutdown(conn, cause))
-              connectionListener.onCreate(conn)
-              conn
-            // since we set `factory.setAutomaticRecoveryEnabled(true)` it should always be `Recoverable` (based on docs), so the exception will never be thrown
-            case _ => throw new IllegalStateException("Required Recoverable Connection")
-          }
-        } catch {
-          case NonFatal(e) =>
-            connectionListener.onCreateFailure(e)
-            throw e
+              // since we set `factory.setAutomaticRecoveryEnabled(true)` it should always be `Recoverable` (based on docs), so the exception will never be thrown
+              case _ => Sync[F].raiseError[ServerConnection](new IllegalStateException("Required Recoverable Connection"))
+            }
+            .handleErrorWith { case NonFatal(e) => connectionListener.onCreateFailure(e) >> Sync[F].raiseError[ServerConnection](e) }
         }
       }
     }(c => Sync[F].delay(c.close()))
+  }
+
+  private def parseAddresses[F[_]: Effect](hosts: immutable.Seq[String]): F[Seq[Address]] = {
+    Sync[F].delay {
+      try {
+        hosts.map(Address.parseAddress)
+      } catch {
+        case NonFatal(e) => throw new IllegalArgumentException("Invalid format of hosts", e)
+      }
+    }
+  }
 
   private def createConnectionFactory[F[_]: Sync](addressResolverType: AddressResolverType): ConnectionFactory = {
     import com.avast.clients.rabbitmq.AddressResolverType._
@@ -168,11 +184,12 @@ object RabbitMQConnection extends StrictLogging {
     }
   }
 
-  private def setUpConnection(connectionConfig: RabbitMQConnectionConfig,
-                              factory: ConnectionFactory,
-                              exceptionHandler: ExceptionHandler,
-                              sslContext: Option[SSLContext],
-                              executor: ExecutorService): Unit = {
+  private def setUpConnection[F[_]: Sync: ContextShift](connectionConfig: RabbitMQConnectionConfig,
+                                                        factory: ConnectionFactory,
+                                                        exceptionHandler: ExceptionHandler,
+                                                        sslContext: Option[SSLContext],
+                                                        executor: ExecutorService,
+                                                        blocker: Blocker): F[Unit] = blocker.delay {
     import connectionConfig._
 
     factory.setVirtualHost(virtualHost)
@@ -201,35 +218,35 @@ object RabbitMQConnection extends StrictLogging {
   }
 
   // scalastyle:off
-  private def createExceptionHandler(connectionListener: ConnectionListener,
-                                     channelListener: ChannelListener,
-                                     consumerListener: ConsumerListener): ExceptionHandler with RecoveryListener =
+  private def createExceptionHandler[F[_]: Effect](connectionListener: ConnectionListener[F],
+                                                   channelListener: ChannelListener[F],
+                                                   consumerListener: ConsumerListener[F]): ExceptionHandler with RecoveryListener =
     new ExceptionHandler with RecoveryListener {
-      override def handleReturnListenerException(channel: Channel, exception: Throwable): Unit = {
-        logger.info(
-          s"Return listener error on channel $channel (on connection ${channel.getConnection}, name ${channel.getConnection.getClientProvidedName})",
-          exception
-        )
+      private val logger = ImplicitContextLogger.createLogger[F, ExceptionHandler]
+
+      override def handleReturnListenerException(channel: Channel, exception: Throwable): Unit = startAndForget {
+        logger.plainInfo(exception)(
+          s"Return listener error on channel $channel (on connection ${channel.getConnection}, name ${channel.getConnection.getClientProvidedName})")
       }
 
-      override def handleConnectionRecoveryException(conn: Connection, exception: Throwable): Unit = {
-        logger.debug(s"Recovery error on connection $conn (name ${conn.getClientProvidedName})", exception)
-        connectionListener.onRecoveryFailure(conn, exception)
+      override def handleConnectionRecoveryException(conn: Connection, exception: Throwable): Unit = startAndForget {
+        logger.plainDebug(exception)(s"Recovery error on connection $conn (name ${conn.getClientProvidedName})") >>
+          connectionListener.onRecoveryFailure(conn, exception)
       }
 
-      override def handleBlockedListenerException(conn: Connection, exception: Throwable): Unit = {
-        logger.info(s"Recovery error on connection $conn (name ${conn.getClientProvidedName})", exception)
+      override def handleBlockedListenerException(conn: Connection, exception: Throwable): Unit = startAndForget {
+        logger.plainInfo(exception)(s"Recovery error on connection $conn (name ${conn.getClientProvidedName})")
       }
 
-      override def handleChannelRecoveryException(ch: Channel, exception: Throwable): Unit = {
-        logger.debug(s"Recovery error on channel $ch", exception)
-        channelListener.onRecoveryFailure(ch, exception)
+      override def handleChannelRecoveryException(ch: Channel, exception: Throwable): Unit = startAndForget {
+        logger.plainDebug(exception)(s"Recovery error on channel $ch") >>
+          channelListener.onRecoveryFailure(ch, exception)
       }
 
-      override def handleUnexpectedConnectionDriverException(conn: Connection, exception: Throwable): Unit = {
+      override def handleUnexpectedConnectionDriverException(conn: Connection, exception: Throwable): Unit = startAndForget {
         exception match {
-          case ioe: IOException => logger.info(s"RabbitMQ IO exception on $conn (name ${conn.getClientProvidedName})", ioe)
-          case e => logger.debug(s"RabbitMQ unexpected exception on $conn (name ${conn.getClientProvidedName})", e)
+          case ioe: IOException => logger.plainInfo(ioe)(s"RabbitMQ IO exception on $conn (name ${conn.getClientProvidedName})")
+          case e => logger.plainDebug(e)(s"RabbitMQ unexpected exception on $conn (name ${conn.getClientProvidedName})")
         }
       }
 
@@ -237,43 +254,44 @@ object RabbitMQConnection extends StrictLogging {
                                            exception: Throwable,
                                            consumer: Consumer,
                                            consumerTag: String,
-                                           methodName: String): Unit = {
-        logger.debug(s"Consumer exception on channel $channel, consumer with tag '$consumerTag', method '$methodName'")
+                                           methodName: String): Unit = startAndForget {
+        logger.plainDebug(s"Consumer exception on channel $channel, consumer with tag '$consumerTag', method '$methodName'") >> {
+          val consumerName = consumer match {
+            case c: DefaultRabbitMQConsumer[_, _] => c.base.consumerName
+            case _ => "unknown"
+          }
 
-        val consumerName = consumer match {
-          case c: DefaultRabbitMQConsumer[_] => c.name
-          case _ => "unknown"
+          consumerListener.onError(consumer, consumerName, channel, exception)
+        }
+      }
+
+      override def handleTopologyRecoveryException(conn: Connection, ch: Channel, exception: TopologyRecoveryException): Unit =
+        startAndForget {
+          logger.plainDebug(exception)(s"Topology recovery error on channel $ch (on connection $conn, name ${conn.getClientProvidedName})") >>
+            channelListener.onRecoveryFailure(ch, exception)
         }
 
-        consumerListener.onError(consumer, consumerName, channel, exception)
-      }
-
-      override def handleTopologyRecoveryException(conn: Connection, ch: Channel, exception: TopologyRecoveryException): Unit = {
-        logger.debug(s"Topology recovery error on channel $ch (on connection $conn, name ${conn.getClientProvidedName})", exception)
-        channelListener.onRecoveryFailure(ch, exception)
-      }
-
-      override def handleConfirmListenerException(channel: Channel, exception: Throwable): Unit = {
-        logger.debug(s"Confirm listener error on channel $channel", exception)
+      override def handleConfirmListenerException(channel: Channel, exception: Throwable): Unit = startAndForget {
+        logger.plainDebug(exception)(s"Confirm listener error on channel $channel")
       }
 
       // recovery listener
 
-      override def handleRecovery(recoverable: Recoverable): Unit = {
-        logger.debug(s"Recovery completed on $recoverable")
-
-        recoverable match {
-          case ch: ServerChannel => channelListener.onRecoveryCompleted(ch)
-          case conn: ServerConnection => connectionListener.onRecoveryCompleted(conn)
+      override def handleRecovery(recoverable: Recoverable): Unit = startAndForget {
+        logger.plainDebug(s"Recovery completed on $recoverable") >> {
+          recoverable match {
+            case ch: ServerChannel => channelListener.onRecoveryCompleted(ch)
+            case conn: ServerConnection => connectionListener.onRecoveryCompleted(conn)
+          }
         }
       }
 
-      override def handleRecoveryStarted(recoverable: Recoverable): Unit = {
-        logger.debug(s"Recovery started on $recoverable")
-
-        recoverable match {
-          case ch: ServerChannel => channelListener.onRecoveryStarted(ch)
-          case conn: ServerConnection => connectionListener.onRecoveryStarted(conn)
+      override def handleRecoveryStarted(recoverable: Recoverable): Unit = startAndForget {
+        logger.plainDebug(s"Recovery started on $recoverable") >> {
+          recoverable match {
+            case ch: ServerChannel => channelListener.onRecoveryStarted(ch)
+            case conn: ServerConnection => connectionListener.onRecoveryStarted(conn)
+          }
         }
       }
     }

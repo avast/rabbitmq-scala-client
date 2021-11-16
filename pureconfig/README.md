@@ -183,7 +183,7 @@ import cats.effect.Resource
 import com.avast.bytes.Bytes
 import com.avast.clients.rabbitmq._
 import com.avast.clients.rabbitmq.api._
-import com.avast.metrics.scalaapi.Monitor
+import com.avast.metrics.scalaeffectapi.Monitor
 import com.typesafe.config.ConfigFactory
 import monix.eval._
 import monix.execution.Scheduler
@@ -193,7 +193,7 @@ import com.avast.clients.rabbitmq.pureconfig._ // <-- this is needed in order to
 val config = ConfigFactory.load().getConfig("myConfig")
 
 implicit val sch: Scheduler = ??? // required by Task
-val monitor: Monitor = ???
+val monitor: Monitor[Task] = ???
 
 val blockingExecutor: ExecutorService = ???
 

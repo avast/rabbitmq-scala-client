@@ -1,5 +1,6 @@
 package com.avast.clients.rabbitmq
 
+import cats.effect.{ContextShift, Sync}
 import com.avast.clients.rabbitmq.api.DeliveryResult
 import com.rabbitmq.client.RecoveryDelayHandler
 import org.slf4j.event.Level
@@ -32,7 +33,8 @@ final case class ConsumerConfig(name: String,
                                 timeoutLogLevel: Level = Level.WARN,
                                 prefetchCount: Int = 100,
                                 declare: Option[AutoDeclareQueueConfig] = None,
-                                consumerTag: String = "Default")
+                                consumerTag: String = "Default",
+                                poisonedMessageHandling: Option[PoisonedMessageHandlingConfig] = None)
 
 final case class StreamingConsumerConfig(name: String,
                                          queueName: String,
@@ -43,13 +45,14 @@ final case class StreamingConsumerConfig(name: String,
                                          prefetchCount: Int = 100,
                                          queueBufferSize: Int = 100,
                                          declare: Option[AutoDeclareQueueConfig] = None,
-                                         consumerTag: String = "Default")
+                                         consumerTag: String = "Default",
+                                         poisonedMessageHandling: Option[PoisonedMessageHandlingConfig] = None)
 
 final case class PullConsumerConfig(name: String,
                                     queueName: String,
                                     bindings: immutable.Seq[AutoBindQueueConfig],
-                                    failureAction: DeliveryResult = DeliveryResult.Republish(),
-                                    declare: Option[AutoDeclareQueueConfig] = None)
+                                    declare: Option[AutoDeclareQueueConfig] = None,
+                                    poisonedMessageHandling: Option[PoisonedMessageHandlingConfig] = None)
 
 final case class AutoDeclareQueueConfig(enabled: Boolean = false,
                                         durable: Boolean = true,
@@ -106,6 +109,20 @@ final case class BindExchangeConfig(sourceExchangeName: String,
                                     routingKeys: immutable.Seq[String],
                                     arguments: BindArgumentsConfig = BindArgumentsConfig())
 
+sealed trait PoisonedMessageHandlingConfig
+
+final case class DeadQueueProducerConfig(name: String,
+                                         exchange: String,
+                                         routingKey: String,
+                                         declare: Option[AutoDeclareExchangeConfig] = None,
+                                         reportUnroutable: Boolean = true,
+                                         properties: ProducerPropertiesConfig = ProducerPropertiesConfig())
+
+case object NoOpPoisonedMessageHandling extends PoisonedMessageHandlingConfig
+final case class LoggingPoisonedMessageHandling(maxAttempts: Int) extends PoisonedMessageHandlingConfig
+final case class DeadQueuePoisonedMessageHandling(maxAttempts: Int, deadQueueProducer: DeadQueueProducerConfig)
+    extends PoisonedMessageHandlingConfig
+
 sealed trait AddressResolverType
 object AddressResolverType {
   case object Default extends AddressResolverType
@@ -134,16 +151,16 @@ object ExchangeType {
 }
 
 trait RepublishStrategyConfig {
-  def toRepublishStrategy: RepublishStrategy
+  def toRepublishStrategy[F[_]: Sync: ContextShift]: RepublishStrategy[F]
 }
 
 object RepublishStrategyConfig {
   case class CustomExchange(exchangeName: String, exchangeDeclare: Boolean = true, exchangeAutoBind: Boolean = true)
       extends RepublishStrategyConfig {
-    override def toRepublishStrategy: RepublishStrategy = RepublishStrategy.CustomExchange(exchangeName)
+    override def toRepublishStrategy[F[_]: Sync: ContextShift]: RepublishStrategy[F] = RepublishStrategy.CustomExchange(exchangeName)
   }
 
   case object DefaultExchange extends RepublishStrategyConfig {
-    override def toRepublishStrategy: RepublishStrategy = RepublishStrategy.DefaultExchange
+    override def toRepublishStrategy[F[_]: Sync: ContextShift]: RepublishStrategy[F] = RepublishStrategy.DefaultExchange[F]()
   }
 }

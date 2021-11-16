@@ -1,312 +1,303 @@
 package com.avast.clients.rabbitmq
 
-import java.util.concurrent.TimeoutException
 import cats.effect._
-import cats.syntax.all._
+import cats.implicits.{catsSyntaxFlatMapOps, toFunctorOps, toTraverseOps}
 import com.avast.bytes.Bytes
-import com.avast.clients.rabbitmq.api.{Delivery, _}
-import com.avast.metrics.scalaapi.{Meter, Monitor}
-import com.rabbitmq.client.AMQP.Queue
-import com.rabbitmq.client.{AMQP, Consumer}
-import com.typesafe.scalalogging.LazyLogging
-import org.slf4j.event.Level
+import com.avast.clients.rabbitmq.DefaultRabbitMQClientFactory.startConsumingQueue
+import com.avast.clients.rabbitmq.api._
+import com.avast.clients.rabbitmq.logging.ImplicitContextLogger
+import com.avast.metrics.scalaeffectapi.Monitor
+import com.rabbitmq.client.Consumer
 
 import scala.collection.compat._
 import scala.collection.immutable
-import scala.concurrent.duration.Duration
 import scala.jdk.CollectionConverters._
-import scala.language.{higherKinds, implicitConversions}
-import scala.util.control.NonFatal
+import scala.language.implicitConversions
 
-private[rabbitmq] object DefaultRabbitMQClientFactory extends LazyLogging {
+private[rabbitmq] class DefaultRabbitMQClientFactory[F[_]: ConcurrentEffect: Timer: ContextShift](
+    connection: RabbitMQConnection[F],
+    connectionInfo: RabbitMQConnectionInfo,
+    blocker: Blocker,
+    republishStrategy: RepublishStrategyConfig) {
+
+  private val F: ConcurrentEffect[F] = implicitly
 
   private type ArgumentsMap = Map[String, Any]
 
-  private type DefaultDeliveryReadAction[F[_]] = DeliveryReadAction[F, Bytes]
-
   object Producer {
 
-    def create[F[_]: ConcurrentEffect, A: ProductConverter](
-        producerConfig: ProducerConfig,
-        channel: ServerChannel,
-        factoryInfo: RabbitMQConnectionInfo,
-        blocker: Blocker,
-        monitor: Monitor)(implicit cs: ContextShift[F]): DefaultRabbitMQProducer[F, A] = {
-      prepareProducer[F, A](producerConfig, channel, factoryInfo, blocker, monitor)
+    def create[A: ProductConverter](producerConfig: ProducerConfig, monitor: Monitor[F]): Resource[F, DefaultRabbitMQProducer[F, A]] = {
+      prepareProducer[A](producerConfig, connection, monitor)
     }
-
   }
 
   object Consumer {
 
-    def create[F[_]: ConcurrentEffect, A: DeliveryConverter](
+    def create[A: DeliveryConverter](
         consumerConfig: ConsumerConfig,
-        channel: ServerChannel,
-        connectionInfo: RabbitMQConnectionInfo,
-        republishStrategy: RepublishStrategyConfig,
-        blocker: Blocker,
-        monitor: Monitor,
-        consumerListener: ConsumerListener,
-        readAction: DeliveryReadAction[F, A])(implicit timer: Timer[F], cs: ContextShift[F]): DefaultRabbitMQConsumer[F] = {
-
-      prepareConsumer(consumerConfig, readAction, connectionInfo, republishStrategy, channel, consumerListener, blocker, monitor)
+        consumerListener: ConsumerListener[F],
+        readAction: DeliveryReadAction[F, A],
+        monitor: Monitor[F]
+    ): Resource[F, DefaultRabbitMQConsumer[F, A]] = {
+      prepareConsumer[A](consumerConfig, consumerListener, readAction, monitor)
     }
   }
 
   object PullConsumer {
 
-    def create[F[_]: ConcurrentEffect, A: DeliveryConverter](
-        consumerConfig: PullConsumerConfig,
-        channel: ServerChannel,
-        connectionInfo: RabbitMQConnectionInfo,
-        republishStrategy: RepublishStrategyConfig,
-        blocker: Blocker,
-        monitor: Monitor)(implicit cs: ContextShift[F]): DefaultRabbitMQPullConsumer[F, A] = {
+    def create[A: DeliveryConverter](consumerConfig: PullConsumerConfig,
+                                     monitor: Monitor[F]): Resource[F, DefaultRabbitMQPullConsumer[F, A]] = {
 
-      preparePullConsumer(consumerConfig, connectionInfo, republishStrategy, channel, blocker, monitor)
+      preparePullConsumer(consumerConfig, monitor)
     }
   }
 
   object StreamingConsumer {
 
-    def create[F[_]: ConcurrentEffect, A: DeliveryConverter](consumerConfig: StreamingConsumerConfig,
-                                                             channel: ServerChannel,
-                                                             newChannel: F[ServerChannel],
-                                                             connectionInfo: RabbitMQConnectionInfo,
-                                                             republishStrategy: RepublishStrategyConfig,
-                                                             blocker: Blocker,
-                                                             monitor: Monitor,
-                                                             consumerListener: ConsumerListener)(
-        implicit timer: Timer[F],
-        cs: ContextShift[F]): Resource[F, DefaultRabbitMQStreamingConsumer[F, A]] = {
+    def create[A: DeliveryConverter](consumerConfig: StreamingConsumerConfig,
+                                     monitor: Monitor[F],
+                                     consumerListener: ConsumerListener[F]): Resource[F, DefaultRabbitMQStreamingConsumer[F, A]] = {
 
-      prepareStreamingConsumer(consumerConfig, connectionInfo, republishStrategy, channel, newChannel, consumerListener, blocker, monitor)
+      prepareStreamingConsumer(consumerConfig, consumerListener, monitor)
     }
   }
 
   object Declarations {
-    def declareExchange[F[_]: Sync](config: DeclareExchangeConfig,
-                                    channel: ServerChannel,
-                                    connectionInfo: RabbitMQConnectionInfo): F[Unit] =
-      Sync[F].delay {
-        import config._
+    private val logger = ImplicitContextLogger.createLogger[F, DefaultRabbitMQClientFactory[F]]
 
-        DefaultRabbitMQClientFactory.this.declareExchange(name, `type`, durable, autoDelete, arguments, channel, connectionInfo)
-      }
+    def declareExchange(config: DeclareExchangeConfig, channel: ServerChannel): F[Unit] = {
+      import config._
 
-    def declareQueue[F[_]: Sync](config: DeclareQueueConfig, channel: ServerChannel, connectionInfo: RabbitMQConnectionInfo): F[Unit] =
-      Sync[F].delay {
-        import config._
+      DefaultRabbitMQClientFactory.this.declareExchange(name, `type`, durable, autoDelete, arguments, channel)(logger)
+    }
 
-        DefaultRabbitMQClientFactory.this.declareQueue(channel, name, durable, exclusive, autoDelete, arguments)
-        ()
-      }
+    def declareQueue(config: DeclareQueueConfig, channel: ServerChannel): F[Unit] = {
+      import config._
 
-    def bindQueue[F[_]: Sync](config: BindQueueConfig, channel: ServerChannel, connectionInfo: RabbitMQConnectionInfo): F[Unit] =
-      Sync[F].delay {
-        import config._
+      DefaultRabbitMQClientFactory.this.declareQueue(channel, name, durable, exclusive, autoDelete, arguments)(logger)
+    }
 
-        DefaultRabbitMQClientFactory.bindQueue(channel, queueName, exchangeName, routingKeys, arguments, connectionInfo)
-      }
+    def bindQueue(config: BindQueueConfig, channel: ServerChannel): F[Unit] = {
+      import config._
 
-    def bindExchange[F[_]: Sync](config: BindExchangeConfig, channel: ServerChannel, connectionInfo: RabbitMQConnectionInfo): F[Unit] =
-      Sync[F].delay {
-        import config._
+      DefaultRabbitMQClientFactory.this.bindQueue(channel, queueName, exchangeName, routingKeys, arguments)(logger)
+    }
 
-        routingKeys.foreach {
-          DefaultRabbitMQClientFactory.this
-            .bindExchange(connectionInfo)(channel, sourceExchangeName, destExchangeName, arguments.value)
+    def bindExchange(config: BindExchangeConfig, channel: ServerChannel): F[Unit] = {
+      import config._
+
+      routingKeys
+        .map {
+          DefaultRabbitMQClientFactory.this.bindExchange(channel, sourceExchangeName, destExchangeName, arguments.value)(_)(logger)
         }
-      }
+        .sequence
+        .as(())
+    }
   }
 
-  private def prepareStreamingConsumer[F[_]: ConcurrentEffect, A: DeliveryConverter](
-      consumerConfig: StreamingConsumerConfig,
-      connectionInfo: RabbitMQConnectionInfo,
-      republishStrategy: RepublishStrategyConfig,
-      channel: ServerChannel,
-      newChannel: F[ServerChannel],
-      consumerListener: ConsumerListener,
-      blocker: Blocker,
-      monitor: Monitor)(implicit timer: Timer[F], cs: ContextShift[F]): Resource[F, DefaultRabbitMQStreamingConsumer[F, A]] = {
+  // scalastyle:off method.length
+  private def prepareStreamingConsumer[A: DeliveryConverter](consumerConfig: StreamingConsumerConfig,
+                                                             consumerListener: ConsumerListener[F],
+                                                             monitor: Monitor[F]): Resource[F, DefaultRabbitMQStreamingConsumer[F, A]] = {
     import consumerConfig._
 
-    val timeoutsMeter = monitor.meter("timeouts")
+    val logger = ImplicitContextLogger.createLogger[F, DefaultRabbitMQStreamingConsumer[F, A]]
 
-    // auto declare exchanges
-    declareExchangesFromBindings(connectionInfo, channel, consumerConfig.bindings)
+    Resource.eval(connection.withChannel { channel =>
+      // auto declare exchanges
+      declareExchangesFromBindings(channel, consumerConfig.bindings)(logger) >>
+        // auto declare queue; if configured
+        consumerConfig.declare.map { declareQueue(consumerConfig.queueName, channel, _)(logger) }.getOrElse(F.unit) >>
+        // auto bind
+        bindQueue(channel, consumerConfig.queueName, consumerConfig.bindings)(logger) >>
+        bindQueueForRepublishing(channel, consumerConfig.queueName, republishStrategy)(logger)
+    }) >>
+      PoisonedMessageHandler
+        .make[F, A](consumerConfig.poisonedMessageHandling, connection, monitor.named("poisonedMessageHandler"))
+        .flatMap { pmh =>
+          val base = new ConsumerBase[F, A](
+            name,
+            queueName,
+            blocker,
+            ImplicitContextLogger.createLogger[F, DefaultRabbitMQStreamingConsumer[F, A]],
+            monitor
+          )
 
-    // auto declare queue; if configured
-    consumerConfig.declare.foreach {
-      declareQueue(consumerConfig.queueName, connectionInfo, channel, _)
-    }
+          val channelOpsFactory = new ConsumerChannelOpsFactory[F, A](
+            name,
+            queueName,
+            blocker,
+            republishStrategy.toRepublishStrategy[F],
+            pmh,
+            connectionInfo,
+            ImplicitContextLogger.createLogger[F, DefaultRabbitMQStreamingConsumer[F, A]],
+            monitor,
+            connection.newChannel().evalTap(ch => Sync[F].delay(ch.basicQos(consumerConfig.prefetchCount)))
+          )
 
-    // auto bind
-    bindQueue(connectionInfo, channel, consumerConfig.queueName, consumerConfig.bindings)
-
-    bindQueueForRepublishing(connectionInfo, channel, consumerConfig.queueName, republishStrategy)
-
-    val timeoutAction = (d: Delivery[Bytes], e: TimeoutException) => doTimeoutAction(name, d, consumerConfig.timeoutAction, timeoutLogLevel, timeoutsMeter, e)
-
-    DefaultRabbitMQStreamingConsumer.make(
-      name,
-      newChannel.flatTap(ch => Sync[F].delay(ch.basicQos(consumerConfig.prefetchCount))),
-      consumerTag,
-      queueName,
-      connectionInfo,
-      consumerListener,
-      queueBufferSize,
-      monitor,
-      republishStrategy.toRepublishStrategy,
-      processTimeout,
-      timeoutAction,
-      blocker
-    )
-  }
-
-  private def prepareConsumer[F[_]: ConcurrentEffect, A: DeliveryConverter](
-      consumerConfig: ConsumerConfig,
-      readAction: DeliveryReadAction[F, A],
-      connectionInfo: RabbitMQConnectionInfo,
-      republishStrategy: RepublishStrategyConfig,
-      channel: ServerChannel,
-      consumerListener: ConsumerListener,
-      blocker: Blocker,
-      monitor: Monitor)(implicit timer: Timer[F], cs: ContextShift[F]): DefaultRabbitMQConsumer[F] = {
-
-    // auto declare exchanges
-    declareExchangesFromBindings(connectionInfo, channel, consumerConfig.bindings)
-
-    // auto declare queue; if configured
-    consumerConfig.declare.foreach {
-      declareQueue(consumerConfig.queueName, connectionInfo, channel, _)
-    }
-
-    // set prefetch size (per consumer)
-    channel.basicQos(consumerConfig.prefetchCount)
-
-    // auto bind
-    bindQueue(connectionInfo, channel, consumerConfig.queueName, consumerConfig.bindings)
-
-    bindQueueForRepublishing(connectionInfo, channel, consumerConfig.queueName, republishStrategy)
-
-    prepareConsumer(consumerConfig, connectionInfo, republishStrategy, channel, readAction, consumerListener, blocker, monitor)
-  }
-
-  private def prepareConsumer[F[_]: ConcurrentEffect, A: DeliveryConverter](
-      consumerConfig: ConsumerConfig,
-      connectionInfo: RabbitMQConnectionInfo,
-      republishStrategy: RepublishStrategyConfig,
-      channel: ServerChannel,
-      userReadAction: DeliveryReadAction[F, A],
-      consumerListener: ConsumerListener,
-      blocker: Blocker,
-      monitor: Monitor)(implicit timer: Timer[F], cs: ContextShift[F]): DefaultRabbitMQConsumer[F] = {
-    import consumerConfig._
-
-    val readAction: DefaultDeliveryReadAction[F] = {
-      val convAction: DefaultDeliveryReadAction[F] = { d: Delivery[Bytes] =>
-        try {
-          userReadAction(convertDelivery(d))
-        } catch {
-          case NonFatal(e) =>
-            ConcurrentEffect[F].raiseError(e)
+          DefaultRabbitMQStreamingConsumer.make(
+            base,
+            channelOpsFactory,
+            consumerTag,
+            consumerListener,
+            queueBufferSize,
+            processTimeout,
+            timeoutAction,
+            timeoutLogLevel,
+          )
         }
-      }
-
-      wrapReadAction(consumerConfig, convAction, monitor, blocker)
-    }
-
-    val consumer = {
-      new DefaultRabbitMQConsumer(name,
-                                  channel,
-                                  queueName,
-                                  connectionInfo,
-                                  monitor,
-                                  failureAction,
-                                  consumerListener,
-                                  republishStrategy.toRepublishStrategy,
-                                  blocker)(readAction)
-    }
-
-    startConsumingQueue(channel, queueName, consumerTag, consumer)
-
-    consumer
   }
+  // scalastyle:on method.length
 
-  private def preparePullConsumer[F[_]: ConcurrentEffect, A: DeliveryConverter](
-      consumerConfig: PullConsumerConfig,
-      connectionInfo: RabbitMQConnectionInfo,
-      republishStrategy: RepublishStrategyConfig,
-      channel: ServerChannel,
-      blocker: Blocker,
-      monitor: Monitor)(implicit cs: ContextShift[F]): DefaultRabbitMQPullConsumer[F, A] = {
-
+  // scalastyle:off method.length
+  private def prepareConsumer[A: DeliveryConverter](consumerConfig: ConsumerConfig,
+                                                    consumerListener: ConsumerListener[F],
+                                                    readAction: DeliveryReadAction[F, A],
+                                                    monitor: Monitor[F]): Resource[F, DefaultRabbitMQConsumer[F, A]] = {
     import consumerConfig._
 
-    // auto declare exchanges
-    declareExchangesFromBindings(connectionInfo, channel, consumerConfig.bindings)
+    val logger = ImplicitContextLogger.createLogger[F, DefaultRabbitMQConsumer[F, A]]
 
-    // auto declare queue; if configured
-    declare.foreach {
-      declareQueue(consumerConfig.queueName, connectionInfo, channel, _)
-    }
+    connection
+      .newChannel()
+      .evalTap { channel =>
+        // auto declare exchanges
+        declareExchangesFromBindings(channel, consumerConfig.bindings)(logger) >>
+          // auto declare queue; if configured
+          consumerConfig.declare.map { declareQueue(consumerConfig.queueName, channel, _)(logger) }.getOrElse(F.unit) >>
+          // set prefetch size (per consumer)
+          blocker.delay { channel.basicQos(consumerConfig.prefetchCount) } >>
+          // auto bind
+          bindQueue(channel, consumerConfig.queueName, consumerConfig.bindings)(logger) >>
+          bindQueueForRepublishing(channel, consumerConfig.queueName, republishStrategy)(logger)
+      }
+      .flatMap { channel =>
+        PoisonedMessageHandler
+          .make[F, A](consumerConfig.poisonedMessageHandling, connection, monitor.named("poisonedMessageHandler"))
+          .map { pmh =>
+            val base = new ConsumerBase[F, A](
+              name,
+              queueName,
+              blocker,
+              logger,
+              monitor
+            )
 
-    // auto bind
-    bindQueue(connectionInfo, channel, consumerConfig.queueName, consumerConfig.bindings)
+            val channelOps = new ConsumerChannelOps[F, A](
+              name,
+              queueName,
+              channel,
+              blocker,
+              republishStrategy.toRepublishStrategy[F],
+              pmh,
+              connectionInfo,
+              ImplicitContextLogger.createLogger[F, DefaultRabbitMQStreamingConsumer[F, A]],
+              monitor
+            )
 
-    bindQueueForRepublishing(connectionInfo, channel, consumerConfig.queueName, republishStrategy)
+            new DefaultRabbitMQConsumer[F, A](
+              base,
+              channelOps,
+              processTimeout,
+              timeoutAction,
+              timeoutLogLevel,
+              failureAction,
+              consumerListener
+            )(readAction)
+          }
+          .evalTap { consumer =>
+            startConsumingQueue(channel, queueName, consumerTag, consumer, blocker)
+          }
+      }
+  }
+  // scalastyle:on method.length
 
-    new DefaultRabbitMQPullConsumer[F, A](name,
-                                          channel,
-                                          queueName,
-                                          connectionInfo,
-                                          failureAction,
-                                          monitor,
-                                          republishStrategy.toRepublishStrategy,
-                                          blocker)
+  private def preparePullConsumer[A: DeliveryConverter](consumerConfig: PullConsumerConfig,
+                                                        monitor: Monitor[F]): Resource[F, DefaultRabbitMQPullConsumer[F, A]] = {
+    import consumerConfig._
+
+    val logger = ImplicitContextLogger.createLogger[F, DefaultRabbitMQPullConsumer[F, A]]
+
+    connection
+      .newChannel()
+      .evalTap { channel =>
+        // auto declare exchanges
+        declareExchangesFromBindings(channel, consumerConfig.bindings)(logger) >>
+          // auto declare queue; if configured
+          declare.map { declareQueue(consumerConfig.queueName, channel, _)(logger) }.getOrElse(F.unit) >>
+          // auto bind
+          bindQueue(channel, consumerConfig.queueName, consumerConfig.bindings)(logger) >>
+          bindQueueForRepublishing(channel, consumerConfig.queueName, republishStrategy)(logger)
+      }
+      .flatMap { channel =>
+        PoisonedMessageHandler
+          .make[F, A](consumerConfig.poisonedMessageHandling, connection, monitor.named("poisonedMessageHandler"))
+          .map { pmh =>
+            val base = new ConsumerBase[F, A](
+              name,
+              queueName,
+              blocker,
+              logger,
+              monitor
+            )
+
+            val channelOps = new ConsumerChannelOps[F, A](
+              name,
+              queueName,
+              channel,
+              blocker,
+              republishStrategy.toRepublishStrategy[F],
+              pmh,
+              connectionInfo,
+              ImplicitContextLogger.createLogger[F, DefaultRabbitMQStreamingConsumer[F, A]],
+              monitor
+            )
+
+            new DefaultRabbitMQPullConsumer[F, A](base, channelOps)
+          }
+      }
   }
 
-  private def prepareProducer[F[_]: ConcurrentEffect, A: ProductConverter](
-      producerConfig: ProducerConfig,
-      channel: ServerChannel,
-      connectionInfo: RabbitMQConnectionInfo,
-      blocker: Blocker,
-      monitor: Monitor)(implicit cs: ContextShift[F]): DefaultRabbitMQProducer[F, A] = {
+  private def prepareProducer[A: ProductConverter](producerConfig: ProducerConfig,
+                                                   connection: RabbitMQConnection[F],
+                                                   monitor: Monitor[F]): Resource[F, DefaultRabbitMQProducer[F, A]] = {
+    val logger = ImplicitContextLogger.createLogger[F, DefaultRabbitMQProducer[F, A]]
 
-    val defaultProperties = MessageProperties(
-      deliveryMode = DeliveryMode.fromCode(producerConfig.properties.deliveryMode),
-      contentType = producerConfig.properties.contentType,
-      contentEncoding = producerConfig.properties.contentEncoding,
-      priority = producerConfig.properties.priority.map(Integer.valueOf)
-    )
+    connection
+      .newChannel()
+      .evalTap { channel =>
+        // auto declare exchange; if configured
+        producerConfig.declare.map { declareExchange(producerConfig.exchange, channel, _)(logger) }.getOrElse(F.unit)
+      }
+      .map { channel =>
+        val defaultProperties = MessageProperties(
+          deliveryMode = DeliveryMode.fromCode(producerConfig.properties.deliveryMode),
+          contentType = producerConfig.properties.contentType,
+          contentEncoding = producerConfig.properties.contentEncoding,
+          priority = producerConfig.properties.priority.map(Integer.valueOf)
+        )
 
-    // auto declare exchange; if configured
-    producerConfig.declare.foreach {
-      declareExchange(producerConfig.exchange, connectionInfo, channel, _)
-    }
-
-    new DefaultRabbitMQProducer[F, A](
-      producerConfig.name,
-      producerConfig.exchange,
-      channel,
-      defaultProperties,
-      producerConfig.reportUnroutable,
-      blocker,
-      monitor
-    )
+        new DefaultRabbitMQProducer[F, A](
+          producerConfig.name,
+          producerConfig.exchange,
+          channel,
+          defaultProperties,
+          producerConfig.reportUnroutable,
+          blocker,
+          logger,
+          monitor
+        )
+      }
   }
 
-  private[rabbitmq] def declareExchange(name: String,
-                                        connectionInfo: RabbitMQConnectionInfo,
-                                        channel: ServerChannel,
-                                        autoDeclareExchange: AutoDeclareExchangeConfig): Unit = {
+  private[rabbitmq] def declareExchange(name: String, channel: ServerChannel, autoDeclareExchange: AutoDeclareExchangeConfig,
+  )(logger: ImplicitContextLogger[F]): F[Unit] = {
     import autoDeclareExchange._
 
     if (enabled) {
-      declareExchange(name, `type`, durable, autoDelete, arguments, channel, connectionInfo)
-    }
-    ()
+      declareExchange(name, `type`, durable, autoDelete, arguments, channel)(logger)
+    } else F.unit
+
   }
 
   private[rabbitmq] def declareExchange(name: String,
@@ -315,23 +306,29 @@ private[rabbitmq] object DefaultRabbitMQClientFactory extends LazyLogging {
                                         autoDelete: Boolean,
                                         arguments: DeclareArgumentsConfig,
                                         channel: ServerChannel,
-                                        connectionInfo: RabbitMQConnectionInfo): Unit = {
-    logger.info(s"Declaring exchange '$name' of type ${`type`} in virtual host '${connectionInfo.virtualHost}'")
-    val javaArguments = argsAsJava(arguments.value)
-    channel.exchangeDeclare(name, `type`.value, durable, autoDelete, javaArguments)
-    ()
+  )(logger: ImplicitContextLogger[F]): F[Unit] = {
+    logger.plainInfo(s"Declaring exchange '$name' of type ${`type`} in virtual host '${connectionInfo.virtualHost}'") >>
+      blocker.delay {
+        val javaArguments = argsAsJava(arguments.value)
+        channel.exchangeDeclare(name, `type`.value, durable, autoDelete, javaArguments)
+        ()
+      }
   }
 
-  private def bindQueue(connectionInfo: RabbitMQConnectionInfo,
-                        channel: ServerChannel,
-                        queueName: String,
-                        bindings: immutable.Seq[AutoBindQueueConfig]): Unit = {
-    bindings.foreach { bind =>
-      import bind._
-      val exchangeName = bind.exchange.name
+  private def bindQueue(
+      channel: ServerChannel,
+      queueName: String,
+      bindings: immutable.Seq[AutoBindQueueConfig],
+  )(logger: ImplicitContextLogger[F]): F[Unit] = {
+    bindings
+      .map { bind =>
+        import bind._
+        val exchangeName = bind.exchange.name
 
-      bindQueue(channel, queueName, exchangeName, routingKeys, bindArguments, connectionInfo)
-    }
+        bindQueue(channel, queueName, exchangeName, routingKeys, bindArguments)(logger)
+      }
+      .sequence
+      .as(())
   }
 
   private def bindQueue(channel: ServerChannel,
@@ -339,50 +336,41 @@ private[rabbitmq] object DefaultRabbitMQClientFactory extends LazyLogging {
                         exchangeName: String,
                         routingKeys: immutable.Seq[String],
                         bindArguments: BindArgumentsConfig,
-                        connectionInfo: RabbitMQConnectionInfo): Unit = {
+  )(logger: ImplicitContextLogger[F]): F[Unit] = {
     if (routingKeys.nonEmpty) {
-      routingKeys.foreach { routingKey =>
-        bindQueue(connectionInfo)(channel, queueName)(exchangeName, routingKey, bindArguments.value)
-      }
+      routingKeys
+        .map { bindQueue(channel, queueName)(exchangeName, _, bindArguments.value)(logger) }
+        .sequence
+        .as(())
     } else {
       // binding without routing key, possibly to fanout exchange
 
-      bindQueue(connectionInfo)(channel, queueName)(exchangeName, "", bindArguments.value)
+      bindQueue(channel, queueName)(exchangeName, "", bindArguments.value)(logger)
     }
   }
 
-  private[rabbitmq] def startConsumingQueue(channel: ServerChannel, queueName: String, consumerTag: String, consumer: Consumer): String = {
-    channel.setDefaultConsumer(consumer) // see `setDefaultConsumer` javadoc; this is possible because the channel is here exclusively for this consumer
-    val finalConsumerTag = channel.basicConsume(queueName, false, if (consumerTag == "Default") "" else consumerTag, consumer)
-    finalConsumerTag
-  }
-
-  private def bindQueueForRepublishing[F[_]](connectionInfo: RabbitMQConnectionInfo,
-                                             channel: ServerChannel,
-                                             queueName: String,
-                                             strategyConfig: RepublishStrategyConfig): Unit = {
+  private def bindQueueForRepublishing(
+      channel: ServerChannel,
+      queueName: String,
+      strategyConfig: RepublishStrategyConfig,
+  )(logger: ImplicitContextLogger[F]): F[Unit] = {
     import RepublishStrategyConfig._
 
     strategyConfig match {
-      case CustomExchange(exchangeName, _, exchangeAutoBind) =>
-        if (exchangeAutoBind) {
-          bindQueue(connectionInfo)(channel, queueName)(exchangeName, queueName, Map.empty)
-        }
+      case CustomExchange(exchangeName, _, exchangeAutoBind) if exchangeAutoBind =>
+        bindQueue(channel, queueName)(exchangeName, queueName, Map.empty)(logger)
 
-      case _ => () // no-op
+      case _ => F.unit // no-op
     }
   }
 
-  private def declareQueue(queueName: String,
-                           connectionInfo: RabbitMQConnectionInfo,
-                           channel: ServerChannel,
-                           declare: AutoDeclareQueueConfig): Unit = {
+  private def declareQueue(queueName: String, channel: ServerChannel, declare: AutoDeclareQueueConfig,
+  )(logger: ImplicitContextLogger[F]): F[Unit] = {
     import declare._
 
     if (enabled) {
-      logger.info(s"Declaring queue '$queueName' in virtual host '${connectionInfo.virtualHost}'")
-      declareQueue(channel, queueName, durable, exclusive, autoDelete, arguments)
-    }
+      declareQueue(channel, queueName, durable, exclusive, autoDelete, arguments)(logger)
+    } else F.unit
   }
 
   private[rabbitmq] def declareQueue(channel: ServerChannel,
@@ -390,44 +378,54 @@ private[rabbitmq] object DefaultRabbitMQClientFactory extends LazyLogging {
                                      durable: Boolean,
                                      exclusive: Boolean,
                                      autoDelete: Boolean,
-                                     arguments: DeclareArgumentsConfig): Queue.DeclareOk = {
-    channel.queueDeclare(queueName, durable, exclusive, autoDelete, arguments.value)
-  }
-
-  private[rabbitmq] def bindQueue(connectionInfo: RabbitMQConnectionInfo)(
-      channel: ServerChannel,
-      queueName: String)(exchangeName: String, routingKey: String, arguments: ArgumentsMap): AMQP.Queue.BindOk = {
-    logger.info(s"Binding exchange $exchangeName($routingKey) -> queue '$queueName' in virtual host '${connectionInfo.virtualHost}'")
-
-    channel.queueBind(queueName, exchangeName, routingKey, arguments)
-  }
-
-  private[rabbitmq] def bindExchange(connectionInfo: RabbitMQConnectionInfo)(
-      channel: ServerChannel,
-      sourceExchangeName: String,
-      destExchangeName: String,
-      arguments: ArgumentsMap)(routingKey: String): AMQP.Exchange.BindOk = {
-    logger.info(
-      s"Binding exchange $sourceExchangeName($routingKey) -> exchange '$destExchangeName' in virtual host '${connectionInfo.virtualHost}'"
-    )
-
-    channel.exchangeBind(destExchangeName, sourceExchangeName, routingKey, arguments)
-  }
-
-  private def declareExchangesFromBindings(connectionInfo: RabbitMQConnectionInfo,
-                                           channel: ServerChannel,
-                                           bindings: Seq[AutoBindQueueConfig]): Unit = {
-    bindings.foreach { bind =>
-      import bind.exchange._
-
-      // auto declare exchange; if configured
-      declare.foreach {
-        declareExchange(name, connectionInfo, channel, _)
+                                     arguments: DeclareArgumentsConfig,
+  )(logger: ImplicitContextLogger[F]): F[Unit] = {
+    logger.plainInfo(s"Declaring queue '$queueName' in virtual host '${connectionInfo.virtualHost}'") >>
+      blocker.delay {
+        channel.queueDeclare(queueName, durable, exclusive, autoDelete, arguments.value)
+        ()
       }
+  }
+
+  private[rabbitmq] def bindQueue(
+      channel: ServerChannel,
+      queueName: String)(exchangeName: String, routingKey: String, arguments: ArgumentsMap)(logger: ImplicitContextLogger[F]): F[Unit] = {
+    logger.plainInfo(s"Binding exchange $exchangeName($routingKey) -> queue '$queueName' in virtual host '${connectionInfo.virtualHost}'") >>
+      blocker.delay {
+        channel.queueBind(queueName, exchangeName, routingKey, arguments)
+        ()
+      }
+  }
+
+  private[rabbitmq] def bindExchange(channel: ServerChannel, sourceExchangeName: String, destExchangeName: String, arguments: ArgumentsMap)(
+      routingKey: String)(logger: ImplicitContextLogger[F]): F[Unit] = {
+    logger.plainInfo(
+      s"Binding exchange $sourceExchangeName($routingKey) -> exchange '$destExchangeName' in virtual host '${connectionInfo.virtualHost}'"
+    ) >> blocker.delay {
+      channel.exchangeBind(destExchangeName, sourceExchangeName, routingKey, arguments)
+      ()
     }
   }
 
-  private[rabbitmq] def convertDelivery[F[_]: ConcurrentEffect, A: DeliveryConverter](d: Delivery[Bytes]): Delivery[A] = {
+  private def declareExchangesFromBindings(channel: ServerChannel, bindings: Seq[AutoBindQueueConfig])(
+      logger: ImplicitContextLogger[F]): F[Unit] = {
+    bindings
+      .map { bind =>
+        import bind.exchange._
+
+        // auto declare exchange; if configured
+        declare
+          .map {
+            declareExchange(name, channel, _)(logger)
+          }
+          .getOrElse(F.unit)
+      }
+      .toList
+      .sequence
+      .as(())
+  }
+
+  private[rabbitmq] def convertDelivery[A: DeliveryConverter](d: Delivery[Bytes]): Delivery[A] = {
     d.flatMap { d =>
       implicitly[DeliveryConverter[A]].convert(d.body) match {
         case Right(a) => d.mapBody(_ => a)
@@ -436,70 +434,21 @@ private[rabbitmq] object DefaultRabbitMQClientFactory extends LazyLogging {
     }
   }
 
-  private def wrapReadAction[F[_]: ConcurrentEffect, A](
-      consumerConfig: ConsumerConfig,
-      userReadAction: DefaultDeliveryReadAction[F],
-      consumerMonitor: Monitor,
-      blocker: Blocker)(implicit timer: Timer[F], cs: ContextShift[F]): DefaultDeliveryReadAction[F] = {
-    import consumerConfig._
-
-    val timeoutsMeter = consumerMonitor.meter("timeouts")
-    val fatalFailuresMeter = consumerMonitor.meter("fatalFailures")
-
-    delivery: Delivery[Bytes] =>
-      try {
-        // we try to catch also long-lasting synchronous work on the thread
-        val action: F[DeliveryResult] = blocker.delay { userReadAction(delivery) }.flatten
-
-        val timedOutAction: F[DeliveryResult] = {
-          if (processTimeout != Duration.Zero) {
-            Concurrent
-              .timeout(action, processTimeout)
-              .recoverWith {
-                case e: TimeoutException => doTimeoutAction(name, delivery, timeoutAction, timeoutLogLevel, timeoutsMeter, e)
-              }
-          } else action
-        }
-
-        timedOutAction
-          .recoverWith {
-            case NonFatal(e) =>
-              fatalFailuresMeter.mark()
-              logger.warn(s"[$name] Error while executing callback for delivery with routing key ${delivery.routingKey}, applying DeliveryResult.${consumerConfig.failureAction}${System.lineSeparator()}$delivery", e)
-              ConcurrentEffect[F].pure(consumerConfig.failureAction)
-          }
-      } catch {
-        case NonFatal(e) =>
-          fatalFailuresMeter.mark()
-          logger.error(s"[$name] Error while executing callback for delivery with routing key ${delivery.routingKey}, applying DeliveryResult.${consumerConfig.failureAction}${System.lineSeparator()}$delivery", e)
-          ConcurrentEffect[F].pure(consumerConfig.failureAction)
-      }
-  }
-
-  private def doTimeoutAction[A, F[_]: ConcurrentEffect](consumerName: String,
-                                                         delivery: Delivery[Bytes],
-                                                         timeoutAction: DeliveryResult,
-                                                         timeoutLogLevel: Level,
-                                                         timeoutsMeter: Meter,
-                                                         e: TimeoutException): F[DeliveryResult] = Sync[F].delay {
-
-    timeoutsMeter.mark()
-
-    lazy val msg = s"[$consumerName] Task timed-out when processing delivery with routing key ${delivery.routingKey}, applying DeliveryResult.$timeoutAction${System.lineSeparator()}$delivery"
-
-    timeoutLogLevel match {
-      case Level.ERROR => logger.error(msg, e)
-      case Level.WARN => logger.warn(msg, e)
-      case Level.INFO => logger.info(msg, e)
-      case Level.DEBUG => logger.debug(msg, e)
-      case Level.TRACE => logger.trace(msg, e)
-    }
-
-    timeoutAction
-  }
-
   private implicit def argsAsJava(value: ArgumentsMap): java.util.Map[String, Object] = {
     value.view.mapValues(_.asInstanceOf[Object]).toMap.asJava
   }
 
+}
+
+object DefaultRabbitMQClientFactory {
+  private[rabbitmq] def startConsumingQueue[F[_]: Sync: ContextShift](channel: ServerChannel,
+                                                                      queueName: String,
+                                                                      consumerTag: String,
+                                                                      consumer: Consumer,
+                                                                      blocker: Blocker): F[Unit] = {
+    blocker.delay {
+      channel.setDefaultConsumer(consumer) // see `setDefaultConsumer` javadoc; this is possible because the channel is here exclusively for this consumer
+      channel.basicConsume(queueName, false, if (consumerTag == "Default") "" else consumerTag, consumer)
+    }
+  }
 }

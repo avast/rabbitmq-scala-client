@@ -2,4 +2,6 @@ archivesBaseName = "rabbitmq-client-extras_$scalaVersion"
 
 dependencies {
     api project(":core")
+
+    testImplementation project(":pureconfig")
 }

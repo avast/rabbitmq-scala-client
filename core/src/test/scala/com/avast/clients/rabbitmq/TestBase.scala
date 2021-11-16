@@ -1,7 +1,6 @@
 package com.avast.clients.rabbitmq
-import java.util.concurrent.Executors
-
-import cats.effect.{Blocker, IO, Resource}
+import cats.effect.{Blocker, ContextShift, IO, Resource, Timer}
+import cats.implicits.catsSyntaxFlatMapOps
 import com.typesafe.scalalogging.StrictLogging
 import monix.eval.Task
 import monix.execution.Scheduler
@@ -13,13 +12,15 @@ import org.scalatest.concurrent.Eventually
 import org.scalatestplus.junit.JUnitRunner
 import org.scalatestplus.mockito.MockitoSugar
 
-import scala.concurrent.TimeoutException
+import java.util.concurrent.Executors
 import scala.concurrent.duration._
-import scala.language.{higherKinds, implicitConversions}
+import scala.concurrent.{ExecutionContext, TimeoutException}
+import scala.language.implicitConversions
 
 @RunWith(classOf[JUnitRunner])
 class TestBase extends FunSuite with MockitoSugar with Eventually with StrictLogging {
   protected implicit def taskToOps[A](t: Task[A]): TaskOps[A] = new TaskOps[A](t)
+  protected implicit def IOToOps[A](t: IO[A]): IOOps[A] = new IOOps[A](t)
   protected implicit def resourceToIOOps[A](t: Resource[IO, A]): ResourceIOOps[A] = new ResourceIOOps[A](t)
   protected implicit def resourceToTaskOps[A](t: Resource[Task, A]): ResourceTaskOps[A] = new ResourceTaskOps[A](t)
 }
@@ -31,6 +32,14 @@ object TestBase {
 
 class TaskOps[A](t: Task[A]) {
   def await(duration: Duration): A = t.runSyncUnsafe(duration)
+  def await: A = await(10.seconds)
+}
+
+class IOOps[A](t: IO[A]) {
+  private implicit val cs: ContextShift[IO] = IO.contextShift(TestBase.testBlockingScheduler)
+  private implicit val timer: Timer[IO] = IO.timer(ExecutionContext.global)
+
+  def await(duration: FiniteDuration): A = (cs.shift >> t.timeout(duration)).unsafeRunSync()
   def await: A = await(10.seconds)
 }
 

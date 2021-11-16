@@ -7,9 +7,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        scala-version: [2.12.13, 2.13.5]
+        scala-version: [ 2.12.13, 2.13.8 ]
     steps:
-      - uses: actions/checkout@v2.4.0
+      - uses: actions/checkout@v3.0.0
         with:
           fetch-depth: 100
       - name: Fetch tags

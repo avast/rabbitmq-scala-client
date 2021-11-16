@@ -1,61 +1,70 @@
 package com.avast.clients.rabbitmq
 
 import cats.effect.{Blocker, ContextShift, Sync}
+import cats.implicits.{catsSyntaxApplicativeError, catsSyntaxFlatMapOps, toFlatMapOps}
+import com.avast.bytes.Bytes
+import com.avast.clients.rabbitmq.logging.ImplicitContextLogger
 import com.rabbitmq.client.AMQP.BasicProperties
-import com.typesafe.scalalogging.StrictLogging
 
-import scala.language.higherKinds
-import scala.util.control.NonFatal
+import scala.util.{Left, Right}
 
-trait RepublishStrategy {
-  def republish[F[_]: Sync: ContextShift](blocker: Blocker, channel: ServerChannel, consumerName: String)(originalQueueName: String,
-                                                                                                          messageId: String,
-                                                                                                          deliveryTag: Long,
-                                                                                                          properties: BasicProperties,
-                                                                                                          body: Array[Byte]): F[Unit]
+trait RepublishStrategy[F[_]] {
+  def republish(blocker: Blocker, channel: ServerChannel, consumerName: String)(originalQueueName: String,
+                                                                                properties: BasicProperties,
+                                                                                rawBody: Bytes)(implicit dctx: DeliveryContext): F[Unit]
 }
 
 object RepublishStrategy {
 
-  case class CustomExchange(exchangeName: String) extends RepublishStrategy with StrictLogging {
-    def republish[F[_]: Sync: ContextShift](blocker: Blocker, channel: ServerChannel, consumerName: String)(originalQueueName: String,
-                                                                                                            messageId: String,
-                                                                                                            deliveryTag: Long,
-                                                                                                            properties: BasicProperties,
-                                                                                                            body: Array[Byte]): F[Unit] = {
-      blocker.delay {
-        try {
-          logger.debug {
-            s"[$consumerName] Republishing delivery (ID $messageId, deliveryTag $deliveryTag) to end of queue '$originalQueueName' through '$exchangeName'($originalQueueName)"
+  case class CustomExchange[F[_]: Sync: ContextShift](exchangeName: String) extends RepublishStrategy[F] {
+    private val logger = ImplicitContextLogger.createLogger[F, CustomExchange[F]]
+
+    def republish(blocker: Blocker, channel: ServerChannel, consumerName: String)(
+        originalQueueName: String,
+        properties: BasicProperties,
+        rawBody: Bytes)(implicit dctx: DeliveryContext): F[Unit] = {
+      import dctx._
+
+      logger.debug {
+        s"[$consumerName] Republishing delivery ($messageId, $deliveryTag) to end of queue '$originalQueueName' through '$exchangeName'($originalQueueName)"
+      } >>
+        blocker
+          .delay {
+            if (!channel.isOpen) throw new IllegalStateException("Cannot republish delivery on closed channel")
+            channel.basicPublish(exchangeName, originalQueueName, properties, rawBody.toByteArray)
+            channel.basicAck(deliveryTag.value, false)
           }
-          if (!channel.isOpen) throw new IllegalStateException("Cannot republish delivery on closed channel")
-          channel.basicPublish(exchangeName, originalQueueName, properties, body)
-          channel.basicAck(deliveryTag, false)
-        } catch {
-          case NonFatal(e) => logger.warn(s"[$consumerName] Error while republishing the delivery", e)
-        }
-      }
+          .attempt
+          .flatMap {
+            case Right(()) => Sync[F].unit
+            case Left(e) => logger.warn(e)(s"[$consumerName] Error while republishing the delivery $messageId")
+          }
     }
   }
 
-  case object DefaultExchange extends RepublishStrategy with StrictLogging {
-    def republish[F[_]: Sync: ContextShift](blocker: Blocker, channel: ServerChannel, consumerName: String)(originalQueueName: String,
-                                                                                                            messageId: String,
-                                                                                                            deliveryTag: Long,
-                                                                                                            properties: BasicProperties,
-                                                                                                            body: Array[Byte]): F[Unit] = {
-      blocker.delay {
-        try {
-          logger.debug {
-            s"[$consumerName] Republishing delivery (ID $messageId, deliveryTag $deliveryTag) to end of queue '$originalQueueName' (through default exchange)"
+  case class DefaultExchange[F[_]: Sync: ContextShift]() extends RepublishStrategy[F] {
+    private val logger = ImplicitContextLogger.createLogger[F, DefaultExchange[F]]
+
+    def republish(blocker: Blocker, channel: ServerChannel, consumerName: String)(
+        originalQueueName: String,
+        properties: BasicProperties,
+        rawBody: Bytes)(implicit dctx: DeliveryContext): F[Unit] = {
+      import dctx._
+
+      logger.debug {
+        s"[$consumerName] Republishing delivery ($messageId, $deliveryTag) to end of queue '$originalQueueName' (through default exchange)"
+      } >>
+        blocker
+          .delay {
+            if (!channel.isOpen) throw new IllegalStateException("Cannot republish delivery on closed channel")
+            channel.basicPublish("", originalQueueName, properties, rawBody.toByteArray)
+            channel.basicAck(deliveryTag.value, false)
           }
-          if (!channel.isOpen) throw new IllegalStateException("Cannot republish delivery on closed channel")
-          channel.basicPublish("", originalQueueName, properties, body)
-          channel.basicAck(deliveryTag, false)
-        } catch {
-          case NonFatal(e) => logger.warn(s"[$consumerName] Error while republishing the delivery", e)
-        }
-      }
+          .attempt
+          .flatMap {
+            case Right(()) => Sync[F].unit
+            case Left(e) => logger.warn(e)(s"[$consumerName] Error while republishing the delivery $messageId")
+          }
     }
   }
 }

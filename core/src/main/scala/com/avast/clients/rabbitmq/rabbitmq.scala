@@ -1,7 +1,7 @@
 package com.avast.clients
 
-import cats.effect.Sync
 import cats.effect.concurrent.Ref
+import cats.effect.{Effect, Sync}
 import cats.implicits.catsSyntaxFlatMapOps
 import com.avast.bytes.Bytes
 import com.avast.clients.rabbitmq.DefaultRabbitMQConsumer.{FederationOriginalRoutingKeyHeaderName, RepublishOriginalRoutingKeyHeaderName}
@@ -10,7 +10,8 @@ import com.rabbitmq.client.{RecoverableChannel, RecoverableConnection}
 import fs2.RaiseThrowable
 
 import java.util.concurrent.Executors
-import scala.language.{higherKinds, implicitConversions}
+import scala.concurrent.Future
+import scala.language.implicitConversions
 
 package object rabbitmq {
   private[rabbitmq] type ServerConnection = RecoverableConnection
@@ -65,6 +66,17 @@ package object rabbitmq {
         }
       } yield ork.toString
     }
+  }
+
+  private[rabbitmq] implicit class RunningF[F[_], A](val f: F[A]) extends AnyVal {
+    def unsafeStartAndForget()(implicit F: Effect[F]): Unit = {
+      F.toIO(f).unsafeToFuture()
+      ()
+    }
+  }
+
+  private[rabbitmq] def startAndForget[F[_]: Effect](f: F[Unit]): Unit = {
+    f.unsafeStartAndForget
   }
 
 }
