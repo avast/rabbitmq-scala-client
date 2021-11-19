@@ -15,63 +15,37 @@ field as listener when constructing the RabbitMQ classes. Then you can call `get
 
 ## Poisoned message handler
 
-It's quite often use-case we want to republish failed message but want to avoid the message to be republishing forever. Wrap your handler (
-readAction)
-with [PoisonedMessageHandler](src/main/scala/com/avast/clients/rabbitmq/extras/PoisonedMessageHandler.scala) to solve this issue. It will
-count no. of attempts and won't let the message to be republished again and again (above the limit you set).  
+It's quite often use-case we want to republish failed message but want to avoid the message to be republishing forever. You can use
+the [PoisonedMessageHandler](src/main/scala/com/avast/clients/rabbitmq/extras/PoisonedMessageHandler.scala) to solve this issue. It will
+count no. of attempts and won't let the message be republished again and again (above the limit you set).  
 _Note: it works ONLY for `Republish` and not for `Retry`!_
 
-### Basic consumer
+The `PoisonedMessageHandler` (and its streaming counterpart `StreamingPoisonedMessageHandler`) are implemented as _[
+middlewares](../README.md#consumer-middlewares)_.
 
 ```scala
-val newReadAction = PoisonedMessageHandler[Task, MyDeliveryType](3)(myReadAction)
-```
-
-You can even pretend lower number of attempts when you want to rise the republishing count (for some special message):
-
-```scala
-Republish(Map(PoisonedMessageHandler.RepublishCountHeaderName -> 1.asInstanceOf[AnyRef]))
+val pmh = PoisonedMessageHandler[Task, MyDeliveryType](3)
+val pmhStreaming = StreamingPoisonedMessageHandler[Task, MyDeliveryType](3)
 ```
 
 Note you can provide your custom poisoned-message handle action:
 
 ```scala
-val newReadAction = PoisonedMessageHandler.withCustomPoisonedAction[Task, MyDeliveryType](3)(myReadAction) { delivery =>
-  logger.warn(s"Delivery $delivery is poisoned!")
-  Task.unit
+val pmh = PoisonedMessageHandler.withCustomPoisonedAction[Task, MyDeliveryType](3) { delivery =>
+  Task { logger.warn(s"Delivery $delivery is poisoned!") }.as(())
+}
+val pmhStreaming = StreamingPoisonedMessageHandler.withCustomPoisonedAction[Task, MyDeliveryType](3) { delivery =>
+  Task { logger.warn(s"Delivery $delivery is poisoned!") }.as(())
 }
 ```
 
 After the execution of the poisoned-message action (no matter whether default or custom one), the delivery is REJECTed.
 
-### Streaming consumer
+### Advanced hacking
 
-The usage and capabilities of poisoned message handler is very similar as for [basic consumer](#basic-consumer).
-
-You can either use it to wrap your "handle action":
-
-```scala
-val cons: RabbitMQStreamingConsumer[IO, String] = ???
-
-val poisonedHandler: fs2.Pipe[IO, StreamedDelivery[IO, String], StreamedResult] = StreamingPoisonedMessageHandler[IO, String](3) { delivery =>
-    // do your stuff
-    delivery.handle(DeliveryResult.Ack)
-}
-
-val stream: fs2.Stream[IO, StreamedResult] = cons.deliveryStream.through(poisonedHandler)
-```
-
-or have it as a transparent `Pipe`:
+Specific situations require a specific solution. You might use this trick then:  
+you can pretend lower number of attempts when you want to rise the republishing count (for some special message); just return:
 
 ```scala
-val cons: RabbitMQStreamingConsumer[IO, String] = ???
-
-val poisonedHandler: fs2.Pipe[IO, StreamedDelivery[IO, String], StreamedDelivery[IO, String]] = StreamingPoisonedMessageHandler.piped[IO, String](3)
-
-val deliveryStream: fs2.Stream[IO, StreamedDelivery[IO, String]] = cons.deliveryStream.through(poisonedHandler)
-
-val handleStream: fs2.Stream[IO, StreamedResult] = deliveryStream.evalMap { delivery =>
-  // do your stuff
-  delivery.handle(DeliveryResult.Ack)
-}
+Republish(Map(PoisonedMessageHandler.RepublishCountHeaderName -> 1.asInstanceOf[AnyRef]))
 ```

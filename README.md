@@ -23,7 +23,7 @@ Gradle:
 1. [api](api) - Contains only basic traits for consumer etc.
 1. [core](core) - Main module. The client, configurable by case classes.
 1. [pureconfig](pureconfig) - Module for configuration from [`Config`](https://github.com/lightbend/config).
-1. [extras](extras/README.md) - Module with some extra feature.
+1. [extras](extras/README.md) - Module with some extra features.
 1. [extras-circe](extras-circe/README.md) Allows to publish and consume JSON events,
    using [the circe library](https://circe.github.io/circe/).
 1. [extras-protobuf](extras-protobuf/README.md) Allows to publish and consume events defined
@@ -128,7 +128,7 @@ val rabbitMQProducer: Resource[Task, RabbitMQProducer[Task, Bytes]] = {
 }
 ```
 
-#### Streaming support
+### Streaming support
 
 It seems quite natural to process RabbitMQ queue with a streaming app.
 [`StreamingRabbitMQConsumer`](api/src/main/scala/com/avast/clients/rabbitmq/api/RabbitMQStreamingConsumer.scala) provides you an
@@ -170,7 +170,7 @@ val deliveryStream: Resource[Task, fs2.Stream[Task, Unit]] = {
 }
 ```
 
-##### Resilient stream
+#### Resilient stream
 
 While you should never ever let the stream fail (handle all your possible errors;
 see [Error handling](https://fs2.io/guide.html#error-handling)
@@ -212,7 +212,7 @@ streamingConsumer.deliveryStream // get stream from client
 Please refer to the [official guide](https://fs2.io/guide.html#overview) for understanding more deeply how the recovery of `fs2.Stream`
 works.
 
-#### Providing converters for producer/consumer
+### Providing converters for producer/consumer
 
 Both the producer and consumer require type argument when creating from _connection_:
 
@@ -225,7 +225,33 @@ There are multiple options where to get the _converter_ (it's the same case for 
 1. Modules [extras-circe](extras-circe/README.md) and [extras-scalapb](extras-scalapb/README.md) provide support for JSON and GPB conversion.
 1. Use `identity` converter by specifying `Bytes` type argument. No further action needed in that case.
 
-#### Caveats
+### Consumer middlewares
+
+The client also uses the well-known concept of _middlewares_ for both ("normal" and streaming) consumers. It basically means you can somehow
+adjust the `Delivery` before handing it to the processing, and, analogically, adjust the `DeliveryResult` before the client receives it.  
+The middlewares are part of the consumer, and they are passed during the configuration (creation) phase:
+
+```scala
+import com.avast.clients.rabbitmq.api.DeliveryResult._
+
+val connection: RabbitMQConnection[Task] = ???
+
+val myMiddleware: RabbitMQConsumerMiddleware[Task, Bytes] = new RabbitMQConsumerMiddleware[Task, Bytes] {
+   override def adjustDelivery(d: Delivery[Bytes]): Task[Delivery[Bytes]] = Task.now(d)
+   override def adjustResult(rawDelivery: Delivery[Bytes], r: Task[DeliveryResult]): Task[DeliveryResult] = {
+      r.map {
+         case Retry => Republish() // turn all retries into republish!
+         case r => r
+      }
+   }
+}
+
+connection.newConsumer[Bytes](???, ???, List(myMiddleware))
+```
+
+You can either crate your own middleware like in this example above or use some prepared in the [extras](extras) module.
+
+### Caveats
 
 1. `null` instead of converter instance  
    It may happen you run in this problem:
