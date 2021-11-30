@@ -7,9 +7,9 @@
 4. There is a new concept of _[middlewares](../README.md#consumer-middlewares)_.
 5. [`PoisonedMessageHandler`](extras#poisoned-message-handler) (as well as its streaming counterpart) is not wrapping your action anymore.
    It's a _middleware_ instead.
-6. Client is now aware of CorrelationId, taking it from both AMQP properties and `X-Correlation-Id` header, propagating to all log messages
-   along the MessageId.
-7. Logging in general was somewhat _hardened_.
+6. Client is now aware of CorrelationId, taking it from both AMQP properties and `X-Correlation-Id` header (where the property has precedence
+   and the header is just a fallback), propagating to all log messages along the MessageId.
+7. Logging in general was somewhat _tuned_.
 
 ---
 

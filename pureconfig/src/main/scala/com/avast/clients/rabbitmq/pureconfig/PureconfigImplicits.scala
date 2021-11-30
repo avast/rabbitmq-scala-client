@@ -93,6 +93,7 @@ class PureconfigImplicits(implicit namingConvention: NamingConvention = CamelCas
   implicit val logLevelReader: ConfigReader[Level] = ConfigReader.stringConfigReader.map(Level.valueOf)
   implicit val recoveryDelayHandlerReader: ConfigReader[RecoveryDelayHandler] = RecoveryDelayHandlerReader
   implicit val republishStrategyConfigReader: ConfigReader[RepublishStrategyConfig] = RepublishStrategyConfigReader
+  implicit val poisonedMessageHandlingConfigReader: ConfigReader[PoisonedMessageHandlingConfig] = PoisonedMessageHandlingConfigReader
   implicit val exchangeTypeReader: ConfigReader[ExchangeType] = ConfigReader.fromNonEmptyStringOpt(ExchangeType.apply)
   implicit val addressResolverTypeReader: ConfigReader[AddressResolverType] = ConfigReader.fromNonEmptyStringTry {
     case "Default" => Success(AddressResolverType.Default)
@@ -202,6 +203,10 @@ class PureconfigImplicits(implicit namingConvention: NamingConvention = CamelCas
         }
       }
     }
+  }
+
+  private object PoisonedMessageHandlingConfigReader extends ConfigReader[PoisonedMessageHandlingConfig] {
+    override def from(cur: ConfigCursor): Result[PoisonedMessageHandlingConfig] = ???
   }
 }
 

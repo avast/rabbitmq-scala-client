@@ -32,7 +32,8 @@ final case class ConsumerConfig(name: String,
                                 timeoutLogLevel: Level = Level.WARN,
                                 prefetchCount: Int = 100,
                                 declare: Option[AutoDeclareQueueConfig] = None,
-                                consumerTag: String = "Default")
+                                consumerTag: String = "Default",
+                                poisonedMessageHandling: Option[PoisonedMessageHandlingConfig] = None)
 
 final case class StreamingConsumerConfig(name: String,
                                          queueName: String,
@@ -43,13 +44,14 @@ final case class StreamingConsumerConfig(name: String,
                                          prefetchCount: Int = 100,
                                          queueBufferSize: Int = 100,
                                          declare: Option[AutoDeclareQueueConfig] = None,
-                                         consumerTag: String = "Default")
+                                         consumerTag: String = "Default",
+                                         poisonedMessageHandling: Option[PoisonedMessageHandlingConfig] = None)
 
 final case class PullConsumerConfig(name: String,
                                     queueName: String,
                                     bindings: immutable.Seq[AutoBindQueueConfig],
-                                    failureAction: DeliveryResult = DeliveryResult.Republish(),
-                                    declare: Option[AutoDeclareQueueConfig] = None)
+                                    declare: Option[AutoDeclareQueueConfig] = None,
+                                    poisonedMessageHandling: Option[PoisonedMessageHandlingConfig] = None)
 
 final case class AutoDeclareQueueConfig(enabled: Boolean = false,
                                         durable: Boolean = true,
@@ -105,6 +107,10 @@ final case class BindExchangeConfig(sourceExchangeName: String,
                                     destExchangeName: String,
                                     routingKeys: immutable.Seq[String],
                                     arguments: BindArgumentsConfig = BindArgumentsConfig())
+
+sealed trait PoisonedMessageHandlingConfig
+
+final case class LoggingPoisonedMessageHandling(maxAttempts: Int) extends PoisonedMessageHandlingConfig
 
 sealed trait AddressResolverType
 object AddressResolverType {

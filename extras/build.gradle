@@ -1,11 +1,5 @@
 archivesBaseName = "rabbitmq-client-extras_$scalaVersion"
 
-dockerCompose.isRequiredBy(test)
-
-test.doFirst {
-    dockerCompose.exposeAsSystemProperties(test)
-}
-
 dependencies {
     api project(":core")
 

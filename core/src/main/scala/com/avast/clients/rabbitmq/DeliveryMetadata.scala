@@ -1,8 +1,11 @@
 package com.avast.clients.rabbitmq
 
 import com.avast.clients.rabbitmq.DefaultRabbitMQConsumer.CorrelationIdHeaderName
+import com.avast.clients.rabbitmq.api.Delivery
 import com.rabbitmq.client.AMQP.BasicProperties
 import com.rabbitmq.client.Envelope
+
+private[rabbitmq] case class DeliveryWithMetadata[A](delivery: Delivery[A], metadata: DeliveryMetadata)
 
 private[rabbitmq] case class DeliveryMetadata(messageId: MessageId,
                                               correlationId: CorrelationId,

@@ -35,7 +35,6 @@ class StreamingConsumerLiveTest extends TestBase with ScalaFutures {
     val queueName2: String = randomString(4) + "_QU2"
     val exchange1: String = randomString(4) + "_EX1"
     val exchange2: String = randomString(4) + "_EX2"
-    val exchange3: String = randomString(4) + "_EX3"
     val exchange4: String = randomString(4) + "_EX4"
     val exchange5: String = randomString(4) + "_EX5"
 
@@ -182,7 +181,7 @@ class StreamingConsumerLiveTest extends TestBase with ScalaFutures {
     }
   }
 
-  test("streaming consumer stream can be manually restarted") {
+  test("streaming consumer stream doesn't fail with failed result") {
     for (_ <- 1 to 5) {
       val c = createConfig()
       import c._
@@ -212,9 +211,59 @@ class StreamingConsumerLiveTest extends TestBase with ScalaFutures {
                     }
                 }
               }
-              .handleErrorWith { e =>
-                logger.info(s"Stream has failed: ${e.getMessage}")
-                stream
+
+          rabbitConnection.newProducer[Bytes]("testing", Monitor.noOp()).withResource { sender =>
+            for (_ <- 1 to count) {
+              sender.send("test", Bytes.copyFromUtf8(Random.nextString(10))).await
+            }
+
+            // it takes some time before the stats appear... :-|
+            eventually(timeout(Span(50, Seconds)), interval(Span(0.5, Seconds))) {
+              assertResult(count)(testHelper.queue.getPublishedCount(queueName1))
+            }
+
+            sched.execute(() => stream.compile.drain.runSyncUnsafe()) // run the stream
+
+            eventually(timeout(Span(5, Minutes)), interval(Span(1, Seconds))) {
+              println("D: " + d.get())
+              assert(d.get() > count) // can't say exact number, number of redeliveries is unpredictable
+              assertResult(0)(testHelper.queue.getMessagesCount(queueName1))
+            }
+          }
+        }
+      }
+    }
+  }
+
+  test("streaming consumer stream doesn't fail with thrown exception") {
+    for (_ <- 1 to 5) {
+      val c = createConfig()
+      import c._
+
+      RabbitMQConnection.fromConfig[Task](config, ex).withResource { rabbitConnection =>
+        val count = Random.nextInt(50000) + 50000 // random 50k - 100k messages
+
+        val nth = 150
+
+        logger.info(s"Sending $count messages")
+
+        val d = new AtomicInteger(0)
+
+        rabbitConnection.newStreamingConsumer[Bytes]("testingStreaming", Monitor.noOp()).withResource { cons =>
+          def stream: fs2.Stream[Task, Unit] =
+            cons.deliveryStream
+              .evalMap {
+                _.handleWith { _ =>
+                  Task
+                    .delay(d.incrementAndGet())
+                    .flatMap { n =>
+                      if (n % nth != 0) Task.now(Ack)
+                      else {
+                        throw new RuntimeException(s"My failure $n")
+                      }
+                    // ^^ cause failure for every nth message
+                    }
+                }
               }
 
           rabbitConnection.newProducer[Bytes]("testing", Monitor.noOp()).withResource { sender =>

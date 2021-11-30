@@ -2,56 +2,48 @@ package com.avast.clients.rabbitmq
 
 import cats.effect._
 import cats.implicits._
-import com.avast.bytes.Bytes
+import com.avast.clients.rabbitmq.DefaultRabbitMQClientFactory.watchForTimeoutIfConfigured
 import com.avast.clients.rabbitmq.api._
 import com.avast.metrics.scalaapi.Monitor
-import com.rabbitmq.client.AMQP.BasicProperties
-import com.rabbitmq.client.{Delivery => _, _}
+import com.rabbitmq.client.{Delivery => _}
 import com.typesafe.scalalogging.StrictLogging
+import org.slf4j.event.Level
 
-class DefaultRabbitMQConsumer[F[_]: Effect](override val name: String,
-                                            override protected val channel: ServerChannel,
-                                            override protected val queueName: String,
-                                            override protected val connectionInfo: RabbitMQConnectionInfo,
-                                            override protected val monitor: Monitor,
-                                            failureAction: DeliveryResult,
-                                            consumerListener: ConsumerListener,
-                                            override protected val republishStrategy: RepublishStrategy,
-                                            override protected val blocker: Blocker)(readAction: DeliveryReadActionWithMeta[F, Bytes])(
-    implicit override protected val cs: ContextShift[F])
+import scala.concurrent.duration.FiniteDuration
+
+class DefaultRabbitMQConsumer[F[_]: ConcurrentEffect: Timer, A: DeliveryConverter](
+    override val name: String,
+    override protected val channel: ServerChannel,
+    override protected val queueName: String,
+    override protected val connectionInfo: RabbitMQConnectionInfo,
+    override protected val republishStrategy: RepublishStrategy,
+    override protected val poisonedMessageHandler: PoisonedMessageHandler[F, A],
+    processTimeout: FiniteDuration,
+    timeoutAction: DeliveryResult,
+    timeoutLogLevel: Level,
+    failureAction: DeliveryResult,
+    consumerListener: ConsumerListener,
+    override protected val monitor: Monitor,
+    override protected val blocker: Blocker)(userAction: DeliveryReadAction[F, A])(implicit override protected val cs: ContextShift[F])
     extends ConsumerWithCallbackBase(channel, failureAction, consumerListener)
     with RabbitMQConsumer[F]
-    with ConsumerBase[F]
+    with ConsumerBase[F, A]
     with StrictLogging {
 
-  override def handleDelivery(consumerTag: String, envelope: Envelope, properties: BasicProperties, body: Array[Byte]): Unit = {
-    processingCount.incrementAndGet()
+  override protected val deliveryConverter: DeliveryConverter[A] = implicitly
+  override protected implicit val F: Sync[F] = Sync[F]
 
-    val metadata = DeliveryMetadata.from(envelope, properties)
+  private val timeoutDelivery = watchForTimeoutIfConfigured[F, A](name, logger, monitor, processTimeout, timeoutAction, timeoutLogLevel) _
+
+  override protected def handleNewDelivery(d: DeliveryWithMetadata[A]): F[DeliveryResult] = {
+    import d._
     import metadata._
 
-    val action =
-      handleDelivery(messageId, correlationId, deliveryTag, fixedProperties, routingKey, body)(
-        readAction(_, messageId, correlationId, logger))
-        .flatTap(_ =>
-          F.delay {
-            processingCount.decrementAndGet()
-            logger.debug(s"Delivery processed successfully $messageId/$correlationId ($deliveryTag)")
-        })
-        .recoverWith {
-          case e =>
-            F.delay {
-              processingCount.decrementAndGet()
-              processingFailedMeter.mark()
-              logger.debug(s"Could not process delivery $messageId/$correlationId ($deliveryTag)", e)
-            } >>
-              F.raiseError(e)
-        }
+    val resultAction = blocker.delay { userAction(delivery) }.flatten // we try to catch also long-lasting synchronous work on the thread
 
-    Effect[F].toIO(action).unsafeToFuture() // actually start the processing
-
-    ()
+    timeoutDelivery(delivery, messageId, correlationId, resultAction)(F.unit)
   }
+
 }
 
 object DefaultRabbitMQConsumer {

@@ -2,26 +2,35 @@ package com.avast.clients.rabbitmq
 
 import cats.effect.{Blocker, ContextShift, Sync}
 import cats.syntax.flatMap._
+import com.avast.bytes.Bytes
 import com.avast.clients.rabbitmq.DefaultRabbitMQConsumer._
-import com.avast.clients.rabbitmq.api.DeliveryResult
+import com.avast.clients.rabbitmq.JavaConverters.AmqpPropertiesConversions
+import com.avast.clients.rabbitmq.api._
 import com.avast.metrics.scalaapi.Monitor
 import com.rabbitmq.client.AMQP.BasicProperties
+import com.rabbitmq.client.{AMQP, Envelope}
 import com.typesafe.scalalogging.StrictLogging
 
 import scala.jdk.CollectionConverters._
-
+import scala.util._
 import scala.util.control.NonFatal
 
-private[rabbitmq] trait ConsumerBase[F[_]] extends StrictLogging {
+private[rabbitmq] trait ConsumerBase[F[_], A] extends StrictLogging {
+  /*
+   * This is ugly. However, it needs to be here because this is trait. And it has to be trait, because it's later mixed with `DefaultConsumer`
+   * class from Java client...
+   *  */
   protected def name: String
   protected def queueName: String
   protected def channel: ServerChannel
   protected def blocker: Blocker
   protected def republishStrategy: RepublishStrategy
+  protected def poisonedMessageHandler: PoisonedMessageHandler[F, A]
   protected implicit def F: Sync[F] // scalastyle:ignore
   protected implicit def cs: ContextShift[F]
   protected def connectionInfo: RabbitMQConnectionInfo
   protected def monitor: Monitor
+  protected def deliveryConverter: DeliveryConverter[A]
 
   protected val resultsMonitor: Monitor = monitor.named("results")
   private val resultAckMeter = resultsMonitor.meter("ack")
@@ -29,22 +38,49 @@ private[rabbitmq] trait ConsumerBase[F[_]] extends StrictLogging {
   private val resultRetryMeter = resultsMonitor.meter("retry")
   private val resultRepublishMeter = resultsMonitor.meter("republish")
 
+  protected def parseDelivery(envelope: Envelope, body: Array[Byte], properties: AMQP.BasicProperties): F[DeliveryWithMetadata[A]] = {
+    blocker.delay {
+      val metadata = DeliveryMetadata.from(envelope, properties)
+      val bytes = Bytes.copyFrom(body)
+
+      val delivery = Try(deliveryConverter.convert(Bytes.copyFrom(body))) match {
+        case Success(Right(a)) =>
+          val delivery = Delivery(a, metadata.fixedProperties.asScala, metadata.routingKey.value)
+          logger.trace(s"[$name] Received delivery: ${delivery.copy(body = bytes)}")
+          delivery
+
+        case Success(Left(ce)) =>
+          val delivery = Delivery.MalformedContent(bytes, metadata.fixedProperties.asScala, metadata.routingKey.value, ce)
+          logger.trace(s"[$name] Received delivery but could not convert it: $delivery")
+          delivery
+
+        case Failure(ce) =>
+          val ex = ConversionException("Unxected failure", ce)
+          val delivery = Delivery.MalformedContent(bytes, metadata.fixedProperties.asScala, metadata.routingKey.value, ex)
+          logger.trace(s"[$name] Received delivery but could not convert it as the convertor has failed: $delivery")
+          delivery
+      }
+
+      DeliveryWithMetadata(delivery, metadata)
+    }
+  }
+
   protected def handleResult(messageId: MessageId,
                              correlationId: CorrelationId,
                              deliveryTag: DeliveryTag,
                              properties: BasicProperties,
                              routingKey: RoutingKey,
-                             body: Array[Byte])(res: DeliveryResult): F[Unit] = {
+                             body: Array[Byte],
+                             delivery: Delivery[A])(res: DeliveryResult): F[Unit] = {
     import DeliveryResult._
 
-    res match {
+    poisonedMessageHandler.interceptResult(delivery, res).flatMap {
       case Ack => ack(messageId, correlationId, deliveryTag)
       case Reject => reject(messageId, correlationId, deliveryTag)
       case Retry => retry(messageId, correlationId, deliveryTag)
-      case Republish(newHeaders) =>
+      case Republish(_, newHeaders) =>
         republish(messageId, correlationId, deliveryTag, createPropertiesForRepublish(newHeaders, properties, routingKey), body)
     }
-
   }
 
   protected def ack(messageId: MessageId, correlationId: CorrelationId, deliveryTag: DeliveryTag): F[Unit] =

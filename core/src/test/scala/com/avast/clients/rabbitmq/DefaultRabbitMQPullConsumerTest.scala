@@ -1,6 +1,5 @@
 package com.avast.clients.rabbitmq
 
-import java.util.UUID
 import com.avast.bytes.Bytes
 import com.avast.clients.rabbitmq.DefaultRabbitMQConsumer.CorrelationIdHeaderName
 import com.avast.clients.rabbitmq.api._
@@ -14,8 +13,9 @@ import org.mockito.Mockito._
 import org.mockito.{ArgumentCaptor, Matchers}
 import org.scalatest.time.{Seconds, Span}
 
-import scala.jdk.CollectionConverters._
+import java.util.UUID
 import scala.collection.immutable
+import scala.jdk.CollectionConverters._
 import scala.util.Random
 
 class DefaultRabbitMQPullConsumerTest extends TestBase {
@@ -41,16 +41,7 @@ class DefaultRabbitMQPullConsumerTest extends TestBase {
       new GetResponse(envelope, properties, body, 1)
     )
 
-    val consumer = new DefaultRabbitMQPullConsumer[Task, Bytes](
-      "test",
-      channel,
-      "queueName",
-      connectionInfo,
-      DeliveryResult.Reject,
-      Monitor.noOp(),
-      RepublishStrategy.DefaultExchange,
-      TestBase.testBlocker
-    )
+    val consumer = newConsumer[Bytes](channel)
 
     val PullResult.Ok(dwh) = consumer.pull().await
 
@@ -85,16 +76,7 @@ class DefaultRabbitMQPullConsumerTest extends TestBase {
       new GetResponse(envelope, properties, body, 1)
     )
 
-    val consumer = new DefaultRabbitMQPullConsumer[Task, Bytes](
-      "test",
-      channel,
-      "queueName",
-      connectionInfo,
-      DeliveryResult.Reject,
-      Monitor.noOp(),
-      RepublishStrategy.DefaultExchange,
-      TestBase.testBlocker
-    )
+    val consumer = newConsumer[Bytes](channel)
 
     val PullResult.Ok(dwh) = consumer.pull().await
 
@@ -129,16 +111,7 @@ class DefaultRabbitMQPullConsumerTest extends TestBase {
       new GetResponse(envelope, properties, body, 1)
     )
 
-    val consumer = new DefaultRabbitMQPullConsumer[Task, Bytes](
-      "test",
-      channel,
-      "queueName",
-      connectionInfo,
-      DeliveryResult.Ack,
-      Monitor.noOp(),
-      RepublishStrategy.DefaultExchange,
-      TestBase.testBlocker
-    )
+    val consumer = newConsumer[Bytes](channel)
 
     val PullResult.Ok(dwh) = consumer.pull().await
 
@@ -174,16 +147,7 @@ class DefaultRabbitMQPullConsumerTest extends TestBase {
       new GetResponse(envelope, properties, body, 1)
     )
 
-    val consumer = new DefaultRabbitMQPullConsumer[Task, Bytes](
-      "test",
-      channel,
-      "queueName",
-      connectionInfo,
-      DeliveryResult.Reject,
-      Monitor.noOp(),
-      RepublishStrategy.DefaultExchange,
-      TestBase.testBlocker
-    )
+    val consumer = newConsumer[Bytes](channel)
 
     val PullResult.Ok(dwh) = consumer.pull().await
 
@@ -201,7 +165,7 @@ class DefaultRabbitMQPullConsumerTest extends TestBase {
     }
   }
 
-  test("should NACK because of unexpected failure") {
+  test("should propagate conversion failure") {
     val messageId = UUID.randomUUID().toString
 
     val deliveryTag = Random.nextInt(1000)
@@ -226,73 +190,15 @@ class DefaultRabbitMQPullConsumerTest extends TestBase {
       throw new IllegalArgumentException
     }
 
-    val consumer = new DefaultRabbitMQPullConsumer[Task, Abc](
-      "test",
-      channel,
-      "queueName",
-      connectionInfo,
-      DeliveryResult.Retry,
-      Monitor.noOp(),
-      RepublishStrategy.DefaultExchange,
-      TestBase.testBlocker
-    )
+    val consumer = newConsumer[Abc](channel)
 
-    assertThrows[IllegalArgumentException] {
-      consumer.pull().await
-    }
-
-    eventually(timeout(Span(1, Seconds)), interval(Span(0.1, Seconds))) {
-      verify(channel, times(0)).basicAck(deliveryTag, false)
-      verify(channel, times(1)).basicReject(deliveryTag, true)
-    }
-  }
-
-  test("should NACK because of conversion failure") {
-    val messageId = UUID.randomUUID().toString
-
-    val deliveryTag = Random.nextInt(1000)
-
-    val envelope = mock[Envelope]
-    when(envelope.getDeliveryTag).thenReturn(deliveryTag)
-
-    val properties = new BasicProperties.Builder().messageId(messageId).build()
-
-    val channel = mock[AutorecoveringChannel]
-    when(channel.isOpen).thenReturn(true)
-
-    val body = Random.nextString(5).getBytes
-
-    when(channel.basicGet(Matchers.eq("queueName"), Matchers.eq(false))).thenReturn(
-      new GetResponse(envelope, properties, body, 1)
-    )
-
-    case class Abc(i: Int)
-
-    implicit val c: DeliveryConverter[Abc] = (_: Bytes) => {
-      Left(ConversionException(messageId))
-    }
-
-    val consumer = new DefaultRabbitMQPullConsumer[Task, Abc](
-      "test",
-      channel,
-      "queueName",
-      connectionInfo,
-      DeliveryResult.Ack,
-      Monitor.noOp(),
-      RepublishStrategy.DefaultExchange,
-      TestBase.testBlocker
-    )
-
-    val PullResult.Ok(dwh) = consumer.pull().await
-    val Delivery.MalformedContent(_, _, _, ce) = dwh.delivery
-
-    assertResult(messageId)(ce.getMessage)
-
-    dwh.handle(DeliveryResult.Retry).await
-
-    eventually(timeout(Span(1, Seconds)), interval(Span(0.1, Seconds))) {
-      verify(channel, times(0)).basicAck(deliveryTag, false)
-      verify(channel, times(1)).basicReject(deliveryTag, true)
+    consumer.pull().await match {
+      case PullResult.Ok(dwh) =>
+        dwh.delivery match {
+          case _: Delivery.Ok[Abc] => fail("the conversion should have failed")
+          case _: Delivery.MalformedContent => // ok
+        }
+      case PullResult.EmptyQueue => fail("empty response")
     }
   }
 
@@ -316,16 +222,7 @@ class DefaultRabbitMQPullConsumerTest extends TestBase {
       new GetResponse(envelope, properties, body, 1)
     )
 
-    val consumer = new DefaultRabbitMQPullConsumer[Task, Bytes](
-      "test",
-      channel,
-      "queueName",
-      connectionInfo,
-      DeliveryResult.Reject,
-      Monitor.noOp(),
-      RepublishStrategy.DefaultExchange,
-      TestBase.testBlocker
-    )
+    val consumer = newConsumer[Bytes](channel)
 
     val PullResult.Ok(dwh) = consumer.pull().await
 
@@ -356,20 +253,26 @@ class DefaultRabbitMQPullConsumerTest extends TestBase {
       new GetResponse(envelope, properties, body, 1)
     )
 
-    val consumer = new DefaultRabbitMQPullConsumer[Task, Bytes](
-      "test",
-      channel,
-      "queueName",
-      connectionInfo,
-      DeliveryResult.Reject,
-      Monitor.noOp(),
-      RepublishStrategy.DefaultExchange,
-      TestBase.testBlocker
-    )
+    val consumer = newConsumer[Bytes](channel)
 
     val PullResult.Ok(dwh) = consumer.pull().await
 
     assertResult(Some(messageId))(dwh.delivery.properties.messageId)
     assertResult(Some(correlationId))(dwh.delivery.properties.correlationId)
   }
+
+  private def newConsumer[A: DeliveryConverter](channel: ServerChannel): DefaultRabbitMQPullConsumer[Task, A] = {
+    new DefaultRabbitMQPullConsumer[Task, A](
+      "test",
+      channel,
+      "queueName",
+      connectionInfo,
+      RepublishStrategy.DefaultExchange,
+      new PMH,
+      Monitor.noOp(),
+      TestBase.testBlocker
+    )
+  }
+
+  class PMH[A] extends LoggingPoisonedMessageHandler[Task, A](3)
 }

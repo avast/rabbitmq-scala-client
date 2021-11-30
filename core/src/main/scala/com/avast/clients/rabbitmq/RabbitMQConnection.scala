@@ -1,25 +1,22 @@
 package com.avast.clients.rabbitmq
 
-import java.io.IOException
-import java.util
-import java.util.concurrent.ExecutorService
-
 import cats.effect._
 import cats.syntax.functor._
 import com.avast.clients.rabbitmq.api._
 import com.avast.metrics.scalaapi.Monitor
 import com.rabbitmq.client._
 import com.typesafe.scalalogging.StrictLogging
+
+import java.io.IOException
+import java.util
+import java.util.concurrent.ExecutorService
 import javax.net.ssl.SSLContext
-
 import scala.collection.immutable
-
 import scala.util.control.NonFatal
 
 trait RabbitMQConnection[F[_]] {
 
-  /** Creates new channel inside this connection. Usable for some applications-specific actions which are not supported by the library.<br>
-    * The caller is responsible for closing the created channel - it's closed automatically only when the whole connection is closed.
+  /** Creates new channel inside this connection. Usable for some applications-specific actions which are not supported by the library.
     */
   def newChannel(): Resource[F, ServerChannel]
 
@@ -29,10 +26,8 @@ trait RabbitMQConnection[F[_]] {
     * @param monitor    Monitor for metrics.
     * @param readAction Action executed for each delivered message. You should never return a failed F.
     */
-  def newConsumer[A: DeliveryConverter](
-      consumerConfig: ConsumerConfig,
-      monitor: Monitor,
-      middlewares: List[RabbitMQConsumerMiddleware[F, A]] = Nil)(readAction: DeliveryReadAction[F, A]): Resource[F, RabbitMQConsumer[F]]
+  def newConsumer[A: DeliveryConverter](consumerConfig: ConsumerConfig, monitor: Monitor)(
+      readAction: DeliveryReadAction[F, A]): Resource[F, RabbitMQConsumer[F]]
 
   /** Creates new instance of producer, using the passed configuration.
     *
@@ -54,10 +49,8 @@ trait RabbitMQConnection[F[_]] {
     * @param consumerConfig Configuration of the consumer.
     * @param monitor Monitor for metrics.
     */
-  def newStreamingConsumer[A: DeliveryConverter](
-      consumerConfig: StreamingConsumerConfig,
-      monitor: Monitor,
-      middlewares: List[RabbitMQStreamingConsumerMiddleware[F, A]] = Nil): Resource[F, RabbitMQStreamingConsumer[F, A]]
+  def newStreamingConsumer[A: DeliveryConverter](consumerConfig: StreamingConsumerConfig,
+                                                 monitor: Monitor): Resource[F, RabbitMQStreamingConsumer[F, A]]
 
   def declareExchange(config: DeclareExchangeConfig): F[Unit]
   def declareQueue(config: DeclareQueueConfig): F[Unit]
@@ -245,7 +238,7 @@ object RabbitMQConnection extends StrictLogging {
         logger.debug(s"Consumer exception on channel $channel, consumer with tag '$consumerTag', method '$methodName'")
 
         val consumerName = consumer match {
-          case c: DefaultRabbitMQConsumer[_] => c.name
+          case c: DefaultRabbitMQConsumer[_, _] => c.name
           case _ => "unknown"
         }
 

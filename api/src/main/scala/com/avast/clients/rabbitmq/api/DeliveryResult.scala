@@ -14,6 +14,6 @@ object DeliveryResult {
   case object Retry extends DeliveryResult
 
   /** The message cannot be processed but is worth - it will be requeued to the bottom of the queue. */
-  case class Republish(newHeaders: Map[String, AnyRef] = Map.empty) extends DeliveryResult
+  case class Republish(isPoisoned: Boolean = true, newHeaders: Map[String, AnyRef] = Map.empty) extends DeliveryResult
 
 }

@@ -47,21 +47,19 @@ class DefaultRabbitMQConnection[F[_]] private (connection: ServerConnection,
   override def newStreamingConsumer[A: DeliveryConverter](
       consumerConfig: StreamingConsumerConfig,
       monitor: Monitor,
-      middlewares: List[RabbitMQStreamingConsumerMiddleware[F, A]]): Resource[F, RabbitMQStreamingConsumer[F, A]] = {
+  ): Resource[F, RabbitMQStreamingConsumer[F, A]] = {
     createChannel().flatMap { channel =>
       DefaultRabbitMQClientFactory.StreamingConsumer
-        .create[F, A](consumerConfig, channel, createChannelF, info, republishStrategy, blocker, monitor, consumerListener, middlewares)
+        .create[F, A](consumerConfig, channel, createChannelF, info, republishStrategy, blocker, monitor, consumerListener)
         .map(identity[RabbitMQStreamingConsumer[F, A]]) // type inference... :-(
     }
   }
 
-  def newConsumer[A: DeliveryConverter](
-      consumerConfig: ConsumerConfig,
-      monitor: Monitor,
-      middlewares: List[RabbitMQConsumerMiddleware[F, A]])(readAction: DeliveryReadAction[F, A]): Resource[F, RabbitMQConsumer[F]] = {
+  def newConsumer[A: DeliveryConverter](consumerConfig: ConsumerConfig, monitor: Monitor)(
+      readAction: DeliveryReadAction[F, A]): Resource[F, RabbitMQConsumer[F]] = {
     createChannel().map { channel =>
       DefaultRabbitMQClientFactory.Consumer
-        .create[F, A](consumerConfig, channel, info, republishStrategy, consumerListener, readAction, middlewares, blocker, monitor)
+        .create[F, A](consumerConfig, channel, info, republishStrategy, consumerListener, readAction, blocker, monitor)
     }
   }
 
@@ -92,7 +90,7 @@ class DefaultRabbitMQConnection[F[_]] private (connection: ServerConnection,
   }
 
   override def declareQueue(config: DeclareQueueConfig): F[Unit] = withChannel { ch =>
-    DefaultRabbitMQClientFactory.Declarations.declareQueue(config, ch, info)
+    DefaultRabbitMQClientFactory.Declarations.declareQueue(config, ch)
   }
 
   override def bindExchange(config: BindExchangeConfig): F[Unit] = withChannel { ch =>

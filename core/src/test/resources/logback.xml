@@ -4,7 +4,7 @@
         <target>System.out</target>
 
         <encoder>
-            <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [%thread] %-35logger{35}: %msg\(%file:%line\)%n%xThrowable{full}</pattern>
+            <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level %msg\(%file:%line\)%n%xThrowable{full}</pattern>
         </encoder>
     </appender>
 
