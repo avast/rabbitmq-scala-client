@@ -2,6 +2,7 @@ package com.avast.clients.rabbitmq
 
 import cats.effect._
 import cats.implicits._
+import com.avast.bytes.Bytes
 import com.avast.clients.rabbitmq.api._
 import com.avast.metrics.scalaapi.Monitor
 import com.typesafe.scalalogging.StrictLogging
@@ -39,7 +40,9 @@ class DefaultRabbitMQPullConsumer[F[_]: ConcurrentEffect, A: DeliveryConverter](
         case Some(response) =>
           processingCount.incrementAndGet()
 
-          parseDelivery(response.getEnvelope, response.getBody, response.getProps).flatMap { d =>
+          val rawBody = Bytes.copyFrom(response.getBody)
+
+          parseDelivery(response.getEnvelope, rawBody, response.getProps).flatMap { d =>
             import d._
             import metadata._
 
@@ -47,7 +50,7 @@ class DefaultRabbitMQPullConsumer[F[_]: ConcurrentEffect, A: DeliveryConverter](
 
             val dwh = createDeliveryWithHandle(delivery) { result =>
               super
-                .handleResult(messageId, correlationId, deliveryTag, fixedProperties, routingKey, response.getBody, delivery)(result)
+                .handleResult(messageId, correlationId, deliveryTag, fixedProperties, routingKey, rawBody, delivery)(result)
                 .map { _ =>
                   processingCount.decrementAndGet()
                   ()

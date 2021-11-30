@@ -110,8 +110,17 @@ final case class BindExchangeConfig(sourceExchangeName: String,
 
 sealed trait PoisonedMessageHandlingConfig
 
+final case class DeadQueueProducerConfig(name: String,
+                                         exchange: String,
+                                         routingKey: String,
+                                         declare: Option[AutoDeclareExchangeConfig] = None,
+                                         reportUnroutable: Boolean = true,
+                                         properties: ProducerPropertiesConfig = ProducerPropertiesConfig())
+
+case object NoOpPoisonedMessageHandling extends PoisonedMessageHandlingConfig
 final case class LoggingPoisonedMessageHandling(maxAttempts: Int) extends PoisonedMessageHandlingConfig
-final case class DeadQueuePoisonedMessageHandling(maxAttempts: Int, deadQueueProducer: ProducerConfig) extends PoisonedMessageHandlingConfig
+final case class DeadQueuePoisonedMessageHandling(maxAttempts: Int, deadQueueProducer: DeadQueueProducerConfig)
+    extends PoisonedMessageHandlingConfig
 
 sealed trait AddressResolverType
 object AddressResolverType {

@@ -38,25 +38,24 @@ private[rabbitmq] trait ConsumerBase[F[_], A] extends StrictLogging {
   private val resultRetryMeter = resultsMonitor.meter("retry")
   private val resultRepublishMeter = resultsMonitor.meter("republish")
 
-  protected def parseDelivery(envelope: Envelope, body: Array[Byte], properties: AMQP.BasicProperties): F[DeliveryWithMetadata[A]] = {
+  protected def parseDelivery(envelope: Envelope, rawBody: Bytes, properties: AMQP.BasicProperties): F[DeliveryWithMetadata[A]] = {
     blocker.delay {
       val metadata = DeliveryMetadata.from(envelope, properties)
-      val bytes = Bytes.copyFrom(body)
 
-      val delivery = Try(deliveryConverter.convert(Bytes.copyFrom(body))) match {
+      val delivery = Try(deliveryConverter.convert(rawBody)) match {
         case Success(Right(a)) =>
           val delivery = Delivery(a, metadata.fixedProperties.asScala, metadata.routingKey.value)
-          logger.trace(s"[$name] Received delivery: ${delivery.copy(body = bytes)}")
+          logger.trace(s"[$name] Received delivery: ${delivery.copy(body = rawBody)}")
           delivery
 
         case Success(Left(ce)) =>
-          val delivery = Delivery.MalformedContent(bytes, metadata.fixedProperties.asScala, metadata.routingKey.value, ce)
+          val delivery = Delivery.MalformedContent(rawBody, metadata.fixedProperties.asScala, metadata.routingKey.value, ce)
           logger.trace(s"[$name] Received delivery but could not convert it: $delivery")
           delivery
 
         case Failure(ce) =>
           val ex = ConversionException("Unxected failure", ce)
-          val delivery = Delivery.MalformedContent(bytes, metadata.fixedProperties.asScala, metadata.routingKey.value, ex)
+          val delivery = Delivery.MalformedContent(rawBody, metadata.fixedProperties.asScala, metadata.routingKey.value, ex)
           logger.trace(s"[$name] Received delivery but could not convert it as the convertor has failed: $delivery")
           delivery
       }
@@ -70,16 +69,16 @@ private[rabbitmq] trait ConsumerBase[F[_], A] extends StrictLogging {
                              deliveryTag: DeliveryTag,
                              properties: BasicProperties,
                              routingKey: RoutingKey,
-                             body: Array[Byte],
+                             rawBody: Bytes,
                              delivery: Delivery[A])(res: DeliveryResult): F[Unit] = {
     import DeliveryResult._
 
-    poisonedMessageHandler.interceptResult(delivery, messageId, correlationId)(res).flatMap {
+    poisonedMessageHandler.interceptResult(delivery, messageId, correlationId, rawBody)(res).flatMap {
       case Ack => ack(messageId, correlationId, deliveryTag)
       case Reject => reject(messageId, correlationId, deliveryTag)
       case Retry => retry(messageId, correlationId, deliveryTag)
       case Republish(_, newHeaders) =>
-        republish(messageId, correlationId, deliveryTag, createPropertiesForRepublish(newHeaders, properties, routingKey), body)
+        republish(messageId, correlationId, deliveryTag, createPropertiesForRepublish(newHeaders, properties, routingKey), rawBody)
     }
   }
 
@@ -123,9 +122,9 @@ private[rabbitmq] trait ConsumerBase[F[_], A] extends StrictLogging {
                           correlationId: CorrelationId,
                           deliveryTag: DeliveryTag,
                           properties: BasicProperties,
-                          body: Array[Byte]): F[Unit] = {
+                          rawBody: Bytes): F[Unit] = {
     republishStrategy
-      .republish(blocker, channel, name)(queueName, messageId, correlationId, deliveryTag, properties, body)
+      .republish(blocker, channel, name)(queueName, messageId, correlationId, deliveryTag, properties, rawBody)
       .flatTap(_ => F.delay(resultRepublishMeter.mark()))
   }
 

@@ -138,24 +138,26 @@ private[rabbitmq] object DefaultRabbitMQClientFactory extends LazyLogging {
 
       bindQueueForRepublishing(connectionInfo, channel, consumerConfig.queueName, republishStrategy)
 
-      PoisonedMessageHandler.make[F, A](connection, consumerConfig.poisonedMessageHandling).flatMap { pmh =>
-        DefaultRabbitMQStreamingConsumer.make(
-          name,
-          connection.newChannel().evalTap(ch => Sync[F].delay(ch.basicQos(consumerConfig.prefetchCount))),
-          consumerTag,
-          queueName,
-          connectionInfo,
-          consumerListener,
-          queueBufferSize,
-          monitor,
-          republishStrategy.toRepublishStrategy,
-          processTimeout,
-          timeoutAction,
-          timeoutLogLevel,
-          pmh,
-          blocker
-        )
-      }
+      PoisonedMessageHandler
+        .make[F, A](consumerConfig.poisonedMessageHandling, connection, monitor.named("poisonedMessageHandler"))
+        .flatMap { pmh =>
+          DefaultRabbitMQStreamingConsumer.make(
+            name,
+            connection.newChannel().evalTap(ch => Sync[F].delay(ch.basicQos(consumerConfig.prefetchCount))),
+            consumerTag,
+            queueName,
+            connectionInfo,
+            consumerListener,
+            queueBufferSize,
+            monitor,
+            republishStrategy.toRepublishStrategy,
+            processTimeout,
+            timeoutAction,
+            timeoutLogLevel,
+            pmh,
+            blocker
+          )
+        }
     }
   }
 
@@ -203,26 +205,27 @@ private[rabbitmq] object DefaultRabbitMQClientFactory extends LazyLogging {
       cs: ContextShift[F]): Resource[F, DefaultRabbitMQConsumer[F, A]] = {
     import consumerConfig._
 
-    PoisonedMessageHandler.make[F, A](connection, consumerConfig.poisonedMessageHandling).map { pmh =>
-      val consumer = new DefaultRabbitMQConsumer[F, A](
-        name,
-        channel,
-        queueName,
-        connectionInfo,
-        republishStrategy.toRepublishStrategy,
-        pmh,
-        processTimeout,
-        timeoutAction,
-        timeoutLogLevel,
-        failureAction,
-        consumerListener,
-        monitor,
-        blocker
-      )(readAction)
+    PoisonedMessageHandler.make[F, A](consumerConfig.poisonedMessageHandling, connection, monitor.named("poisonedMessageHandler")).map {
+      pmh =>
+        val consumer = new DefaultRabbitMQConsumer[F, A](
+          name,
+          channel,
+          queueName,
+          connectionInfo,
+          republishStrategy.toRepublishStrategy,
+          pmh,
+          processTimeout,
+          timeoutAction,
+          timeoutLogLevel,
+          failureAction,
+          consumerListener,
+          monitor,
+          blocker
+        )(readAction)
 
-      startConsumingQueue(channel, queueName, consumerTag, consumer)
+        startConsumingQueue(channel, queueName, consumerTag, consumer)
 
-      consumer
+        consumer
     }
   }
 
@@ -234,32 +237,33 @@ private[rabbitmq] object DefaultRabbitMQClientFactory extends LazyLogging {
       blocker: Blocker,
       monitor: Monitor)(implicit cs: ContextShift[F]): Resource[F, DefaultRabbitMQPullConsumer[F, A]] = {
     connection.newChannel().flatMap { channel =>
-      PoisonedMessageHandler.make[F, A](connection, consumerConfig.poisonedMessageHandling).map { pmh =>
-        import consumerConfig._
+      PoisonedMessageHandler.make[F, A](consumerConfig.poisonedMessageHandling, connection, monitor.named("poisonedMessageHandler")).map {
+        pmh =>
+          import consumerConfig._
 
-        // auto declare exchanges
-        declareExchangesFromBindings(connectionInfo, channel, consumerConfig.bindings)
+          // auto declare exchanges
+          declareExchangesFromBindings(connectionInfo, channel, consumerConfig.bindings)
 
-        // auto declare queue; if configured
-        declare.foreach {
-          declareQueue(consumerConfig.queueName, connectionInfo, channel, _)
-        }
+          // auto declare queue; if configured
+          declare.foreach {
+            declareQueue(consumerConfig.queueName, connectionInfo, channel, _)
+          }
 
-        // auto bind
-        bindQueue(connectionInfo, channel, consumerConfig.queueName, consumerConfig.bindings)
+          // auto bind
+          bindQueue(connectionInfo, channel, consumerConfig.queueName, consumerConfig.bindings)
 
-        bindQueueForRepublishing(connectionInfo, channel, consumerConfig.queueName, republishStrategy)
+          bindQueueForRepublishing(connectionInfo, channel, consumerConfig.queueName, republishStrategy)
 
-        new DefaultRabbitMQPullConsumer[F, A](
-          name,
-          channel,
-          queueName,
-          connectionInfo,
-          republishStrategy.toRepublishStrategy,
-          pmh,
-          monitor,
-          blocker
-        )
+          new DefaultRabbitMQPullConsumer[F, A](
+            name,
+            channel,
+            queueName,
+            connectionInfo,
+            republishStrategy.toRepublishStrategy,
+            pmh,
+            monitor,
+            blocker
+          )
       }
     }
   }

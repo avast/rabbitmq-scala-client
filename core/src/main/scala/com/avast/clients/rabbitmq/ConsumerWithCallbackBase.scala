@@ -2,6 +2,7 @@ package com.avast.clients.rabbitmq
 
 import cats.effect.{ConcurrentEffect, Effect, Timer => CatsTimer}
 import cats.syntax.all._
+import com.avast.bytes.Bytes
 import com.avast.clients.rabbitmq.api.DeliveryResult
 import com.avast.metrics.scalaapi._
 import com.rabbitmq.client.AMQP.BasicProperties
@@ -37,7 +38,9 @@ abstract class ConsumerWithCallbackBase[F[_]: ConcurrentEffect: CatsTimer, A: De
 
   override final def handleDelivery(consumerTag: String, envelope: Envelope, properties: BasicProperties, body: Array[Byte]): Unit = {
     val action = F.delay(processingCount.incrementAndGet()) >> {
-      parseDelivery(envelope, body, properties)
+      val rawBody = Bytes.copyFrom(body)
+
+      parseDelivery(envelope, rawBody, properties)
         .flatMap { d =>
           import d.delivery
           import d.metadata._
@@ -53,19 +56,19 @@ abstract class ConsumerWithCallbackBase[F[_]: ConcurrentEffect: CatsTimer, A: De
             @inline
             val taskDuration = () => Duration.between(st, Instant.now())
 
-            unsafeExecuteReadAction(d, fixedProperties, body, taskDuration)
+            unsafeExecuteReadAction(d, fixedProperties, rawBody, taskDuration)
           } catch {
             // we catch this specific exception, handling of others is up to Lyra
             case e: RejectedExecutionException =>
               logger.debug(s"[$name] Executor was unable to plan the handling task for $messageId/$correlationId, $deliveryTag", e)
-              handleFailure(d, body, e)
+              handleFailure(d, rawBody, e)
 
             case NonFatal(e) =>
               logger.error(
                 s"[$name] Error while preparing callback execution for delivery with routing key $routingKey. This is probably a bug as the F construction shouldn't throw any exception",
                 e
               )
-              handleFailure(d, body, e)
+              handleFailure(d, rawBody, e)
           }
         }
         .recoverWith {
@@ -85,13 +88,13 @@ abstract class ConsumerWithCallbackBase[F[_]: ConcurrentEffect: CatsTimer, A: De
 
   private def unsafeExecuteReadAction(delivery: DeliveryWithMetadata[A],
                                       properties: BasicProperties,
-                                      body: Array[Byte],
+                                      rawBody: Bytes,
                                       taskDuration: () => Duration): F[Unit] = {
     import delivery.metadata._
 
     handleNewDelivery(delivery)
       .flatMap {
-        handleResult(messageId, correlationId, deliveryTag, properties, routingKey, body, delivery.delivery)
+        handleResult(messageId, correlationId, deliveryTag, properties, routingKey, rawBody, delivery.delivery)
       }
       .flatTap(_ =>
         F.delay {
@@ -107,22 +110,22 @@ abstract class ConsumerWithCallbackBase[F[_]: ConcurrentEffect: CatsTimer, A: De
             processedTimer.updateFailure(duration)
             logger.error(s"[$name] Error while executing callback for delivery $messageId/$correlationId with $routingKey", t)
           } >>
-            handleFailure(delivery, body, t)
+            handleFailure(delivery, rawBody, t)
       }
   }
 
-  private def handleFailure(delivery: DeliveryWithMetadata[A], body: Array[Byte], t: Throwable): F[Unit] = {
+  private def handleFailure(delivery: DeliveryWithMetadata[A], rawBody: Bytes, t: Throwable): F[Unit] = {
     F.delay {
       processingCount.decrementAndGet()
       processingFailedMeter.mark()
       consumerListener.onError(this, name, channel, t)
     } >>
-      executeFailureAction(delivery, body)
+      executeFailureAction(delivery, rawBody)
   }
 
-  private def executeFailureAction(d: DeliveryWithMetadata[A], body: Array[Byte]): F[Unit] = {
+  private def executeFailureAction(d: DeliveryWithMetadata[A], rawBody: Bytes): F[Unit] = {
     import d._
     import metadata._
-    handleResult(messageId, correlationId, deliveryTag, fixedProperties, routingKey, body, delivery)(failureAction)
+    handleResult(messageId, correlationId, deliveryTag, fixedProperties, routingKey, rawBody, delivery)(failureAction)
   }
 }
