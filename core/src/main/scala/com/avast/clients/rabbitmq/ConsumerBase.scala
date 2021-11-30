@@ -74,7 +74,7 @@ private[rabbitmq] trait ConsumerBase[F[_], A] extends StrictLogging {
                              delivery: Delivery[A])(res: DeliveryResult): F[Unit] = {
     import DeliveryResult._
 
-    poisonedMessageHandler.interceptResult(delivery, res).flatMap {
+    poisonedMessageHandler.interceptResult(delivery, messageId, correlationId)(res).flatMap {
       case Ack => ack(messageId, correlationId, deliveryTag)
       case Reject => reject(messageId, correlationId, deliveryTag)
       case Retry => retry(messageId, correlationId, deliveryTag)

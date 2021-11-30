@@ -48,27 +48,21 @@ class DefaultRabbitMQConnection[F[_]] private (connection: ServerConnection,
       consumerConfig: StreamingConsumerConfig,
       monitor: Monitor,
   ): Resource[F, RabbitMQStreamingConsumer[F, A]] = {
-    createChannel().flatMap { channel =>
-      DefaultRabbitMQClientFactory.StreamingConsumer
-        .create[F, A](consumerConfig, channel, createChannelF, info, republishStrategy, blocker, monitor, consumerListener)
-        .map(identity[RabbitMQStreamingConsumer[F, A]]) // type inference... :-(
-    }
+    DefaultRabbitMQClientFactory.StreamingConsumer
+      .create[F, A](consumerConfig, this, info, republishStrategy, blocker, monitor, consumerListener)
+      .map(identity[RabbitMQStreamingConsumer[F, A]]) // type inference... :-(
   }
 
   def newConsumer[A: DeliveryConverter](consumerConfig: ConsumerConfig, monitor: Monitor)(
       readAction: DeliveryReadAction[F, A]): Resource[F, RabbitMQConsumer[F]] = {
-    createChannel().map { channel =>
-      DefaultRabbitMQClientFactory.Consumer
-        .create[F, A](consumerConfig, channel, info, republishStrategy, consumerListener, readAction, blocker, monitor)
-    }
+    DefaultRabbitMQClientFactory.Consumer
+      .create[F, A](consumerConfig, this, info, republishStrategy, consumerListener, readAction, blocker, monitor)
   }
 
   def newPullConsumer[A: DeliveryConverter](pullConsumerConfig: PullConsumerConfig,
                                             monitor: Monitor): Resource[F, RabbitMQPullConsumer[F, A]] = {
-    createChannel().map { channel =>
-      DefaultRabbitMQClientFactory.PullConsumer
-        .create[F, A](pullConsumerConfig, channel, info, republishStrategy, blocker, monitor)
-    }
+    DefaultRabbitMQClientFactory.PullConsumer
+      .create[F, A](pullConsumerConfig, this, info, republishStrategy, blocker, monitor)
   }
 
   private def createChannel(): Resource[F, ServerChannel] =
@@ -79,10 +73,8 @@ class DefaultRabbitMQConnection[F[_]] private (connection: ServerConnection,
     })
 
   override def newProducer[A: ProductConverter](producerConfig: ProducerConfig, monitor: Monitor): Resource[F, RabbitMQProducer[F, A]] = {
-    createChannel().map { channel =>
-      DefaultRabbitMQClientFactory.Producer
-        .create[F, A](producerConfig, channel, info, blocker, monitor)
-    }
+    DefaultRabbitMQClientFactory.Producer
+      .create[F, A](producerConfig, this, info, blocker, monitor)
   }
 
   override def declareExchange(config: DeclareExchangeConfig): F[Unit] = withChannel { ch =>

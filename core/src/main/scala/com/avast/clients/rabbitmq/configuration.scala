@@ -111,6 +111,7 @@ final case class BindExchangeConfig(sourceExchangeName: String,
 sealed trait PoisonedMessageHandlingConfig
 
 final case class LoggingPoisonedMessageHandling(maxAttempts: Int) extends PoisonedMessageHandlingConfig
+final case class DeadQueuePoisonedMessageHandling(maxAttempts: Int, deadQueueProducer: ProducerConfig) extends PoisonedMessageHandlingConfig
 
 sealed trait AddressResolverType
 object AddressResolverType {

@@ -31,7 +31,7 @@ class DefaultRabbitMQStreamingConsumer[F[_]: ConcurrentEffect: Timer, A: Deliver
     timeoutLogLevel: Level,
     recoveringMutex: Semaphore[F],
     poisonedMessageHandler: PoisonedMessageHandler[F, A],
-    blocker: Blocker)(createQueue: F[DeliveryQueue[F, A]], newChannel: F[ServerChannel])(implicit cs: ContextShift[F])
+    blocker: Blocker)(createQueue: F[DeliveryQueue[F, A]], newChannel: Resource[F, ServerChannel])(implicit cs: ContextShift[F])
     extends RabbitMQStreamingConsumer[F, A]
     with StrictLogging {
 
@@ -44,8 +44,9 @@ class DefaultRabbitMQStreamingConsumer[F[_]: ConcurrentEffect: Timer, A: Deliver
   private lazy val isOk = Ref.unsafe[F, Boolean](false)
 
   lazy val deliveryStream: fs2.Stream[F, StreamedDelivery[F, A]] = {
+
     Stream
-      .eval { checkNotClosed >> recoverIfNeeded }
+      .resource(Resource.eval(checkNotClosed) >> recoverIfNeeded)
       .flatMap { queue =>
         queue.dequeue.evalMap {
           case (del, ref) =>
@@ -91,13 +92,16 @@ class DefaultRabbitMQStreamingConsumer[F[_]: ConcurrentEffect: Timer, A: Deliver
       }
   }
 
-  private lazy val recoverIfNeeded: F[DeliveryQueue[F, A]] = {
-    recoveringMutex.withPermit {
-      isOk.get.flatMap {
-        case true => getCurrentQueue
-        case false => recover
-      }
-    }
+  private lazy val recoverIfNeeded: Resource[F, DeliveryQueue[F, A]] = {
+    Resource(recoveringMutex.withPermit {
+      Resource
+        .eval(isOk.get)
+        .flatMap {
+          case true => Resource.eval(getCurrentQueue)
+          case false => recover
+        }
+        .allocated // this is plumbing... we need to _stick_ the resource through plain F here, because of the mutex
+    })
   }
 
   private lazy val getCurrentQueue: F[DeliveryQueue[F, A]] = {
@@ -108,9 +112,9 @@ class DefaultRabbitMQStreamingConsumer[F[_]: ConcurrentEffect: Timer, A: Deliver
     }
   }
 
-  private lazy val recover: F[DeliveryQueue[F, A]] = {
-    createQueue.flatTap { newQueue =>
-      newChannel.flatMap { newChannel =>
+  private lazy val recover: Resource[F, DeliveryQueue[F, A]] = {
+    Resource.eval(createQueue).flatTap { newQueue =>
+      newChannel.evalMap { newChannel =>
         val newConsumer = new StreamingConsumer(newChannel, newQueue)
 
         consumer
@@ -223,8 +227,6 @@ class DefaultRabbitMQStreamingConsumer[F[_]: ConcurrentEffect: Timer, A: Deliver
       import d._
       import metadata._
 
-      logger.debug(s"HANDLE ${messageId}")
-
       receivingEnabled.get
         .flatMap {
           case false =>
@@ -239,7 +241,6 @@ class DefaultRabbitMQStreamingConsumer[F[_]: ConcurrentEffect: Timer, A: Deliver
               // we want just the enqueuing to be in the mutex!
               recoveringMutex
                 .withPermit {
-                  logger.debug(s"Enqueue delivery $messageId")
                   enqueueDelivery(delivery, deferred)
                 }
                 .flatMap { ref =>
@@ -286,12 +287,12 @@ class DefaultRabbitMQStreamingConsumer[F[_]: ConcurrentEffect: Timer, A: Deliver
 
 object DefaultRabbitMQStreamingConsumer extends StrictLogging {
 
-  private type DeliveryQueue[F[_], A] =
-    Queue[F, (StreamedDelivery[F, A], SignallingRef[F, Option[Deferred[F, Either[Throwable, DeliveryResult]]]])]
+  private type QueuedDelivery[F[_], A] = (StreamedDelivery[F, A], SignallingRef[F, Option[Deferred[F, Either[Throwable, DeliveryResult]]]])
+  private type DeliveryQueue[F[_], A] = Queue[F, QueuedDelivery[F, A]]
 
   def make[F[_]: ConcurrentEffect: Timer, A: DeliveryConverter](
       name: String,
-      newChannel: F[ServerChannel],
+      newChannel: Resource[F, ServerChannel],
       initialConsumerTag: String,
       queueName: String,
       connectionInfo: RabbitMQConnectionInfo,
@@ -326,7 +327,6 @@ object DefaultRabbitMQStreamingConsumer extends StrictLogging {
   }
 
   private def createQueue[F[_]: ConcurrentEffect, A](queueBufferSize: Int): F[DeliveryQueue[F, A]] = {
-    fs2.concurrent.Queue
-      .bounded[F, (StreamedDelivery[F, A], SignallingRef[F, Option[Deferred[F, Either[Throwable, DeliveryResult]]]])](queueBufferSize)
+    fs2.concurrent.Queue.bounded[F, QueuedDelivery[F, A]](queueBufferSize)
   }
 }
