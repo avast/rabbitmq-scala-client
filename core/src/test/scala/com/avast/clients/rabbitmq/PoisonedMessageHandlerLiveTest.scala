@@ -88,7 +88,7 @@ class PoisonedMessageHandlerLiveTest extends TestBase with ScalaFutures {
     val c = createConfig()
     import c._
 
-    val messagesCount = Random.nextInt(10000) + 10000
+    val messagesCount = Random.nextInt(5000) + 5000 // 5-10k, even
 
     println(s"Sending $messagesCount messages!")
 
@@ -127,7 +127,7 @@ class PoisonedMessageHandlerLiveTest extends TestBase with ScalaFutures {
     val c = createConfig()
     import c._
 
-    val messagesCount = (Random.nextInt(1000) + 1000) * 2 // 2000-4000, even
+    val messagesCount = (Random.nextInt(1000) + 1000) * 2 // 2-4k, even
 
     println(s"Sending $messagesCount messages!")
 
@@ -222,7 +222,7 @@ class PoisonedMessageHandlerLiveTest extends TestBase with ScalaFutures {
     val c = createConfig()
     import c._
 
-    val messagesCount = Random.nextInt(10000) + 10000
+    val messagesCount = Random.nextInt(5000) + 5000 // 5-10k
 
     println(s"Sending $messagesCount messages!")
 
@@ -269,7 +269,7 @@ class PoisonedMessageHandlerLiveTest extends TestBase with ScalaFutures {
 
     val monitor = new TestMonitor
 
-    val messagesCount = (Random.nextInt(10000) + 10000) * 2 // 20000-40000, even
+    val messagesCount = (Random.nextInt(5000) + 5000) * 2 // 10-20k, even
 
     println(s"Sending $messagesCount messages!")
 
