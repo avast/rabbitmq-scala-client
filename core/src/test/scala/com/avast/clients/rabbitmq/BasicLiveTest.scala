@@ -109,7 +109,7 @@ class BasicLiveTest extends TestBase with ScalaFutures {
     import c._
 
     RabbitMQConnection.fromConfig[Task](config, ex).withResource { rabbitConnection =>
-      val count = Random.nextInt(500) + 500 // random 500 - 1000 messages
+      val count = Random.nextInt(20000) + 20000 // 20000-40000
 
       logger.info(s"Sending $count messages")
 
@@ -144,9 +144,11 @@ class BasicLiveTest extends TestBase with ScalaFutures {
             assertResult(count)(testHelper.queue.getPublishedCount(queueName1))
           }
 
-          eventually(timeout(Span(5, Seconds)), interval(Span(0.1, Seconds))) {
+          eventually(timeout(Span(50, Seconds)), interval(Span(0.1, Seconds))) {
+            val inQueue = testHelper.queue.getMessagesCount(queueName1)
+            println(s"In QUEUE COUNT: $inQueue")
             assertResult(true)(latch.await(1000, TimeUnit.MILLISECONDS))
-            assertResult(0)(testHelper.queue.getMessagesCount(queueName1))
+            assertResult(0)(inQueue)
           }
         }
       }
@@ -275,7 +277,7 @@ class BasicLiveTest extends TestBase with ScalaFutures {
             _ <- rabbitConnection.bindQueue("bindQueue")
           } yield ()).unsafeRunSync()
 
-          assertResult(Map("x-max-length" -> 10000))(testHelper.queue.getArguments(queueName2))
+          assertResult(Map("x-max-length" -> 1000000))(testHelper.queue.getArguments(queueName2))
 
           assertResult(0)(testHelper.queue.getMessagesCount(queueName1))
           assertResult(0)(testHelper.queue.getMessagesCount(queueName2))

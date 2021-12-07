@@ -21,8 +21,11 @@ sealed trait PoisonedMessageHandler[F[_], A] {
 class LoggingPoisonedMessageHandler[F[_]: Sync, A](maxAttempts: Int) extends PoisonedMessageHandler[F, A] {
   override def interceptResult(delivery: Delivery[A], messageId: MessageId, correlationId: CorrelationId, rawBody: Bytes)(
       result: DeliveryResult): F[DeliveryResult] = {
-    PoisonedMessageHandler.handleResult(delivery, maxAttempts, (d: Delivery[A], _) => defaultHandlePoisonedMessage[F, A](maxAttempts)(d))(
-      result)
+    PoisonedMessageHandler.handleResult(delivery,
+                                        messageId,
+                                        correlationId,
+                                        maxAttempts,
+                                        (d: Delivery[A], _) => defaultHandlePoisonedMessage[F, A](maxAttempts)(d))(result)
   }
 }
 
@@ -36,8 +39,11 @@ class DeadQueuePoisonedMessageHandler[F[_]: Sync, A](maxAttempts: Int)(moveToDea
     with StrictLogging {
   override def interceptResult(delivery: Delivery[A], messageId: MessageId, correlationId: CorrelationId, rawBody: Bytes)(
       result: DeliveryResult): F[DeliveryResult] = {
-    PoisonedMessageHandler.handleResult(delivery, maxAttempts, (d, _) => handlePoisonedMessage(d, messageId, correlationId, rawBody))(
-      result)
+    PoisonedMessageHandler.handleResult(delivery,
+                                        messageId,
+                                        correlationId,
+                                        maxAttempts,
+                                        (d, _) => handlePoisonedMessage(d, messageId, correlationId, rawBody))(result)
   }
 
   private def handlePoisonedMessage(delivery: Delivery[A], messageId: MessageId, correlationId: CorrelationId, rawBody: Bytes): F[Unit] = {
@@ -90,15 +96,20 @@ object PoisonedMessageHandler extends StrictLogging {
 
   private[rabbitmq] def handleResult[F[_]: Sync, A](
       delivery: Delivery[A],
+      messageId: MessageId,
+      correlationId: CorrelationId,
       maxAttempts: Int,
       handlePoisonedMessage: (Delivery[A], Int) => F[Unit])(r: DeliveryResult): F[DeliveryResult] = {
     r match {
-      case Republish(isPoisoned, newHeaders) if isPoisoned => adjustDeliveryResult(delivery, maxAttempts, newHeaders, handlePoisonedMessage)
+      case Republish(isPoisoned, newHeaders) if isPoisoned =>
+        adjustDeliveryResult(delivery, messageId, correlationId, maxAttempts, newHeaders, handlePoisonedMessage)
       case r => Applicative[F].pure(r) // keep other results as they are
     }
   }
 
   private def adjustDeliveryResult[F[_]: Sync, A](delivery: Delivery[A],
+                                                  messageId: MessageId,
+                                                  correlationId: CorrelationId,
                                                   maxAttempts: Int,
                                                   newHeaders: Map[String, AnyRef],
                                                   handlePoisonedMessage: (Delivery[A], Int) => F[Unit]): F[DeliveryResult] = {
@@ -109,7 +120,7 @@ object PoisonedMessageHandler extends StrictLogging {
       .flatMap(v => Try(v.toString.toInt).toOption)
       .getOrElse(0) + 1
 
-    logger.debug(s"Attempt $attempt/$maxAttempts")
+    logger.debug(s"Attempt $attempt/$maxAttempts for $messageId/$correlationId")
 
     if (attempt < maxAttempts) {
       Applicative[F].pure(

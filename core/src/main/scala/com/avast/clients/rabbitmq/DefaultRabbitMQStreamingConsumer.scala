@@ -44,7 +44,6 @@ class DefaultRabbitMQStreamingConsumer[F[_]: ConcurrentEffect: Timer, A: Deliver
   private lazy val isOk = Ref.unsafe[F, Boolean](false)
 
   lazy val deliveryStream: fs2.Stream[F, StreamedDelivery[F, A]] = {
-
     Stream
       .resource(Resource.eval(checkNotClosed) >> recoverIfNeeded)
       .flatMap { queue =>
@@ -75,17 +74,9 @@ class DefaultRabbitMQStreamingConsumer[F[_]: ConcurrentEffect: Timer, A: Deliver
               .last
               .map(_.getOrElse(throw new IllegalStateException("This must not happen!")))
 
-            val waitForFinish = fiber.join.attempt.flatMap(deff.complete).recoverWith {
-              case e =>
-                logger.error("FAILURE JOIN", e)
-                F.raiseError(e)
-            }
+            val waitForFinish = fiber.join.attempt.flatMap(deff.complete)
 
-            (waitForCancel race waitForFinish).as(()).recoverWith {
-              case e =>
-                logger.error("FAILURE JOIN/CANCEL", e)
-                F.raiseError(e)
-            }
+            (waitForCancel race waitForFinish).as(())
           }
 
         case None => F.unit // we're not starting the task

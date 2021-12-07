@@ -20,9 +20,13 @@ class PoisonedMessageHandlerTest extends TestBase with ScalaFutures {
     val movedCount = new AtomicInteger(0)
 
     PoisonedMessageHandler
-      .handleResult[Task, Bytes](Delivery.Ok(Bytes.empty(), MessageProperties(), ""), 1, (_, _) => {
-        Task.delay { movedCount.incrementAndGet() }
-      })(Republish(isPoisoned = false))
+      .handleResult[Task, Bytes](Delivery.Ok(Bytes.empty(), MessageProperties(), ""),
+                                 MessageId("msg-id"),
+                                 CorrelationId("corr-id"),
+                                 1,
+                                 (_, _) => {
+                                   Task.delay { movedCount.incrementAndGet() }
+                                 })(Republish(isPoisoned = false))
       .await
 
     assertResult(0)(movedCount.get())
@@ -30,9 +34,13 @@ class PoisonedMessageHandlerTest extends TestBase with ScalaFutures {
     movedCount.set(0)
 
     PoisonedMessageHandler
-      .handleResult[Task, Bytes](Delivery.Ok(Bytes.empty(), MessageProperties(), ""), 1, (_, _) => {
-        Task.delay { movedCount.incrementAndGet() }
-      })(Republish())
+      .handleResult[Task, Bytes](Delivery.Ok(Bytes.empty(), MessageProperties(), ""),
+                                 MessageId("msg-id"),
+                                 CorrelationId("corr-id"),
+                                 1,
+                                 (_, _) => {
+                                   Task.delay { movedCount.incrementAndGet() }
+                                 })(Republish())
       .await
 
     assertResult(1)(movedCount.get())
