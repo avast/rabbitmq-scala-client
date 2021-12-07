@@ -410,20 +410,23 @@ class DefaultRabbitMQConsumerTest extends TestBase {
 
   private def newConsumer(channel: ServerChannel, failureAction: DeliveryResult = Republish(), monitor: Monitor = Monitor.noOp())(
       userAction: DeliveryReadAction[Task, Bytes]): DefaultRabbitMQConsumer[Task, Bytes] = {
+    val base = new ConsumerBase[Task, Bytes]("test",
+                                             "queueName",
+                                             channel,
+                                             TestBase.testBlocker,
+                                             RepublishStrategy.DefaultExchange,
+                                             PMH,
+                                             connectionInfo,
+                                             logger,
+                                             monitor)
+
     new DefaultRabbitMQConsumer[Task, Bytes](
-      "test",
-      channel,
-      "queueName",
-      connectionInfo,
-      RepublishStrategy.DefaultExchange,
-      PMH,
+      base,
       10.seconds,
       DeliveryResult.Republish(),
       Level.ERROR,
       failureAction,
       DefaultListeners.DefaultConsumerListener,
-      monitor,
-      TestBase.testBlocker
     )(userAction)
   }
 

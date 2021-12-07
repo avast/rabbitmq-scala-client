@@ -262,16 +262,17 @@ class DefaultRabbitMQPullConsumerTest extends TestBase {
   }
 
   private def newConsumer[A: DeliveryConverter](channel: ServerChannel): DefaultRabbitMQPullConsumer[Task, A] = {
-    new DefaultRabbitMQPullConsumer[Task, A](
-      "test",
-      channel,
-      "queueName",
-      connectionInfo,
-      RepublishStrategy.DefaultExchange,
-      new PMH,
-      Monitor.noOp(),
-      TestBase.testBlocker
-    )
+    val base = new ConsumerBase[Task, A]("test",
+                                         "queueName",
+                                         channel,
+                                         TestBase.testBlocker,
+                                         RepublishStrategy.DefaultExchange,
+                                         new PMH,
+                                         connectionInfo,
+                                         logger,
+                                         Monitor.noOp())
+
+    new DefaultRabbitMQPullConsumer[Task, A](base)
   }
 
   class PMH[A] extends LoggingPoisonedMessageHandler[Task, A](3)

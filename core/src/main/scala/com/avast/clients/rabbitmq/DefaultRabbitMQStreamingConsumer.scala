@@ -2,12 +2,10 @@ package com.avast.clients.rabbitmq
 
 import cats.effect.concurrent._
 import cats.effect.implicits.toConcurrentOps
-import cats.effect.{Blocker, ConcurrentEffect, ContextShift, ExitCase, Resource, Sync, Timer}
+import cats.effect.{ConcurrentEffect, ContextShift, ExitCase, Resource, Timer}
 import cats.syntax.all._
-import com.avast.clients.rabbitmq.DefaultRabbitMQClientFactory.watchForTimeoutIfConfigured
 import com.avast.clients.rabbitmq.DefaultRabbitMQStreamingConsumer.DeliveryQueue
 import com.avast.clients.rabbitmq.api._
-import com.avast.metrics.scalaapi.Monitor
 import com.rabbitmq.client.{Delivery => _, _}
 import com.typesafe.scalalogging.StrictLogging
 import fs2.Stream
@@ -18,26 +16,18 @@ import java.time.Instant
 import scala.concurrent.duration.FiniteDuration
 import scala.util.control.NonFatal
 
-class DefaultRabbitMQStreamingConsumer[F[_]: ConcurrentEffect: Timer, A: DeliveryConverter] private (
-    name: String,
-    queueName: String,
+class DefaultRabbitMQStreamingConsumer[F[_]: ConcurrentEffect: Timer, A] private (
+    base: ConsumerBase[F, A],
     initialConsumerTag: String,
-    connectionInfo: RabbitMQConnectionInfo,
     consumerListener: ConsumerListener,
-    monitor: Monitor,
-    republishStrategy: RepublishStrategy,
     processTimeout: FiniteDuration,
     timeoutAction: DeliveryResult,
     timeoutLogLevel: Level,
-    recoveringMutex: Semaphore[F],
-    poisonedMessageHandler: PoisonedMessageHandler[F, A],
-    blocker: Blocker)(createQueue: F[DeliveryQueue[F, A]], newChannel: Resource[F, ServerChannel])(implicit cs: ContextShift[F])
-    extends RabbitMQStreamingConsumer[F, A]
-    with StrictLogging {
+    recoveringMutex: Semaphore[F])(createQueue: F[DeliveryQueue[F, A]], newChannel: Resource[F, ServerChannel])
+    extends RabbitMQStreamingConsumer[F, A] {
+  import base._
 
-  private lazy val F: Sync[F] = Sync[F]
-
-  private lazy val streamFailureMeter = monitor.meter("streamFailures")
+  private lazy val streamFailureMeter = consumerRootMonitor.meter("streamFailures")
 
   private lazy val consumer = Ref.unsafe[F, Option[StreamingConsumer]](None)
   private lazy val isClosed = Ref.unsafe[F, Boolean](false)
@@ -106,7 +96,7 @@ class DefaultRabbitMQStreamingConsumer[F[_]: ConcurrentEffect: Timer, A: Deliver
   private lazy val recover: Resource[F, DeliveryQueue[F, A]] = {
     Resource.eval(createQueue).flatTap { newQueue =>
       newChannel.evalMap { newChannel =>
-        val newConsumer = new StreamingConsumer(newChannel, newQueue)
+        val newConsumer = new StreamingConsumer(base.withNewChannel(newChannel), newQueue)
 
         consumer
           .getAndSet(Some(newConsumer))
@@ -115,12 +105,12 @@ class DefaultRabbitMQStreamingConsumer[F[_]: ConcurrentEffect: Timer, A: Deliver
               blocker
                 .delay {
                   val consumerTag = oldConsumer.getConsumerTag
-                  logger.debug(s"[$name] Cancelling consumer with consumer tag $consumerTag")
+                  logger.debug(s"[$consumerName] Cancelling consumer with consumer tag $consumerTag")
 
                   try {
                     oldConsumer.channel.close()
                   } catch {
-                    case NonFatal(e) => logger.debug(s"[$name] Could not close channel", e)
+                    case NonFatal(e) => logger.debug(s"[$consumerName] Could not close channel", e)
                   }
 
                   consumerTag
@@ -128,13 +118,13 @@ class DefaultRabbitMQStreamingConsumer[F[_]: ConcurrentEffect: Timer, A: Deliver
 
             case None =>
               F.delay {
-                logger.debug(s"[$name] No old consumer to be cancelled")
+                logger.debug(s"[$consumerName] No old consumer to be cancelled")
                 initialConsumerTag
               }
           }
           .flatMap { consumerTag =>
             blocker.delay {
-              logger.debug(s"[$name] Starting consuming")
+              logger.debug(s"[$consumerName] Starting consuming")
               DefaultRabbitMQClientFactory.startConsumingQueue(newChannel, queueName, consumerTag, newConsumer)
               ()
             }
@@ -170,18 +160,18 @@ class DefaultRabbitMQStreamingConsumer[F[_]: ConcurrentEffect: Timer, A: Deliver
   private def handleStreamFinalize(e: ExitCase[Throwable]): F[Unit] = e match {
     case ExitCase.Completed =>
       stopConsuming
-        .flatTap(_ => F.delay(logger.debug(s"[$name] Delivery stream was completed")))
+        .flatTap(_ => F.delay(logger.debug(s"[$consumerName] Delivery stream was completed")))
 
     case ExitCase.Canceled =>
       stopConsuming
-        .flatTap(_ => F.delay(logger.debug(s"[$name] Delivery stream was cancelled")))
+        .flatTap(_ => F.delay(logger.debug(s"[$consumerName] Delivery stream was cancelled")))
 
     case ExitCase.Error(e: ShutdownSignalException) =>
       stopConsuming
         .flatTap { _ =>
           F.delay {
             streamFailureMeter.mark()
-            logger.error(s"[$name] Delivery stream was terminated because of channel shutdown. It might be a BUG int the client", e)
+            logger.error(s"[$consumerName] Delivery stream was terminated because of channel shutdown. It might be a BUG int the client", e)
           }
         }
 
@@ -190,11 +180,11 @@ class DefaultRabbitMQStreamingConsumer[F[_]: ConcurrentEffect: Timer, A: Deliver
         .flatTap(_ =>
           F.delay {
             streamFailureMeter.mark()
-            logger.debug(s"[$name] Delivery stream was terminated", e)
+            logger.debug(s"[$consumerName] Delivery stream was terminated", e)
         })
   }
 
-  private val timeoutDelivery = watchForTimeoutIfConfigured[F, A](name, logger, monitor, processTimeout, timeoutAction, timeoutLogLevel) _
+  private val timeoutDelivery = watchForTimeoutIfConfigured(processTimeout, timeoutAction, timeoutLogLevel) _
 
   private def enqueueDelivery(delivery: Delivery[A], deferred: Deferred[F, Either[Throwable, DeliveryResult]])
     : F[SignallingRef[F, Option[Deferred[F, Either[Throwable, DeliveryResult]]]]] = {
@@ -209,10 +199,13 @@ class DefaultRabbitMQStreamingConsumer[F[_]: ConcurrentEffect: Timer, A: Deliver
     }
   }
 
-  private class StreamingConsumer(override val channel: ServerChannel, val queue: DeliveryQueue[F, A])
-      extends ConsumerWithCallbackBase(channel, DeliveryResult.Retry, consumerListener) {
+  private class StreamingConsumer(base: ConsumerBase[F, A], val queue: DeliveryQueue[F, A])
+      extends ConsumerWithCallbackBase(base, DeliveryResult.Retry, consumerListener) {
+    import base._
+
+    val channel: ServerChannel = base.channel
+
     private val receivingEnabled = Ref.unsafe[F, Boolean](true)
-    override protected val republishStrategy: RepublishStrategy = DefaultRabbitMQStreamingConsumer.this.republishStrategy
 
     override protected def handleNewDelivery(d: DeliveryWithMetadata[A]): F[DeliveryResult] = {
       import d._
@@ -223,7 +216,7 @@ class DefaultRabbitMQStreamingConsumer[F[_]: ConcurrentEffect: Timer, A: Deliver
           case false =>
             F.delay {
               logger.trace(
-                s"[$name] Delivery $messageId/$correlationId ($deliveryTag) was ignored because consumer is not OK - it will be redelivered later")
+                s"[$consumerName] Delivery $messageId/$correlationId ($deliveryTag) was ignored because consumer is not OK - it will be redelivered later")
               DeliveryResult.Retry
             }
 
@@ -240,14 +233,14 @@ class DefaultRabbitMQStreamingConsumer[F[_]: ConcurrentEffect: Timer, A: Deliver
                   val result: F[DeliveryResult] = deferred.get.flatMap {
                     case Right(r) => F.pure(r)
                     case Left(err) =>
-                      logger.debug(s"[$name] Failure when processing delivery $messageId/$correlationId", err)
+                      logger.debug(s"[$consumerName] Failure when processing delivery $messageId/$correlationId", err)
                       F.raiseError(err)
                   }
 
                   timeoutDelivery(delivery, messageId, correlationId, result) {
                     F.delay {
                       val l = java.time.Duration.between(enqueueTime, Instant.now())
-                      logger.debug(s"[$name] Timeout after being $l in queue, cancelling processing of $messageId/$correlationId")
+                      logger.debug(s"[$consumerName] Timeout after being $l in queue, cancelling processing of $messageId/$correlationId")
                     } >> ref.set(None) // cancel by this!
                   }
                 }
@@ -257,22 +250,11 @@ class DefaultRabbitMQStreamingConsumer[F[_]: ConcurrentEffect: Timer, A: Deliver
 
     def stopConsuming(): F[Unit] = {
       receivingEnabled.set(false) >> blocker.delay {
-        logger.debug(s"[$name] Stopping consummation for $getConsumerTag")
+        logger.debug(s"[$consumerName] Stopping consummation for $getConsumerTag")
         channel.basicCancel(getConsumerTag)
         channel.setDefaultConsumer(null)
       }
     }
-
-    override protected implicit val cs: ContextShift[F] = DefaultRabbitMQStreamingConsumer.this.cs
-    override protected def name: String = DefaultRabbitMQStreamingConsumer.this.name
-    override protected def queueName: String = DefaultRabbitMQStreamingConsumer.this.queueName
-    override protected def blocker: Blocker = DefaultRabbitMQStreamingConsumer.this.blocker
-    override protected def connectionInfo: RabbitMQConnectionInfo = DefaultRabbitMQStreamingConsumer.this.connectionInfo
-    override protected def monitor: Monitor = DefaultRabbitMQStreamingConsumer.this.monitor
-    override protected def poisonedMessageHandler: PoisonedMessageHandler[F, A] =
-      DefaultRabbitMQStreamingConsumer.this.poisonedMessageHandler
-    override protected implicit val F: Sync[F] = Sync[F]
-    override protected def deliveryConverter: DeliveryConverter[A] = implicitly
   }
 }
 
@@ -282,37 +264,25 @@ object DefaultRabbitMQStreamingConsumer extends StrictLogging {
   private type DeliveryQueue[F[_], A] = Queue[F, QueuedDelivery[F, A]]
 
   def make[F[_]: ConcurrentEffect: Timer, A: DeliveryConverter](
-      name: String,
+      base: ConsumerBase[F, A],
       newChannel: Resource[F, ServerChannel],
       initialConsumerTag: String,
-      queueName: String,
-      connectionInfo: RabbitMQConnectionInfo,
       consumerListener: ConsumerListener,
       queueBufferSize: Int,
-      monitor: Monitor,
-      republishStrategy: RepublishStrategy,
       timeout: FiniteDuration,
       timeoutAction: DeliveryResult,
-      timeoutLogLevel: Level,
-      poisonedMessageHandler: PoisonedMessageHandler[F, A],
-      blocker: Blocker)(implicit cs: ContextShift[F]): Resource[F, DefaultRabbitMQStreamingConsumer[F, A]] = {
+      timeoutLogLevel: Level)(implicit cs: ContextShift[F]): Resource[F, DefaultRabbitMQStreamingConsumer[F, A]] = {
     val newQueue: F[DeliveryQueue[F, A]] = createQueue(queueBufferSize)
 
     Resource.make(Semaphore[F](1).map { mutex =>
       new DefaultRabbitMQStreamingConsumer(
-        name,
-        queueName,
+        base,
         initialConsumerTag,
-        connectionInfo,
         consumerListener,
-        monitor,
-        republishStrategy,
         timeout,
         timeoutAction,
         timeoutLogLevel,
         mutex,
-        poisonedMessageHandler,
-        blocker
       )(newQueue, newChannel)
     })(_.close)
   }

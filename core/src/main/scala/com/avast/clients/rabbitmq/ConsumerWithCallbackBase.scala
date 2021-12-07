@@ -13,17 +13,17 @@ import java.util.concurrent.RejectedExecutionException
 import java.util.concurrent.atomic.AtomicInteger
 import scala.util.control.NonFatal
 
-abstract class ConsumerWithCallbackBase[F[_]: ConcurrentEffect: CatsTimer, A: DeliveryConverter](channel: ServerChannel,
+abstract class ConsumerWithCallbackBase[F[_]: ConcurrentEffect: CatsTimer, A: DeliveryConverter](base: ConsumerBase[F, A],
                                                                                                  failureAction: DeliveryResult,
                                                                                                  consumerListener: ConsumerListener)
-    extends DefaultConsumer(channel)
-    with ConsumerBase[F, A] {
+    extends DefaultConsumer(base.channel) {
+  import base._
 
-  protected val readMeter: Meter = monitor.meter("read")
+  protected val readMeter: Meter = consumerRootMonitor.meter("read")
 
   protected val processingFailedMeter: Meter = resultsMonitor.meter("processingFailed")
 
-  protected val tasksMonitor: Monitor = monitor.named("tasks")
+  protected val tasksMonitor: Monitor = consumerRootMonitor.named("tasks")
 
   protected val processingCount: AtomicInteger = new AtomicInteger(0)
 
@@ -32,7 +32,7 @@ abstract class ConsumerWithCallbackBase[F[_]: ConcurrentEffect: CatsTimer, A: De
   protected val processedTimer: TimerPair = tasksMonitor.timerPair("processed")
 
   override def handleShutdownSignal(consumerTag: String, sig: ShutdownSignalException): Unit =
-    consumerListener.onShutdown(this, channel, name, consumerTag, sig)
+    consumerListener.onShutdown(this, channel, consumerName, consumerTag, sig)
 
   protected def handleNewDelivery(d: DeliveryWithMetadata[A]): F[DeliveryResult]
 
@@ -40,7 +40,8 @@ abstract class ConsumerWithCallbackBase[F[_]: ConcurrentEffect: CatsTimer, A: De
     val action = F.delay(processingCount.incrementAndGet()) >> {
       val rawBody = Bytes.copyFrom(body)
 
-      parseDelivery(envelope, rawBody, properties)
+      base
+        .parseDelivery(envelope, rawBody, properties)
         .flatMap { d =>
           import d.delivery
           import d.metadata._
@@ -48,8 +49,8 @@ abstract class ConsumerWithCallbackBase[F[_]: ConcurrentEffect: CatsTimer, A: De
           try {
             readMeter.mark()
 
-            logger.debug(s"[$name] Read delivery with $messageId/$correlationId, $deliveryTag")
-            logger.trace(s"[$name] Received delivery: $delivery")
+            consumerLogger.debug(s"[$consumerName] Read delivery with $messageId/$correlationId, $deliveryTag")
+            consumerLogger.trace(s"[$consumerName] Received delivery: $delivery")
 
             val st = Instant.now()
 
@@ -60,12 +61,14 @@ abstract class ConsumerWithCallbackBase[F[_]: ConcurrentEffect: CatsTimer, A: De
           } catch {
             // we catch this specific exception, handling of others is up to Lyra
             case e: RejectedExecutionException =>
-              logger.debug(s"[$name] Executor was unable to plan the handling task for $messageId/$correlationId, $deliveryTag", e)
+              consumerLogger.debug(
+                s"[$consumerName] Executor was unable to plan the handling task for $messageId/$correlationId, $deliveryTag",
+                e)
               handleFailure(d, rawBody, e)
 
             case NonFatal(e) =>
-              logger.error(
-                s"[$name] Error while preparing callback execution for delivery with routing key $routingKey. This is probably a bug as the F construction shouldn't throw any exception",
+              consumerLogger.error(
+                s"[$consumerName] Error while preparing callback execution for delivery with routing key $routingKey. This is probably a bug as the F construction shouldn't throw any exception",
                 e
               )
               handleFailure(d, rawBody, e)
@@ -76,7 +79,7 @@ abstract class ConsumerWithCallbackBase[F[_]: ConcurrentEffect: CatsTimer, A: De
             F.delay {
               processingCount.decrementAndGet()
               processingFailedMeter.mark()
-              logger.debug(s"Could not process delivery with delivery tag ${envelope.getDeliveryTag}", e)
+              consumerLogger.debug(s"Could not process delivery with delivery tag ${envelope.getDeliveryTag}", e)
             } >> F.raiseError[Unit](e)
         }
     }
@@ -99,16 +102,17 @@ abstract class ConsumerWithCallbackBase[F[_]: ConcurrentEffect: CatsTimer, A: De
       .flatTap(_ =>
         F.delay {
           val duration = taskDuration()
-          logger.debug(s"[$name] Delivery $messageId/$correlationId handling succeeded in $duration")
+          consumerLogger.debug(s"[$consumerName] Delivery $messageId/$correlationId handling succeeded in $duration")
           processedTimer.update(duration)
       })
       .recoverWith {
         case NonFatal(t) =>
           F.delay {
             val duration = taskDuration()
-            logger.debug(s"[$name] Delivery $messageId/$correlationId handling failed in $duration", t)
+            consumerLogger.debug(s"[$consumerName] Delivery $messageId/$correlationId handling failed in $duration", t)
             processedTimer.updateFailure(duration)
-            logger.error(s"[$name] Error while executing callback for delivery $messageId/$correlationId with $routingKey", t)
+            consumerLogger
+              .error(s"[$consumerName] Error while executing callback for delivery $messageId/$correlationId with $routingKey", t)
           } >>
             handleFailure(delivery, rawBody, t)
       }
@@ -118,7 +122,7 @@ abstract class ConsumerWithCallbackBase[F[_]: ConcurrentEffect: CatsTimer, A: De
     F.delay {
       processingCount.decrementAndGet()
       processingFailedMeter.mark()
-      consumerListener.onError(this, name, channel, t)
+      consumerListener.onError(this, consumerName, channel, t)
     } >>
       executeFailureAction(delivery, rawBody)
   }

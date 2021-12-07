@@ -1,6 +1,7 @@
 package com.avast.clients.rabbitmq
 
-import cats.effect.{Blocker, ContextShift, Sync}
+import cats.effect.{Blocker, Concurrent, ConcurrentEffect, ContextShift, Sync, Timer}
+import cats.implicits.catsSyntaxApplicativeError
 import cats.syntax.flatMap._
 import com.avast.bytes.Bytes
 import com.avast.clients.rabbitmq.DefaultRabbitMQConsumer._
@@ -9,54 +10,54 @@ import com.avast.clients.rabbitmq.api._
 import com.avast.metrics.scalaapi.Monitor
 import com.rabbitmq.client.AMQP.BasicProperties
 import com.rabbitmq.client.{AMQP, Envelope}
-import com.typesafe.scalalogging.StrictLogging
+import com.typesafe.scalalogging.Logger
+import org.slf4j.event.Level
 
+import scala.concurrent.TimeoutException
+import scala.concurrent.duration.{Duration, FiniteDuration}
 import scala.jdk.CollectionConverters._
 import scala.util._
 import scala.util.control.NonFatal
 
-private[rabbitmq] trait ConsumerBase[F[_], A] extends StrictLogging {
-  /*
-   * This is ugly. However, it needs to be here because this is trait. And it has to be trait, because it's later mixed with `DefaultConsumer`
-   * class from Java client...
-   *  */
-  protected def name: String
-  protected def queueName: String
-  protected def channel: ServerChannel
-  protected def blocker: Blocker
-  protected def republishStrategy: RepublishStrategy
-  protected def poisonedMessageHandler: PoisonedMessageHandler[F, A]
-  protected implicit def F: Sync[F] // scalastyle:ignore
-  protected implicit def cs: ContextShift[F]
-  protected def connectionInfo: RabbitMQConnectionInfo
-  protected def monitor: Monitor
-  protected def deliveryConverter: DeliveryConverter[A]
+// it's case-class to have `copy` method for free....
+final private[rabbitmq] case class ConsumerBase[F[_]: ConcurrentEffect: Timer, A](
+    consumerName: String,
+    queueName: String,
+    channel: ServerChannel,
+    blocker: Blocker,
+    republishStrategy: RepublishStrategy,
+    poisonedMessageHandler: PoisonedMessageHandler[F, A],
+    connectionInfo: RabbitMQConnectionInfo,
+    consumerLogger: Logger,
+    consumerRootMonitor: Monitor)(implicit val contextShift: ContextShift[F], implicit val deliveryConverter: DeliveryConverter[A]) {
 
-  protected val resultsMonitor: Monitor = monitor.named("results")
+  val F: ConcurrentEffect[F] = ConcurrentEffect[F] // scalastyle:ignore
+
+  val resultsMonitor: Monitor = consumerRootMonitor.named("results")
   private val resultAckMeter = resultsMonitor.meter("ack")
   private val resultRejectMeter = resultsMonitor.meter("reject")
   private val resultRetryMeter = resultsMonitor.meter("retry")
   private val resultRepublishMeter = resultsMonitor.meter("republish")
 
-  protected def parseDelivery(envelope: Envelope, rawBody: Bytes, properties: AMQP.BasicProperties): F[DeliveryWithMetadata[A]] = {
+  def parseDelivery(envelope: Envelope, rawBody: Bytes, properties: AMQP.BasicProperties): F[DeliveryWithMetadata[A]] = {
     blocker.delay {
       val metadata = DeliveryMetadata.from(envelope, properties)
 
       val delivery = Try(deliveryConverter.convert(rawBody)) match {
         case Success(Right(a)) =>
           val delivery = Delivery(a, metadata.fixedProperties.asScala, metadata.routingKey.value)
-          logger.trace(s"[$name] Received delivery: ${delivery.copy(body = rawBody)}")
+          consumerLogger.trace(s"[$consumerName] Received delivery: ${delivery.copy(body = rawBody)}")
           delivery
 
         case Success(Left(ce)) =>
           val delivery = Delivery.MalformedContent(rawBody, metadata.fixedProperties.asScala, metadata.routingKey.value, ce)
-          logger.trace(s"[$name] Received delivery but could not convert it: $delivery")
+          consumerLogger.trace(s"[$consumerName] Received delivery but could not convert it: $delivery")
           delivery
 
         case Failure(ce) =>
           val ex = ConversionException("Unexpected failure", ce)
           val delivery = Delivery.MalformedContent(rawBody, metadata.fixedProperties.asScala, metadata.routingKey.value, ex)
-          logger.trace(s"[$name] Received delivery but could not convert it as the convertor has failed: $delivery")
+          consumerLogger.trace(s"[$consumerName] Received delivery but could not convert it as the convertor has failed: $delivery")
           delivery
       }
 
@@ -64,13 +65,13 @@ private[rabbitmq] trait ConsumerBase[F[_], A] extends StrictLogging {
     }
   }
 
-  protected def handleResult(messageId: MessageId,
-                             correlationId: CorrelationId,
-                             deliveryTag: DeliveryTag,
-                             properties: BasicProperties,
-                             routingKey: RoutingKey,
-                             rawBody: Bytes,
-                             delivery: Delivery[A])(res: DeliveryResult): F[Unit] = {
+  def handleResult(messageId: MessageId,
+                   correlationId: CorrelationId,
+                   deliveryTag: DeliveryTag,
+                   properties: BasicProperties,
+                   routingKey: RoutingKey,
+                   rawBody: Bytes,
+                   delivery: Delivery[A])(res: DeliveryResult): F[Unit] = {
     import DeliveryResult._
 
     poisonedMessageHandler.interceptResult(delivery, messageId, correlationId, rawBody)(res).flatMap {
@@ -85,36 +86,37 @@ private[rabbitmq] trait ConsumerBase[F[_], A] extends StrictLogging {
   protected def ack(messageId: MessageId, correlationId: CorrelationId, deliveryTag: DeliveryTag): F[Unit] =
     blocker.delay {
       try {
-        logger.debug(s"[$name] ACK delivery $messageId/$correlationId, $deliveryTag")
+        consumerLogger.debug(s"[$consumerName] ACK delivery $messageId/$correlationId, $deliveryTag")
         if (!channel.isOpen) throw new IllegalStateException("Cannot ack delivery on closed channel")
         channel.basicAck(deliveryTag.value, false)
         resultAckMeter.mark()
       } catch {
-        case NonFatal(e) => logger.warn(s"[$name] Error while confirming the delivery $messageId/$correlationId", e)
+        case NonFatal(e) => consumerLogger.warn(s"[$consumerName] Error while confirming the delivery $messageId/$correlationId", e)
       }
     }
 
   protected def reject(messageId: MessageId, correlationId: CorrelationId, deliveryTag: DeliveryTag): F[Unit] =
     blocker.delay {
       try {
-        logger.debug(s"[$name] REJECT delivery $messageId/$correlationId, $deliveryTag")
+        consumerLogger.debug(s"[$consumerName] REJECT delivery $messageId/$correlationId, $deliveryTag")
         if (!channel.isOpen) throw new IllegalStateException("Cannot reject delivery on closed channel")
         channel.basicReject(deliveryTag.value, false)
         resultRejectMeter.mark()
       } catch {
-        case NonFatal(e) => logger.warn(s"[$name] Error while rejecting the delivery", e)
+        case NonFatal(e) => consumerLogger.warn(s"[$consumerName] Error while rejecting the delivery", e)
       }
     }
 
   protected def retry(messageId: MessageId, correlationId: CorrelationId, deliveryTag: DeliveryTag): F[Unit] =
     blocker.delay {
       try {
-        logger.debug(s"[$name] REJECT (with requeue) delivery $messageId/$correlationId, $deliveryTag")
+        consumerLogger.debug(s"[$consumerName] REJECT (with requeue) delivery $messageId/$correlationId, $deliveryTag")
         if (!channel.isOpen) throw new IllegalStateException("Cannot retry delivery on closed channel")
         channel.basicReject(deliveryTag.value, true)
         resultRetryMeter.mark()
       } catch {
-        case NonFatal(e) => logger.warn(s"[$name] Error while rejecting (with requeue) the delivery $messageId/$correlationId", e)
+        case NonFatal(e) =>
+          consumerLogger.warn(s"[$consumerName] Error while rejecting (with requeue) the delivery $messageId/$correlationId", e)
       }
     }
 
@@ -124,7 +126,7 @@ private[rabbitmq] trait ConsumerBase[F[_], A] extends StrictLogging {
                           properties: BasicProperties,
                           rawBody: Bytes): F[Unit] = {
     republishStrategy
-      .republish(blocker, channel, name)(queueName, messageId, correlationId, deliveryTag, properties, rawBody)
+      .republish(blocker, channel, consumerName)(queueName, messageId, correlationId, deliveryTag, properties, rawBody)
       .flatTap(_ => F.delay(resultRepublishMeter.mark()))
   }
 
@@ -145,4 +147,42 @@ private[rabbitmq] trait ConsumerBase[F[_], A] extends StrictLogging {
     }
     properties.builder().headers(headers.asJava).userId(newUserId).build()
   }
+
+  def watchForTimeoutIfConfigured(
+      processTimeout: FiniteDuration,
+      timeoutAction: DeliveryResult,
+      timeoutLogLevel: Level)(delivery: Delivery[A], messageId: MessageId, correlationId: CorrelationId, result: F[DeliveryResult])(
+      customTimeoutAction: F[Unit],
+  ): F[DeliveryResult] = {
+    val timeoutsMeter = consumerRootMonitor.meter("timeouts")
+
+    if (processTimeout != Duration.Zero) {
+      Concurrent
+        .timeout(result, processTimeout)
+        .recoverWith {
+          case e: TimeoutException =>
+            customTimeoutAction >>
+              Sync[F].delay {
+                consumerLogger.trace(s"[$consumerName] Timeout for $messageId/$correlationId", e)
+
+                timeoutsMeter.mark()
+
+                lazy val msg =
+                  s"[$consumerName] Task timed-out after $processTimeout of processing delivery $messageId/$correlationId with routing key ${delivery.routingKey}, applying DeliveryResult.$timeoutAction. Delivery was:\n$delivery"
+
+                timeoutLogLevel match {
+                  case Level.ERROR => consumerLogger.error(msg)
+                  case Level.WARN => consumerLogger.warn(msg)
+                  case Level.INFO => consumerLogger.info(msg)
+                  case Level.DEBUG => consumerLogger.debug(msg)
+                  case Level.TRACE => consumerLogger.trace(msg)
+                }
+
+                timeoutAction
+              }
+        }
+    } else result
+  }
+
+  def withNewChannel(newChannel: ServerChannel): ConsumerBase[F, A] = copy(channel = newChannel)
 }

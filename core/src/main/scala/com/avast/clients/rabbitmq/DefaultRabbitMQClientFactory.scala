@@ -1,18 +1,14 @@
 package com.avast.clients.rabbitmq
 
 import cats.effect._
-import cats.syntax.all._
 import com.avast.bytes.Bytes
 import com.avast.clients.rabbitmq.api._
 import com.avast.metrics.scalaapi.Monitor
 import com.rabbitmq.client.AMQP.Queue
 import com.rabbitmq.client.{AMQP, Consumer}
 import com.typesafe.scalalogging.{LazyLogging, Logger}
-import org.slf4j.event.Level
 
-import java.util.concurrent.TimeoutException
 import scala.collection.immutable
-import scala.concurrent.duration.{Duration, FiniteDuration}
 import scala.jdk.CollectionConverters._
 import scala.language.implicitConversions
 
@@ -50,7 +46,7 @@ private[rabbitmq] object DefaultRabbitMQClientFactory extends LazyLogging {
 
   object PullConsumer {
 
-    def create[F[_]: ConcurrentEffect, A: DeliveryConverter](
+    def create[F[_]: ConcurrentEffect: Timer, A: DeliveryConverter](
         consumerConfig: PullConsumerConfig,
         connection: RabbitMQConnection[F],
         connectionInfo: RabbitMQConnectionInfo,
@@ -141,21 +137,27 @@ private[rabbitmq] object DefaultRabbitMQClientFactory extends LazyLogging {
       PoisonedMessageHandler
         .make[F, A](consumerConfig.poisonedMessageHandling, connection, monitor.named("poisonedMessageHandler"))
         .flatMap { pmh =>
-          DefaultRabbitMQStreamingConsumer.make(
+          val base = new ConsumerBase[F, A](
             name,
+            queueName,
+            channel,
+            blocker,
+            republishStrategy.toRepublishStrategy,
+            pmh,
+            connectionInfo,
+            Logger(classOf[DefaultRabbitMQStreamingConsumer[F, A]]),
+            monitor
+          )
+
+          DefaultRabbitMQStreamingConsumer.make(
+            base,
             connection.newChannel().evalTap(ch => Sync[F].delay(ch.basicQos(consumerConfig.prefetchCount))),
             consumerTag,
-            queueName,
-            connectionInfo,
             consumerListener,
             queueBufferSize,
-            monitor,
-            republishStrategy.toRepublishStrategy,
             processTimeout,
             timeoutAction,
             timeoutLogLevel,
-            pmh,
-            blocker
           )
         }
     }
@@ -207,20 +209,23 @@ private[rabbitmq] object DefaultRabbitMQClientFactory extends LazyLogging {
 
     PoisonedMessageHandler.make[F, A](consumerConfig.poisonedMessageHandling, connection, monitor.named("poisonedMessageHandler")).map {
       pmh =>
+        val base = new ConsumerBase[F, A](name,
+                                          queueName,
+                                          channel,
+                                          blocker,
+                                          republishStrategy.toRepublishStrategy,
+                                          pmh,
+                                          connectionInfo,
+                                          Logger(classOf[DefaultRabbitMQConsumer[F, A]]),
+                                          monitor)
+
         val consumer = new DefaultRabbitMQConsumer[F, A](
-          name,
-          channel,
-          queueName,
-          connectionInfo,
-          republishStrategy.toRepublishStrategy,
-          pmh,
+          base,
           processTimeout,
           timeoutAction,
           timeoutLogLevel,
           failureAction,
-          consumerListener,
-          monitor,
-          blocker
+          consumerListener
         )(readAction)
 
         startConsumingQueue(channel, queueName, consumerTag, consumer)
@@ -229,7 +234,7 @@ private[rabbitmq] object DefaultRabbitMQClientFactory extends LazyLogging {
     }
   }
 
-  private def preparePullConsumer[F[_]: ConcurrentEffect, A: DeliveryConverter](
+  private def preparePullConsumer[F[_]: ConcurrentEffect: Timer, A: DeliveryConverter](
       consumerConfig: PullConsumerConfig,
       connection: RabbitMQConnection[F],
       connectionInfo: RabbitMQConnectionInfo,
@@ -254,16 +259,17 @@ private[rabbitmq] object DefaultRabbitMQClientFactory extends LazyLogging {
 
           bindQueueForRepublishing(connectionInfo, channel, consumerConfig.queueName, republishStrategy)
 
-          new DefaultRabbitMQPullConsumer[F, A](
-            name,
-            channel,
-            queueName,
-            connectionInfo,
-            republishStrategy.toRepublishStrategy,
-            pmh,
-            monitor,
-            blocker
-          )
+          val base = new ConsumerBase[F, A](name,
+                                            queueName,
+                                            channel,
+                                            blocker,
+                                            republishStrategy.toRepublishStrategy,
+                                            pmh,
+                                            connectionInfo,
+                                            Logger(classOf[DefaultRabbitMQPullConsumer[F, A]]),
+                                            monitor)
+
+          new DefaultRabbitMQPullConsumer[F, A](base)
       }
     }
   }
@@ -436,46 +442,6 @@ private[rabbitmq] object DefaultRabbitMQClientFactory extends LazyLogging {
         case Left(ce) => Delivery.MalformedContent(d.body, d.properties, d.routingKey, ce)
       }
     }
-  }
-
-  private[rabbitmq] def watchForTimeoutIfConfigured[F[_]: ConcurrentEffect: Timer, A](
-      consumerName: String,
-      consumerLogger: Logger,
-      consumerMonitor: Monitor,
-      processTimeout: FiniteDuration,
-      timeoutAction: DeliveryResult,
-      timeoutLogLevel: Level)(delivery: Delivery[A], messageId: MessageId, correlationId: CorrelationId, result: F[DeliveryResult])(
-      customTimeoutAction: F[Unit],
-  ): F[DeliveryResult] = {
-
-    val timeoutsMeter = consumerMonitor.meter("timeouts")
-
-    if (processTimeout != Duration.Zero) {
-      Concurrent
-        .timeout(result, processTimeout)
-        .recoverWith {
-          case e: TimeoutException =>
-            customTimeoutAction >>
-              Sync[F].delay {
-                consumerLogger.trace(s"[$consumerName] Timeout for $messageId/$correlationId", e)
-
-                timeoutsMeter.mark()
-
-                lazy val msg =
-                  s"[$consumerName] Task timed-out after $processTimeout of processing delivery $messageId/$correlationId with routing key ${delivery.routingKey}, applying DeliveryResult.$timeoutAction. Delivery was:\n$delivery"
-
-                timeoutLogLevel match {
-                  case Level.ERROR => consumerLogger.error(msg)
-                  case Level.WARN => consumerLogger.warn(msg)
-                  case Level.INFO => consumerLogger.info(msg)
-                  case Level.DEBUG => consumerLogger.debug(msg)
-                  case Level.TRACE => consumerLogger.trace(msg)
-                }
-
-                timeoutAction
-              }
-        }
-    } else result
   }
 
   private implicit def argsAsJava(value: ArgumentsMap): java.util.Map[String, Object] = {

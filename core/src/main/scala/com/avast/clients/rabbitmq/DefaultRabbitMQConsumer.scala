@@ -2,38 +2,24 @@ package com.avast.clients.rabbitmq
 
 import cats.effect._
 import cats.implicits._
-import com.avast.clients.rabbitmq.DefaultRabbitMQClientFactory.watchForTimeoutIfConfigured
 import com.avast.clients.rabbitmq.api._
-import com.avast.metrics.scalaapi.Monitor
 import com.rabbitmq.client.{Delivery => _}
-import com.typesafe.scalalogging.StrictLogging
 import org.slf4j.event.Level
 
 import scala.concurrent.duration.FiniteDuration
 
 class DefaultRabbitMQConsumer[F[_]: ConcurrentEffect: Timer, A: DeliveryConverter](
-    override val name: String,
-    override protected val channel: ServerChannel,
-    override protected val queueName: String,
-    override protected val connectionInfo: RabbitMQConnectionInfo,
-    override protected val republishStrategy: RepublishStrategy,
-    override protected val poisonedMessageHandler: PoisonedMessageHandler[F, A],
+    private[rabbitmq] val base: ConsumerBase[F, A],
     processTimeout: FiniteDuration,
     timeoutAction: DeliveryResult,
     timeoutLogLevel: Level,
     failureAction: DeliveryResult,
-    consumerListener: ConsumerListener,
-    override protected val monitor: Monitor,
-    override protected val blocker: Blocker)(userAction: DeliveryReadAction[F, A])(implicit override protected val cs: ContextShift[F])
-    extends ConsumerWithCallbackBase(channel, failureAction, consumerListener)
-    with RabbitMQConsumer[F]
-    with ConsumerBase[F, A]
-    with StrictLogging {
+    consumerListener: ConsumerListener)(userAction: DeliveryReadAction[F, A])
+    extends ConsumerWithCallbackBase(base, failureAction, consumerListener)
+    with RabbitMQConsumer[F] {
+  import base._
 
-  override protected val deliveryConverter: DeliveryConverter[A] = implicitly
-  override protected implicit val F: Sync[F] = Sync[F]
-
-  private val timeoutDelivery = watchForTimeoutIfConfigured[F, A](name, logger, monitor, processTimeout, timeoutAction, timeoutLogLevel) _
+  private val timeoutDelivery = watchForTimeoutIfConfigured(processTimeout, timeoutAction, timeoutLogLevel) _
 
   override protected def handleNewDelivery(d: DeliveryWithMetadata[A]): F[DeliveryResult] = {
     import d._

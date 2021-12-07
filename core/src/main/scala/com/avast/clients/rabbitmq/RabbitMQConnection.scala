@@ -238,7 +238,7 @@ object RabbitMQConnection extends StrictLogging {
         logger.debug(s"Consumer exception on channel $channel, consumer with tag '$consumerTag', method '$methodName'")
 
         val consumerName = consumer match {
-          case c: DefaultRabbitMQConsumer[_, _] => c.name
+          case c: DefaultRabbitMQConsumer[_, _] => c.base.consumerName
           case _ => "unknown"
         }
 
