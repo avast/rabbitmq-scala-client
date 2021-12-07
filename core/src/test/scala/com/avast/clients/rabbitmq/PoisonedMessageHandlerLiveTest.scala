@@ -88,6 +88,10 @@ class PoisonedMessageHandlerLiveTest extends TestBase with ScalaFutures {
     val c = createConfig()
     import c._
 
+    val messagesCount = Random.nextInt(10000) + 10000
+
+    println(s"Sending $messagesCount messages!")
+
     RabbitMQConnection.fromConfig[Task](config, ex).withResource { rabbitConnection =>
       val processed = new AtomicInteger(0)
 
@@ -104,14 +108,15 @@ class PoisonedMessageHandlerLiveTest extends TestBase with ScalaFutures {
             rabbitConnection.declareQueue("declareQueue").await
             rabbitConnection.bindQueue("bindQueue").await
 
-            for (n <- 1 to 10) {
+            for (n <- 1 to messagesCount) {
               sender.send(initialRoutingKey, Bytes.copyFromUtf8(n.toString), Some(MessageProperties(messageId = Some(s"msg_${n}_")))).await
             }
 
-            eventually(timeout(Span(2, Seconds)), interval(Span(0.25, Seconds))) {
-              assertResult(20)(processed.get())
+            eventually(timeout(Span(60, Seconds)), interval(Span(0.25, Seconds))) {
+              println(s"PROCESSED COUNT: ${processed.get()}")
+              assertResult(messagesCount * 2)(processed.get())
               assertResult(0)(testHelper.queue.getMessagesCount(queueName1)) // original dest. queue
-              assertResult(10)(testHelper.queue.getMessagesCount(queueName2)) // dead queue
+              assertResult(messagesCount)(testHelper.queue.getMessagesCount(queueName2)) // dead queue
             }
           }
         }
@@ -161,7 +166,7 @@ class PoisonedMessageHandlerLiveTest extends TestBase with ScalaFutures {
               sender.send(initialRoutingKey, Bytes.copyFromUtf8(n.toString), Some(MessageProperties(messageId = Some(s"msg_${n}_")))).await
             }
 
-            eventually(timeout(Span(900, Seconds)), interval(Span(0.25, Seconds))) {
+            eventually(timeout(Span(60, Seconds)), interval(Span(0.25, Seconds))) {
               println(s"PROCESSED COUNT: ${processed.get()}")
               assertResult(1.5 * messagesCount)(processed.get())
               assertResult(0)(testHelper.queue.getMessagesCount(queueName1)) // original dest. queue
@@ -169,6 +174,47 @@ class PoisonedMessageHandlerLiveTest extends TestBase with ScalaFutures {
             }
           }
         }
+    }
+  }
+
+  test("PoisonedMessageHandler pull") {
+    val c = createConfig()
+    import c._
+
+    val messagesCount = Random.nextInt(2000) + 2000 // only 2-4k, this consumer is just slow
+
+    println(s"Sending $messagesCount messages!")
+
+    RabbitMQConnection.fromConfig[Task](config, ex).withResource { rabbitConnection =>
+      val processed = new AtomicInteger(0)
+
+      rabbitConnection.newPullConsumer[Bytes]("testingPullWithPoisonedMessageHandler", Monitor.noOp()).withResource { cons =>
+        rabbitConnection.newProducer[Bytes]("testing", Monitor.noOp()).withResource { sender =>
+          // this need to be done _after_ the producer is created (it declares the exchange) but _before_ it starts send messages (so they are not lost)
+          rabbitConnection.declareQueue("declareQueue").await
+          rabbitConnection.bindQueue("bindQueue").await
+
+          for (n <- 1 to messagesCount) {
+            sender.send(initialRoutingKey, Bytes.copyFromUtf8(n.toString), Some(MessageProperties(messageId = Some(s"msg_${n}_")))).await
+          }
+
+          // run async:
+          sched.execute(() => {
+            while (true) {
+              val PullResult.Ok(dwh) = cons.pull().await
+              processed.incrementAndGet()
+              dwh.handle(DeliveryResult.Republish()).await
+            }
+          })
+
+          eventually(timeout(Span(60, Seconds)), interval(Span(0.25, Seconds))) {
+            println(s"PROCESSED COUNT: ${processed.get()}")
+            assertResult(2 * messagesCount)(processed.get())
+            assertResult(0)(testHelper.queue.getMessagesCount(queueName1)) // original dest. queue
+            assertResult(messagesCount)(testHelper.queue.getMessagesCount(queueName2)) // dead queue
+          }
+        }
+      }
     }
   }
 
@@ -206,7 +252,8 @@ class PoisonedMessageHandlerLiveTest extends TestBase with ScalaFutures {
             sender.send(initialRoutingKey, Bytes.copyFromUtf8(n.toString), Some(MessageProperties(messageId = Some(s"msg_${n}_")))).await
           }
 
-          eventually(timeout(Span(20, Seconds)), interval(Span(0.25, Seconds))) {
+          eventually(timeout(Span(30, Seconds)), interval(Span(0.25, Seconds))) {
+            println(s"PROCESSED COUNT: ${processed.get()}")
             assertResult(2 * messagesCount)(processed.get())
             assertResult(0)(testHelper.queue.getMessagesCount(queueName1)) // original dest. queue
             assertResult(messagesCount)(testHelper.queue.getMessagesCount(queueName2)) // dead queue
@@ -266,7 +313,7 @@ class PoisonedMessageHandlerLiveTest extends TestBase with ScalaFutures {
             sender.send(initialRoutingKey, Bytes.copyFromUtf8(n.toString), Some(MessageProperties(messageId = Some(s"msg_${n}_")))).await
           }
 
-          eventually(timeout(Span(90, Seconds)), interval(Span(0.25, Seconds))) {
+          eventually(timeout(Span(60, Seconds)), interval(Span(0.25, Seconds))) {
             println(s"PROCESSED COUNT: ${processed.get()}")
             // we can't assert the `processed` here - some deliveries may have been cancelled before they were executed
             assertResult(0)(testHelper.queue.getMessagesCount(queueName1))

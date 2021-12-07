@@ -54,7 +54,7 @@ private[rabbitmq] trait ConsumerBase[F[_], A] extends StrictLogging {
           delivery
 
         case Failure(ce) =>
-          val ex = ConversionException("Unxected failure", ce)
+          val ex = ConversionException("Unexpected failure", ce)
           val delivery = Delivery.MalformedContent(rawBody, metadata.fixedProperties.asScala, metadata.routingKey.value, ex)
           logger.trace(s"[$name] Received delivery but could not convert it as the convertor has failed: $delivery")
           delivery
