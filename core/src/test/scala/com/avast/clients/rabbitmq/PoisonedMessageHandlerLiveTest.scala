@@ -254,7 +254,7 @@ class PoisonedMessageHandlerLiveTest extends TestBase with ScalaFutures {
 
           eventually(timeout(Span(30, Seconds)), interval(Span(0.25, Seconds))) {
             println(s"PROCESSED COUNT: ${processed.get()}")
-            assertResult(2 * messagesCount)(processed.get())
+            // we can't assert the `processed` here - some deliveries may have been cancelled before they were even executed
             assertResult(0)(testHelper.queue.getMessagesCount(queueName1)) // original dest. queue
             assertResult(messagesCount)(testHelper.queue.getMessagesCount(queueName2)) // dead queue
           }
@@ -315,7 +315,7 @@ class PoisonedMessageHandlerLiveTest extends TestBase with ScalaFutures {
 
           eventually(timeout(Span(60, Seconds)), interval(Span(0.25, Seconds))) {
             println(s"PROCESSED COUNT: ${processed.get()}")
-            // we can't assert the `processed` here - some deliveries may have been cancelled before they were executed
+            // we can't assert the `processed` here - some deliveries may have been cancelled before they were even executed
             assertResult(0)(testHelper.queue.getMessagesCount(queueName1))
             assertResult(messagesCount / 2)(testHelper.queue.getMessagesCount(queueName2)) // dead queue
           }
