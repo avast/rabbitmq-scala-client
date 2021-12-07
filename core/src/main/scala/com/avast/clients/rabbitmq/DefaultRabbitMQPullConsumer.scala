@@ -31,17 +31,15 @@ class DefaultRabbitMQPullConsumer[F[_]: ConcurrentEffect, A: DeliveryConverter](
             import d._
             import metadata._
 
-            consumerLogger.debug(s"[$consumerName] Read delivery with $messageId/$correlationId $deliveryTag")
-
             val dwh = createDeliveryWithHandle(delivery) { result =>
-              handleResult(messageId, correlationId, deliveryTag, fixedProperties, routingKey, rawBody, delivery)(result)
+              handleResult(messageId, deliveryTag, fixedProperties, routingKey, rawBody, delivery)(result)
                 .map { _ =>
                   processingCount.decrementAndGet()
                   ()
                 }
             }
 
-            Effect[F].pure {
+            consumerLogger.debug(s"[$consumerName] Read delivery with $messageId $deliveryTag").as {
               PullResult.Ok(dwh)
             }
           }

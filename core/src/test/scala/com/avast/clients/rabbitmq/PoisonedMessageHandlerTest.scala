@@ -4,13 +4,17 @@ import com.avast.bytes.Bytes
 import com.avast.clients.rabbitmq.PoisonedMessageHandler._
 import com.avast.clients.rabbitmq.api.DeliveryResult.Republish
 import com.avast.clients.rabbitmq.api._
+import com.avast.clients.rabbitmq.logging.ImplicitContextLogger
 import monix.eval.Task
 import monix.execution.Scheduler.Implicits.global
-import org.scalatest.concurrent.ScalaFutures
 
 import java.util.concurrent.atomic.AtomicInteger
 
-class PoisonedMessageHandlerTest extends TestBase with ScalaFutures {
+class PoisonedMessageHandlerTest extends TestBase {
+
+  implicit val cid: CorrelationId = CorrelationId("corr-id")
+
+  private val ilogger = ImplicitContextLogger.createLogger[Task, PoisonedMessageHandlerTest]
 
   test("PoisonedMessageHandler.handleResult ignores non-poisoned") {
     def readAction(d: Delivery[Bytes]): Task[DeliveryResult] = {
@@ -20,13 +24,9 @@ class PoisonedMessageHandlerTest extends TestBase with ScalaFutures {
     val movedCount = new AtomicInteger(0)
 
     PoisonedMessageHandler
-      .handleResult[Task, Bytes](Delivery.Ok(Bytes.empty(), MessageProperties(), ""),
-                                 MessageId("msg-id"),
-                                 CorrelationId("corr-id"),
-                                 1,
-                                 (_, _) => {
-                                   Task.delay { movedCount.incrementAndGet() }
-                                 })(Republish(isPoisoned = false))
+      .handleResult[Task, Bytes](Delivery.Ok(Bytes.empty(), MessageProperties(), ""), MessageId("msg-id"), 1, ilogger, (_, _) => {
+        Task.delay { movedCount.incrementAndGet() }
+      })(Republish(isPoisoned = false))
       .await
 
     assertResult(0)(movedCount.get())
@@ -34,13 +34,9 @@ class PoisonedMessageHandlerTest extends TestBase with ScalaFutures {
     movedCount.set(0)
 
     PoisonedMessageHandler
-      .handleResult[Task, Bytes](Delivery.Ok(Bytes.empty(), MessageProperties(), ""),
-                                 MessageId("msg-id"),
-                                 CorrelationId("corr-id"),
-                                 1,
-                                 (_, _) => {
-                                   Task.delay { movedCount.incrementAndGet() }
-                                 })(Republish())
+      .handleResult[Task, Bytes](Delivery.Ok(Bytes.empty(), MessageProperties(), ""), MessageId("msg-id"), 1, ilogger, (_, _) => {
+        Task.delay { movedCount.incrementAndGet() }
+      })(Republish())
       .await
 
     assertResult(1)(movedCount.get())
@@ -94,7 +90,7 @@ class PoisonedMessageHandlerTest extends TestBase with ScalaFutures {
 
     val movedCount = new AtomicInteger(0)
 
-    val handler = new DeadQueuePoisonedMessageHandler[Task, Bytes](5)({ (_, _) =>
+    val handler = new DeadQueuePoisonedMessageHandler[Task, Bytes](5)({ (_, _, _) =>
       Task.delay(movedCount.incrementAndGet())
     })
 
@@ -122,7 +118,7 @@ class PoisonedMessageHandlerTest extends TestBase with ScalaFutures {
 
     val movedCount = new AtomicInteger(0)
 
-    val handler = new DeadQueuePoisonedMessageHandler[Task, Bytes](5)({ (_, _) =>
+    val handler = new DeadQueuePoisonedMessageHandler[Task, Bytes](5)({ (_, _, _) =>
       Task.delay(movedCount.incrementAndGet())
     })
 
@@ -135,6 +131,8 @@ class PoisonedMessageHandlerTest extends TestBase with ScalaFutures {
             } else {
               MessageProperties(headers = h)
             }
+
+          case _ => fail("unreachable")
         }
     }
 
@@ -150,7 +148,7 @@ class PoisonedMessageHandlerTest extends TestBase with ScalaFutures {
     val delivery = Delivery(Bytes.empty(), properties, "")
 
     readAction(delivery).flatMap {
-      handler.interceptResult(delivery, MessageId("msg-id"), CorrelationId("corr-id"), Bytes.empty())
+      handler.interceptResult(delivery, MessageId("msg-id"), Bytes.empty())
     }
   }.runSyncUnsafe()
 }

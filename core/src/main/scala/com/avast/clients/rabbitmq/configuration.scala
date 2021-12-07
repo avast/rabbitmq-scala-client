@@ -1,5 +1,6 @@
 package com.avast.clients.rabbitmq
 
+import cats.effect.{ContextShift, Sync}
 import com.avast.clients.rabbitmq.api.DeliveryResult
 import com.rabbitmq.client.RecoveryDelayHandler
 import org.slf4j.event.Level
@@ -150,16 +151,16 @@ object ExchangeType {
 }
 
 trait RepublishStrategyConfig {
-  def toRepublishStrategy: RepublishStrategy
+  def toRepublishStrategy[F[_]: Sync: ContextShift]: RepublishStrategy[F]
 }
 
 object RepublishStrategyConfig {
   case class CustomExchange(exchangeName: String, exchangeDeclare: Boolean = true, exchangeAutoBind: Boolean = true)
       extends RepublishStrategyConfig {
-    override def toRepublishStrategy: RepublishStrategy = RepublishStrategy.CustomExchange(exchangeName)
+    override def toRepublishStrategy[F[_]: Sync: ContextShift]: RepublishStrategy[F] = RepublishStrategy.CustomExchange(exchangeName)
   }
 
   case object DefaultExchange extends RepublishStrategyConfig {
-    override def toRepublishStrategy: RepublishStrategy = RepublishStrategy.DefaultExchange
+    override def toRepublishStrategy[F[_]: Sync: ContextShift]: RepublishStrategy[F] = RepublishStrategy.DefaultExchange[F]()
   }
 }

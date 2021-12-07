@@ -89,9 +89,9 @@ trait ConfigRabbitMQConnection[F[_]] {
     */
   def withChannel[A](f: ServerChannel => F[A]): F[A]
 
-  def connectionListener: ConnectionListener
-  def channelListener: ChannelListener
-  def consumerListener: ConsumerListener
+  def connectionListener: ConnectionListener[F]
+  def channelListener: ChannelListener[F]
+  def consumerListener: ConsumerListener[F]
 }
 
 class DefaultConfigRabbitMQConnection[F[_]](config: ConfigCursor, wrapped: RabbitMQConnection[F])(
@@ -111,11 +111,11 @@ class DefaultConfigRabbitMQConnection[F[_]](config: ConfigCursor, wrapped: Rabbi
 
   override def withChannel[A](f: ServerChannel => F[A]): F[A] = wrapped.withChannel(f)
 
-  override val connectionListener: ConnectionListener = wrapped.connectionListener
+  override val connectionListener: ConnectionListener[F] = wrapped.connectionListener
 
-  override val channelListener: ChannelListener = wrapped.channelListener
+  override val channelListener: ChannelListener[F] = wrapped.channelListener
 
-  override val consumerListener: ConsumerListener = wrapped.consumerListener
+  override val consumerListener: ConsumerListener[F] = wrapped.consumerListener
 
   override def newConsumer[A: DeliveryConverter](configName: String, monitor: Monitor)(
       readAction: DeliveryReadAction[F, A]): Resource[F, RabbitMQConsumer[F]] = {

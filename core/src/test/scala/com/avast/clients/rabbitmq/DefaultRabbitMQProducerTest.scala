@@ -2,11 +2,11 @@ package com.avast.clients.rabbitmq
 
 import com.avast.bytes.Bytes
 import com.avast.clients.rabbitmq.api.MessageProperties
+import com.avast.clients.rabbitmq.logging.ImplicitContextLogger
 import com.avast.metrics.scalaapi.Monitor
 import com.rabbitmq.client.AMQP
 import com.rabbitmq.client.impl.recovery.AutorecoveringChannel
 import monix.eval.Task
-import monix.execution.Scheduler
 import monix.execution.Scheduler.Implicits.global
 import org.mockito.Mockito._
 import org.mockito.{ArgumentCaptor, Matchers}
@@ -28,7 +28,8 @@ class DefaultRabbitMQProducerTest extends TestBase {
       monitor = Monitor.noOp(),
       defaultProperties = MessageProperties.empty,
       reportUnroutable = false,
-      blocker = TestBase.testBlocker
+      blocker = TestBase.testBlocker,
+      logger = ImplicitContextLogger.createLogger
     )
 
     val properties = new AMQP.BasicProperties.Builder()

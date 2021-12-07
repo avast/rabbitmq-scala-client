@@ -7,19 +7,17 @@ import cats.syntax.all._
 import com.avast.clients.rabbitmq.DefaultRabbitMQStreamingConsumer.DeliveryQueue
 import com.avast.clients.rabbitmq.api._
 import com.rabbitmq.client.{Delivery => _, _}
-import com.typesafe.scalalogging.StrictLogging
 import fs2.Stream
 import fs2.concurrent.{Queue, SignallingRef}
 import org.slf4j.event.Level
 
 import java.time.Instant
 import scala.concurrent.duration.FiniteDuration
-import scala.util.control.NonFatal
 
 class DefaultRabbitMQStreamingConsumer[F[_]: ConcurrentEffect: Timer, A] private (
     base: ConsumerBase[F, A],
     initialConsumerTag: String,
-    consumerListener: ConsumerListener,
+    consumerListener: ConsumerListener[F],
     processTimeout: FiniteDuration,
     timeoutAction: DeliveryResult,
     timeoutLogLevel: Level,
@@ -102,32 +100,22 @@ class DefaultRabbitMQStreamingConsumer[F[_]: ConcurrentEffect: Timer, A] private
           .getAndSet(Some(newConsumer))
           .flatMap {
             case Some(oldConsumer) =>
-              blocker
-                .delay {
-                  val consumerTag = oldConsumer.getConsumerTag
-                  logger.debug(s"[$consumerName] Cancelling consumer with consumer tag $consumerTag")
-
-                  try {
-                    oldConsumer.channel.close()
-                  } catch {
-                    case NonFatal(e) => logger.debug(s"[$consumerName] Could not close channel", e)
+              val consumerTag = oldConsumer.getConsumerTag
+              consumerLogger.plainDebug(s"[$consumerName] Cancelling consumer with consumer tag $consumerTag") >>
+                blocker
+                  .delay { oldConsumer.channel.close() }
+                  .recoverWith {
+                    case e => consumerLogger.plainDebug(e)(s"[$consumerName] Could not close channel")
                   }
-
-                  consumerTag
-                }
+                  .as(consumerTag)
 
             case None =>
-              F.delay {
-                logger.debug(s"[$consumerName] No old consumer to be cancelled")
-                initialConsumerTag
-              }
+              consumerLogger.plainDebug(s"[$consumerName] No old consumer to be cancelled") >>
+                F.delay { initialConsumerTag }
           }
           .flatMap { consumerTag =>
-            blocker.delay {
-              logger.debug(s"[$consumerName] Starting consuming")
-              DefaultRabbitMQClientFactory.startConsumingQueue(newChannel, queueName, consumerTag, newConsumer)
-              ()
-            }
+            consumerLogger.plainDebug(s"[$consumerName] Starting consuming") >>
+              DefaultRabbitMQClientFactory.startConsumingQueue(newChannel, queueName, consumerTag, newConsumer, blocker)
           } >> isOk.set(true)
       }
     }
@@ -160,31 +148,29 @@ class DefaultRabbitMQStreamingConsumer[F[_]: ConcurrentEffect: Timer, A] private
   private def handleStreamFinalize(e: ExitCase[Throwable]): F[Unit] = e match {
     case ExitCase.Completed =>
       stopConsuming
-        .flatTap(_ => F.delay(logger.debug(s"[$consumerName] Delivery stream was completed")))
+        .flatTap(_ => consumerLogger.plainDebug(s"[$consumerName] Delivery stream was completed"))
 
     case ExitCase.Canceled =>
       stopConsuming
-        .flatTap(_ => F.delay(logger.debug(s"[$consumerName] Delivery stream was cancelled")))
+        .flatTap(_ => consumerLogger.plainDebug(s"[$consumerName] Delivery stream was cancelled"))
 
     case ExitCase.Error(e: ShutdownSignalException) =>
       stopConsuming
         .flatTap { _ =>
-          F.delay {
-            streamFailureMeter.mark()
-            logger.error(s"[$consumerName] Delivery stream was terminated because of channel shutdown. It might be a BUG int the client", e)
-          }
+          F.delay { streamFailureMeter.mark() } >>
+            consumerLogger.plainError(e)(
+              s"[$consumerName] Delivery stream was terminated because of channel shutdown. It might be a BUG int the client")
         }
 
     case ExitCase.Error(e) =>
       stopConsuming
-        .flatTap(_ =>
-          F.delay {
-            streamFailureMeter.mark()
-            logger.debug(s"[$consumerName] Delivery stream was terminated", e)
-        })
+        .flatTap(
+          _ =>
+            F.delay {
+              streamFailureMeter.mark()
+            } >>
+              consumerLogger.plainDebug(e)(s"[$consumerName] Delivery stream was terminated"))
   }
-
-  private val timeoutDelivery = watchForTimeoutIfConfigured(processTimeout, timeoutAction, timeoutLogLevel) _
 
   private def enqueueDelivery(delivery: Delivery[A], deferred: Deferred[F, Either[Throwable, DeliveryResult]])
     : F[SignallingRef[F, Option[Deferred[F, Either[Throwable, DeliveryResult]]]]] = {
@@ -214,11 +200,12 @@ class DefaultRabbitMQStreamingConsumer[F[_]: ConcurrentEffect: Timer, A] private
       receivingEnabled.get
         .flatMap {
           case false =>
-            F.delay {
-              logger.trace(
-                s"[$consumerName] Delivery $messageId/$correlationId ($deliveryTag) was ignored because consumer is not OK - it will be redelivered later")
-              DeliveryResult.Retry
-            }
+            consumerLogger
+              .trace(
+                s"[$consumerName] Delivery $messageId ($deliveryTag) was ignored because consumer is not OK - it will be redelivered later")
+              .as {
+                DeliveryResult.Retry
+              }
 
           case true =>
             Deferred[F, Either[Throwable, DeliveryResult]].flatMap { deferred =>
@@ -230,17 +217,17 @@ class DefaultRabbitMQStreamingConsumer[F[_]: ConcurrentEffect: Timer, A] private
                 .flatMap { ref =>
                   val enqueueTime = Instant.now()
 
-                  val result: F[DeliveryResult] = deferred.get.flatMap {
+                  val result = deferred.get.flatMap {
                     case Right(r) => F.pure(r)
                     case Left(err) =>
-                      logger.debug(s"[$consumerName] Failure when processing delivery $messageId/$correlationId", err)
-                      F.raiseError(err)
+                      consumerLogger.debug(err)(s"[$consumerName] Failure when processing delivery $messageId") >>
+                        F.raiseError[DeliveryResult](err)
                   }
 
-                  timeoutDelivery(delivery, messageId, correlationId, result) {
-                    F.delay {
+                  watchForTimeoutIfConfigured(processTimeout, timeoutAction, timeoutLogLevel)(delivery, messageId, result) {
+                    F.defer {
                       val l = java.time.Duration.between(enqueueTime, Instant.now())
-                      logger.debug(s"[$consumerName] Timeout after being $l in queue, cancelling processing of $messageId/$correlationId")
+                      consumerLogger.debug(s"[$consumerName] Timeout after being $l in queue, cancelling processing of $messageId")
                     } >> ref.set(None) // cancel by this!
                   }
                 }
@@ -250,7 +237,7 @@ class DefaultRabbitMQStreamingConsumer[F[_]: ConcurrentEffect: Timer, A] private
 
     def stopConsuming(): F[Unit] = {
       receivingEnabled.set(false) >> blocker.delay {
-        logger.debug(s"[$consumerName] Stopping consummation for $getConsumerTag")
+        consumerLogger.plainDebug(s"[$consumerName] Stopping consummation for $getConsumerTag")
         channel.basicCancel(getConsumerTag)
         channel.setDefaultConsumer(null)
       }
@@ -258,7 +245,7 @@ class DefaultRabbitMQStreamingConsumer[F[_]: ConcurrentEffect: Timer, A] private
   }
 }
 
-object DefaultRabbitMQStreamingConsumer extends StrictLogging {
+object DefaultRabbitMQStreamingConsumer {
 
   private type QueuedDelivery[F[_], A] = (StreamedDelivery[F, A], SignallingRef[F, Option[Deferred[F, Either[Throwable, DeliveryResult]]]])
   private type DeliveryQueue[F[_], A] = Queue[F, QueuedDelivery[F, A]]
@@ -267,7 +254,7 @@ object DefaultRabbitMQStreamingConsumer extends StrictLogging {
       base: ConsumerBase[F, A],
       newChannel: Resource[F, ServerChannel],
       initialConsumerTag: String,
-      consumerListener: ConsumerListener,
+      consumerListener: ConsumerListener[F],
       queueBufferSize: Int,
       timeout: FiniteDuration,
       timeoutAction: DeliveryResult,

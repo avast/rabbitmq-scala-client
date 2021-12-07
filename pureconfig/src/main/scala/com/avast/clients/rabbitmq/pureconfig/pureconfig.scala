@@ -3,7 +3,6 @@ package com.avast.clients.rabbitmq
 import _root_.pureconfig._
 import _root_.pureconfig.error.ConfigReaderException
 import cats.effect.{ConcurrentEffect, ContextShift, Resource, Sync, Timer}
-import com.avast.clients.rabbitmq.RabbitMQConnection.DefaultListeners
 import com.typesafe.config.Config
 
 import java.util.concurrent.ExecutorService
@@ -17,13 +16,12 @@ package object pureconfig {
   private[pureconfig] val DeclarationsRootName = "declarations"
 
   implicit class RabbitMQConnectionOps(val f: RabbitMQConnection.type) extends AnyVal {
-    def fromConfig[F[_]: ConcurrentEffect: Timer: ContextShift](
-        config: Config,
-        blockingExecutor: ExecutorService,
-        sslContext: Option[SSLContext] = None,
-        connectionListener: ConnectionListener = DefaultListeners.DefaultConnectionListener,
-        channelListener: ChannelListener = DefaultListeners.DefaultChannelListener,
-        consumerListener: ConsumerListener = DefaultListeners.DefaultConsumerListener)(
+    def fromConfig[F[_]: ConcurrentEffect: Timer: ContextShift](config: Config,
+                                                                blockingExecutor: ExecutorService,
+                                                                sslContext: Option[SSLContext] = None,
+                                                                connectionListener: Option[ConnectionListener[F]] = None,
+                                                                channelListener: Option[ChannelListener[F]] = None,
+                                                                consumerListener: Option[ConsumerListener[F]] = None)(
         implicit connectionConfigReader: ConfigReader[RabbitMQConnectionConfig] = implicits.CamelCase.connectionConfigReader,
         consumerConfigReader: ConfigReader[ConsumerConfig] = implicits.CamelCase.consumerConfigReader,
         producerConfigReader: ConfigReader[ProducerConfig] = implicits.CamelCase.producerConfigReader,

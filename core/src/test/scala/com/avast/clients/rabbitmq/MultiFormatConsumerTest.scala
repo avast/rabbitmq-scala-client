@@ -6,11 +6,10 @@ import com.avast.clients.rabbitmq.extras.format._
 import io.circe.Decoder
 import io.circe.generic.extras.Configuration
 import io.circe.generic.extras.auto._
-import org.scalatest.concurrent.ScalaFutures
+import monix.eval.Task
+import monix.execution.Scheduler.Implicits.global
 
-import scala.concurrent.Future
-
-class MultiFormatConsumerTest extends TestBase with ScalaFutures {
+class MultiFormatConsumerTest extends TestBase {
 
   val StringDeliveryConverter: CheckedDeliveryConverter[String] = new CheckedDeliveryConverter[String] {
     override def canConvert(d: Delivery[Bytes]): Boolean = d.properties.contentType.contains("text/plain")
@@ -26,10 +25,10 @@ class MultiFormatConsumerTest extends TestBase with ScalaFutures {
   case class NewFileSourceAdded(fileSources: Seq[FileSource])
 
   test("basic") {
-    val consumer = MultiFormatConsumer.forType[Future, String](StringDeliveryConverter) {
+    val consumer = MultiFormatConsumer.forType[Task, String](StringDeliveryConverter) {
       case d: Delivery.Ok[String] =>
         assertResult("abc321")(d.body)
-        Future.successful(DeliveryResult.Ack)
+        Task.now(DeliveryResult.Ack)
 
       case _ => fail()
     }
@@ -40,17 +39,17 @@ class MultiFormatConsumerTest extends TestBase with ScalaFutures {
       routingKey = ""
     )
 
-    val result = consumer.apply(delivery).futureValue
+    val result = consumer.apply(delivery).await
 
     assertResult(DeliveryResult.Ack)(result)
   }
 
   test("non-supported content-type") {
-    val consumer = MultiFormatConsumer.forType[Future, String](StringDeliveryConverter) {
+    val consumer = MultiFormatConsumer.forType[Task, String](StringDeliveryConverter) {
       case _: Delivery.Ok[String] =>
-        Future.successful(DeliveryResult.Ack)
+        Task.now(DeliveryResult.Ack)
       case _ =>
-        Future.successful(DeliveryResult.Reject)
+        Task.now(DeliveryResult.Reject)
     }
 
     val delivery = Delivery(
@@ -59,13 +58,13 @@ class MultiFormatConsumerTest extends TestBase with ScalaFutures {
       routingKey = ""
     )
 
-    val result = consumer.apply(delivery).futureValue
+    val result = consumer.apply(delivery).await
 
     assertResult(DeliveryResult.Reject)(result)
   }
 
   test("json") {
-    val consumer = MultiFormatConsumer.forType[Future, NewFileSourceAdded](JsonDeliveryConverter.derive()) {
+    val consumer = MultiFormatConsumer.forType[Task, NewFileSourceAdded](JsonDeliveryConverter.derive()) {
       case d: Delivery.Ok[NewFileSourceAdded] =>
         assertResult(
           NewFileSourceAdded(
@@ -74,9 +73,9 @@ class MultiFormatConsumerTest extends TestBase with ScalaFutures {
               FileSource(Bytes.copyFromUtf8("def"), "theSource")
             )))(d.body)
 
-        Future.successful(DeliveryResult.Ack)
+        Task.now(DeliveryResult.Ack)
 
-      case _ => Future.successful(DeliveryResult.Reject)
+      case _ => Task.now(DeliveryResult.Reject)
     }
 
     val delivery = Delivery(
@@ -90,7 +89,7 @@ class MultiFormatConsumerTest extends TestBase with ScalaFutures {
       routingKey = ""
     )
 
-    val result = consumer.apply(delivery).futureValue
+    val result = consumer.apply(delivery).await
 
     assertResult(DeliveryResult.Ack)(result)
   }

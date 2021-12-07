@@ -5,6 +5,7 @@ import com.avast.clients.rabbitmq.DefaultRabbitMQConsumer.CorrelationIdHeaderNam
 import com.avast.clients.rabbitmq.RabbitMQConnection.DefaultListeners
 import com.avast.clients.rabbitmq.api.DeliveryResult
 import com.avast.clients.rabbitmq.api.DeliveryResult.Republish
+import com.avast.clients.rabbitmq.logging.ImplicitContextLogger
 import com.avast.metrics.scalaapi._
 import com.rabbitmq.client.AMQP.BasicProperties
 import com.rabbitmq.client.Envelope
@@ -410,15 +411,17 @@ class DefaultRabbitMQConsumerTest extends TestBase {
 
   private def newConsumer(channel: ServerChannel, failureAction: DeliveryResult = Republish(), monitor: Monitor = Monitor.noOp())(
       userAction: DeliveryReadAction[Task, Bytes]): DefaultRabbitMQConsumer[Task, Bytes] = {
-    val base = new ConsumerBase[Task, Bytes]("test",
-                                             "queueName",
-                                             channel,
-                                             TestBase.testBlocker,
-                                             RepublishStrategy.DefaultExchange,
-                                             PMH,
-                                             connectionInfo,
-                                             logger,
-                                             monitor)
+    val base = new ConsumerBase[Task, Bytes](
+      "test",
+      "queueName",
+      channel,
+      TestBase.testBlocker,
+      RepublishStrategy.DefaultExchange[Task](),
+      PMH,
+      connectionInfo,
+      ImplicitContextLogger.createLogger,
+      monitor
+    )
 
     new DefaultRabbitMQConsumer[Task, Bytes](
       base,
@@ -426,7 +429,7 @@ class DefaultRabbitMQConsumerTest extends TestBase {
       DeliveryResult.Republish(),
       Level.ERROR,
       failureAction,
-      DefaultListeners.DefaultConsumerListener,
+      DefaultListeners.defaultConsumerListener,
     )(userAction)
   }
 

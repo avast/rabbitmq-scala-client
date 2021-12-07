@@ -3,6 +3,7 @@ package com.avast.clients.rabbitmq
 import com.avast.bytes.Bytes
 import com.avast.clients.rabbitmq.DefaultRabbitMQConsumer.CorrelationIdHeaderName
 import com.avast.clients.rabbitmq.api._
+import com.avast.clients.rabbitmq.logging.ImplicitContextLogger
 import com.avast.metrics.scalaapi.Monitor
 import com.rabbitmq.client.AMQP.BasicProperties
 import com.rabbitmq.client.impl.recovery.AutorecoveringChannel
@@ -262,15 +263,17 @@ class DefaultRabbitMQPullConsumerTest extends TestBase {
   }
 
   private def newConsumer[A: DeliveryConverter](channel: ServerChannel): DefaultRabbitMQPullConsumer[Task, A] = {
-    val base = new ConsumerBase[Task, A]("test",
-                                         "queueName",
-                                         channel,
-                                         TestBase.testBlocker,
-                                         RepublishStrategy.DefaultExchange,
-                                         new PMH,
-                                         connectionInfo,
-                                         logger,
-                                         Monitor.noOp())
+    val base = new ConsumerBase[Task, A](
+      "test",
+      "queueName",
+      channel,
+      TestBase.testBlocker,
+      RepublishStrategy.DefaultExchange[Task](),
+      new PMH,
+      connectionInfo,
+      ImplicitContextLogger.createLogger,
+      Monitor.noOp()
+    )
 
     new DefaultRabbitMQPullConsumer[Task, A](base)
   }

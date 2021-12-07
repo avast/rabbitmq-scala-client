@@ -18,7 +18,7 @@ dependencies {
     api project(":api")
 
     api "com.avast.metrics:metrics-scala_$scalaVersion:${metricsVersion}"
-    api "com.typesafe.scala-logging:scala-logging_$scalaVersion:3.9.2"
+    api "org.typelevel:log4cats-slf4j_$scalaVersion:1.4.0"
 
     api "com.avast.bytes:bytes-core:${bytesVersion}"
 
@@ -28,6 +28,7 @@ dependencies {
     api "org.typelevel:cats-effect_$scalaVersion:$catsEffectVersion"
 
     api 'org.xbib:jsr-305:1.0.0'
+    api "org.scala-lang:scala-reflect:$scalaVersionFull"
 
     testImplementation project(":extras")
     testImplementation project(":extras-circe")

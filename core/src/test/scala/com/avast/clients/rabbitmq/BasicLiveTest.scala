@@ -424,4 +424,38 @@ class BasicLiveTest extends TestBase with ScalaFutures {
       }
     }
   }
+
+  test("propagates correlation ID") {
+    val c = createConfig()
+    import c._
+
+    val messageCount = 10
+
+    RabbitMQConnection.fromConfig[Task](config, ex).withResource { rabbitConnection =>
+      val processed = new AtomicInteger(0)
+
+      val cons = rabbitConnection.newConsumer[Bytes]("testing", Monitor.noOp()) {
+        case Delivery.Ok(body, properties, _) =>
+          assertResult(Some(body.toStringUtf8))(properties.correlationId)
+          processed.incrementAndGet()
+          Task.now(DeliveryResult.Ack)
+
+        case _ => fail("malformed")
+      }
+
+      cons.withResource { _ =>
+        rabbitConnection.newProducer[Bytes]("testing", Monitor.noOp()).withResource { sender =>
+          for (i <- 1 to messageCount) {
+            implicit val cid: CorrelationId = CorrelationId(s"cid$i")
+            sender.send("test", Bytes.copyFromUtf8(s"cid$i")).await
+          }
+
+          eventually {
+            assertResult(messageCount)(processed.get())
+            assertResult(0)(testHelper.queue.getMessagesCount(queueName1))
+          }
+        }
+      }
+    }
+  }
 }

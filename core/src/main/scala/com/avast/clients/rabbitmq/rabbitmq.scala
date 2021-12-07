@@ -7,7 +7,6 @@ import com.avast.bytes.Bytes
 import com.avast.clients.rabbitmq.DefaultRabbitMQConsumer.{FederationOriginalRoutingKeyHeaderName, RepublishOriginalRoutingKeyHeaderName}
 import com.avast.clients.rabbitmq.api._
 import com.rabbitmq.client.{RecoverableChannel, RecoverableConnection}
-import com.typesafe.scalalogging.Logger
 import fs2.RaiseThrowable
 
 import java.util.concurrent.Executors
@@ -20,7 +19,6 @@ package object rabbitmq {
   private[rabbitmq] val ses = Executors.newScheduledThreadPool(2)
 
   type DeliveryReadAction[F[_], -A] = Delivery[A] => F[DeliveryResult]
-  private[rabbitmq] type DeliveryReadActionWithMeta[F[_], -A] = (Delivery[A], MessageId, CorrelationId, Logger) => F[DeliveryResult]
   type ParsingFailureAction[F[_]] = (String, Delivery[Bytes], ConversionException) => F[DeliveryResult]
 
   implicit class StreamOps[F[_], A](val stream: fs2.Stream[F, A]) {

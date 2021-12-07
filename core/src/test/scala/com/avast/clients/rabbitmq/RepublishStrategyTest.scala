@@ -4,6 +4,7 @@ import com.avast.bytes.Bytes
 import com.avast.clients.rabbitmq.RabbitMQConnection.DefaultListeners
 import com.avast.clients.rabbitmq.api.DeliveryResult
 import com.avast.clients.rabbitmq.api.DeliveryResult.Republish
+import com.avast.clients.rabbitmq.logging.ImplicitContextLogger
 import com.avast.metrics.scalaapi.Monitor
 import com.rabbitmq.client.AMQP.BasicProperties
 import com.rabbitmq.client.Envelope
@@ -39,7 +40,7 @@ class RepublishStrategyTest extends TestBase {
     val channel = mock[AutorecoveringChannel]
     when(channel.isOpen).thenReturn(true)
 
-    val consumer = newConsumer(channel, RepublishStrategy.DefaultExchange) { delivery =>
+    val consumer = newConsumer(channel, RepublishStrategy.DefaultExchange[Task]()) { delivery =>
       assertResult(Some(messageId))(delivery.properties.messageId)
 
       Task.now(DeliveryResult.Republish())
@@ -96,7 +97,7 @@ class RepublishStrategyTest extends TestBase {
     }
   }
 
-  private def newConsumer(channel: ServerChannel, republishStrategy: RepublishStrategy)(
+  private def newConsumer(channel: ServerChannel, republishStrategy: RepublishStrategy[Task])(
       userAction: DeliveryReadAction[Task, Bytes]): DefaultRabbitMQConsumer[Task, Bytes] = {
     val base = new ConsumerBase[Task, Bytes]("test",
                                              "queueName",
@@ -105,7 +106,7 @@ class RepublishStrategyTest extends TestBase {
                                              republishStrategy,
                                              PMH,
                                              connectionInfo,
-                                             logger,
+                                             ImplicitContextLogger.createLogger,
                                              Monitor.noOp())
 
     new DefaultRabbitMQConsumer[Task, Bytes](
@@ -114,7 +115,7 @@ class RepublishStrategyTest extends TestBase {
       DeliveryResult.Republish(),
       Level.ERROR,
       Republish(),
-      DefaultListeners.DefaultConsumerListener,
+      DefaultListeners.defaultConsumerListener,
     )(userAction)
   }
 
