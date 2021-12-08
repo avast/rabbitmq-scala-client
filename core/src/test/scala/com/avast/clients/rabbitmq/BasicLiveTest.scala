@@ -213,36 +213,36 @@ class BasicLiveTest extends TestBase with ScalaFutures {
     }
   }
 
-  test("timeouts and requeues messages, blocking the thread") {
-    val c = createConfig()
-    import c._
-
-    implicit val cs: ContextShift[IO] = IO.contextShift(ExecutionContext.global)
-    implicit val timer: Timer[IO] = IO.timer(ExecutionContext.global)
-
-    RabbitMQConnection.fromConfig[IO](config, ex).withResource { rabbitConnection =>
-      val cnt = new AtomicInteger(0)
-
-      val cons = rabbitConnection.newConsumer("testing", Monitor.noOp()) { _: Delivery[Bytes] =>
-        cnt.incrementAndGet()
-        Thread.sleep(800) // timeout is set to 500 ms
-        IO.pure(Ack)
-      }
-
-      cons.withResource { _ =>
-        rabbitConnection.newProducer[Bytes]("testing", Monitor.noOp()).withResource { sender =>
-          for (_ <- 1 to 10) {
-            sender.send("test", Bytes.copyFromUtf8(Random.nextString(10))).unsafeRunSync()
-          }
-
-          eventually(timeout(Span(5, Seconds)), interval(Span(0.25, Seconds))) {
-            assert(cnt.get() >= 40)
-            assert(testHelper.queue.getMessagesCount(queueName1) <= 20)
-          }
-        }
-      }
-    }
-  }
+//  test("timeouts and requeues messages, blocking the thread") {
+//    val c = createConfig()
+//    import c._
+//
+//    implicit val cs: ContextShift[IO] = IO.contextShift(ExecutionContext.global)
+//    implicit val timer: Timer[IO] = IO.timer(ExecutionContext.global)
+//
+//    RabbitMQConnection.fromConfig[IO](config, ex).withResource { rabbitConnection =>
+//      val cnt = new AtomicInteger(0)
+//
+//      val cons = rabbitConnection.newConsumer("testing", Monitor.noOp()) { _: Delivery[Bytes] =>
+//        cnt.incrementAndGet()
+//        Thread.sleep(800) // timeout is set to 500 ms
+//        IO.pure(Ack)
+//      }
+//
+//      cons.withResource { _ =>
+//        rabbitConnection.newProducer[Bytes]("testing", Monitor.noOp()).withResource { sender =>
+//          for (_ <- 1 to 10) {
+//            sender.send("test", Bytes.copyFromUtf8(Random.nextString(10))).unsafeRunSync()
+//          }
+//
+//          eventually(timeout(Span(5, Seconds)), interval(Span(0.25, Seconds))) {
+//            assert(cnt.get() >= 40)
+//            assert(testHelper.queue.getMessagesCount(queueName1) <= 20)
+//          }
+//        }
+//      }
+//    }
+//  }
 
   test("additional declarations works") {
     val c = createConfig()
