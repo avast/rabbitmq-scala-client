@@ -187,7 +187,7 @@ class StreamingConsumerLiveTest extends TestBase with ScalaFutures {
       import c._
 
       RabbitMQConnection.fromConfig[Task](config, ex).withResource { rabbitConnection =>
-        val count = Random.nextInt(50000) + 50000 // random 50k - 100k messages
+        val count = Random.nextInt(5000) + 5000 // random 5k - 10k messages
 
         val nth = 150
 
@@ -241,7 +241,7 @@ class StreamingConsumerLiveTest extends TestBase with ScalaFutures {
       import c._
 
       RabbitMQConnection.fromConfig[Task](config, ex).withResource { rabbitConnection =>
-        val count = Random.nextInt(50000) + 50000 // random 50k - 100k messages
+        val count = Random.nextInt(5000) + 5000 // random 5k - 10k messages
 
         val nth = 150
 

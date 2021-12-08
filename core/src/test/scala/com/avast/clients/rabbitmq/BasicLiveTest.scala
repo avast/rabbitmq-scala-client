@@ -109,7 +109,7 @@ class BasicLiveTest extends TestBase with ScalaFutures {
     import c._
 
     RabbitMQConnection.fromConfig[Task](config, ex).withResource { rabbitConnection =>
-      val count = Random.nextInt(20000) + 20000 // 20000-40000
+      val count = Random.nextInt(5000) + 5000 // 5-10k
 
       logger.info(s"Sending $count messages")
 
