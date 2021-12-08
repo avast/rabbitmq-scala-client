@@ -47,7 +47,13 @@ class DefaultRabbitMQProducerTest extends TestBase {
                                            captor.capture(),
                                            Matchers.eq(body.toByteArray))
 
-    assertResult(properties.toString)(captor.getValue.toString) // AMQP.BasicProperties doesn't have `equals` method :-/
+    val caughtProperties = captor.getValue
+
+    assert(caughtProperties.getCorrelationId != null)
+
+    val caughtWithoutIds = caughtProperties.builder().messageId(null).correlationId(null).build()
+
+    assertResult(properties.toString)(caughtWithoutIds.toString) // AMQP.BasicProperties doesn't have `equals` method :-/
   }
 
   // todo add more tests
