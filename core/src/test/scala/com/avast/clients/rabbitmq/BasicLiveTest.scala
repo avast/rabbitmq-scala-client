@@ -121,7 +121,7 @@ class BasicLiveTest extends TestBase with ScalaFutures {
         Task {
           val n = d.incrementAndGet()
 
-          Thread.sleep(if (n % 2 == 0) 300 else 0)
+          Thread.sleep(if (n % 2 == 0) 150 else 0)
           latch.countDown()
 
           if (n < (count - 100) || n > count) Ack
