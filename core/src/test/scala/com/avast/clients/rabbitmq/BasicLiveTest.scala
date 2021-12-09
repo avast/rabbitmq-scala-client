@@ -141,7 +141,7 @@ class BasicLiveTest extends TestBase with ScalaFutures {
           }
 
           // it takes some time before the stats appear... :-|
-          eventually(timeout(Span(3, Seconds)), interval(Span(0.5, Seconds))) {
+          eventually(timeout(Span(5, Seconds)), interval(Span(0.5, Seconds))) {
             assertResult(count)(testHelper.queue.getPublishedCount(queueName1))
           }
 

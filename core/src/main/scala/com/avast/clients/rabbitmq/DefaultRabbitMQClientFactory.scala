@@ -9,6 +9,7 @@ import com.avast.clients.rabbitmq.logging.ImplicitContextLogger
 import com.avast.metrics.scalaapi.Monitor
 import com.rabbitmq.client.Consumer
 
+import scala.collection.compat._
 import scala.collection.immutable
 import scala.jdk.CollectionConverters._
 import scala.language.implicitConversions
@@ -394,6 +395,7 @@ private[rabbitmq] class DefaultRabbitMQClientFactory[F[_]: ConcurrentEffect: Tim
           }
           .getOrElse(F.unit)
       }
+      .toList
       .sequence
       .as(())
   }
