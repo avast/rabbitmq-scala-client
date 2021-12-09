@@ -42,13 +42,17 @@ allprojects {
         monixVersion = "3.4.0" // just for tests!
     }
 
+    /*
+    * Report failed test at the end of the run:
+    * */
+
     // add a collection to track failedTests
     ext.failedTests = []
 
     // add a testlistener to all tasks of type Test
     tasks.withType(Test) {
         afterTest { TestDescriptor descriptor, TestResult result ->
-            if(result.resultType == TestResult.ResultType.FAILURE){
+            if (result.resultType == TestResult.ResultType.FAILURE) {
                 failedTests << ["${descriptor.className}::${descriptor.name}"]
             }
         }
@@ -56,12 +60,14 @@ allprojects {
 
     // print out tracked failed tests when the build has finished
     gradle.buildFinished {
-        if(!failedTests.empty){
+        if (!failedTests.empty) {
+            println "\n\n----------------------------------------"
             println "Failed tests for ${project.name}:"
             failedTests.each { failedTest ->
-                println failedTest
+                println " - ${failedTest}"
             }
-            println ""
+            println "----------------------------------------"
+            println "\n"
         }
     }
 }

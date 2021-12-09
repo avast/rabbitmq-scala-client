@@ -322,7 +322,7 @@ class StreamingConsumerLiveTest extends TestBase with ScalaFutures {
 
           sched.execute(() => stream.compile.drain.runSyncUnsafe()) // run the stream
 
-          eventually(timeout(Span(20, Seconds)), interval(Span(1, Seconds))) {
+          eventually(timeout(Span(30, Seconds)), interval(Span(1, Seconds))) {
             println("D: " + d.get())
             assert(d.get() > count + 200) // more than sent messages
             assert(testHelper.exchange.getPublishedCount(exchange5) > 0)
