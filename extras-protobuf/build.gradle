@@ -5,7 +5,7 @@ archivesBaseName = "rabbitmq-client-extras-protobuf_$scalaVersion"
 dependencies {
     api project(":core")
 
-    api "com.avast.bytes:bytes-gpb:${bytesVersion}"
+    api "com.avast.bytes:bytes-gpb:$bytesVersion"
 
     api "com.google.protobuf:protobuf-java:$protobufVersion"
     api "com.google.protobuf:protobuf-java-util:$protobufVersion"
