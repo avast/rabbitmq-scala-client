@@ -85,7 +85,7 @@ object PoisonedMessageHandler {
     config match {
       case Some(LoggingPoisonedMessageHandling(maxAttempts)) => Resource.pure(new LoggingPoisonedMessageHandler[F, A](maxAttempts))
       case Some(c: DeadQueuePoisonedMessageHandling) => DeadQueuePoisonedMessageHandler.make(c, connection, monitor)
-      case None => Resource.pure(new NoOpPoisonedMessageHandler[F, A])
+      case Some(NoOpPoisonedMessageHandling) | None => Resource.pure(new NoOpPoisonedMessageHandler[F, A])
     }
   }
 

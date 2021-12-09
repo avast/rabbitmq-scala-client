@@ -32,8 +32,8 @@ allprojects {
 
         bytesVersion = "2.2.0"
         circeVersion = "0.14.1"
-        catsVersion = "2.4.2"
-        catsEffectVersion = "2.4.1"
+        catsVersion = "2.7.0"
+        catsEffectVersion = "2.5.4"
         fs2Version = "2.5.3"
         metricsVersion = "2.8.6"
         protobufVersion = "3.19.1"
@@ -176,7 +176,7 @@ subprojects {
         testImplementation 'junit:junit:4.13.2'
         testImplementation "org.scalatest:scalatest_$scalaVersion:3.0.8"
         testImplementation 'org.mockito:mockito-all:1.10.19'
-        testImplementation "com.typesafe.scala-logging:scala-logging_$scalaVersion:3.9.2"
+        testImplementation "com.typesafe.scala-logging:scala-logging_$scalaVersion:3.9.4"
         testImplementation 'ch.qos.logback:logback-classic:1.2.7'
 
         testImplementation 'org.pegdown:pegdown:1.6.0'
