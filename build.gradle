@@ -41,6 +41,29 @@ allprojects {
         scalapbJson4sVersion = "0.11.1"
         monixVersion = "3.4.0" // just for tests!
     }
+
+    // add a collection to track failedTests
+    ext.failedTests = []
+
+    // add a testlistener to all tasks of type Test
+    tasks.withType(Test) {
+        afterTest { TestDescriptor descriptor, TestResult result ->
+            if(result.resultType == TestResult.ResultType.FAILURE){
+                failedTests << ["${descriptor.className}::${descriptor.name}"]
+            }
+        }
+    }
+
+    // print out tracked failed tests when the build has finished
+    gradle.buildFinished {
+        if(!failedTests.empty){
+            println "Failed tests for ${project.name}:"
+            failedTests.each { failedTest ->
+                println failedTest
+            }
+            println ""
+        }
+    }
 }
 
 println("Scala version: ${scalaVersion} (${scalaVersionFull})") // will display the version once, when configuring root
