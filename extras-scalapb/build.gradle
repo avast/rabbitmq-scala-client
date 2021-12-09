@@ -7,6 +7,7 @@ dependencies {
 
     api "com.avast.bytes:bytes-gpb:${bytesVersion}"
 
+    api "com.google.protobuf:protobuf-java:$protobufVersion"
     api "com.thesamet.scalapb:scalapb-runtime_$scalaVersion:$scalapbVersion"
     api "com.thesamet.scalapb:scalapb-json4s_$scalaVersion:$scalapbJson4sVersion"
 }
