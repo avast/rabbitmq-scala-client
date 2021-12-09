@@ -30,7 +30,7 @@ allprojects {
         scalaVersionFull = scalaVersionEnv != null ? scalaVersionEnv : "2.12.13"
         scalaVersion = "${scalaVersionFull}".split("\\.").dropRight(1).join(".")
 
-        metricsVersion = "2.8.5"
+        metricsVersion = "2.8.6"
         bytesVersion = "2.2.0"
         circeVersion = "0.14.1"
         cactusVersion = "0.17.0"
