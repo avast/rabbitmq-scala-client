@@ -233,7 +233,7 @@ class BasicLiveTest extends TestBase with ScalaFutures {
       cons.withResource { _ =>
         rabbitConnection.newProducer[Bytes]("testing", Monitor.noOp()).withResource { sender =>
           for (_ <- 1 to 10) {
-            (cs.shift >> sender.send("test", Bytes.copyFromUtf8(Random.nextString(10)))).unsafeRunSync()
+            sender.send("test", Bytes.copyFromUtf8(Random.nextString(10))).await
           }
 
           eventually(timeout(Span(5, Seconds)), interval(Span(0.5, Seconds))) {
@@ -284,7 +284,7 @@ class BasicLiveTest extends TestBase with ScalaFutures {
           assertResult(0)(testHelper.queue.getMessagesCount(queueName2))
 
           for (_ <- 1 to 10) {
-            sender.send("test", Bytes.copyFromUtf8(Random.nextString(10))).unsafeRunAsyncAndForget()
+            sender.send("test", Bytes.copyFromUtf8(Random.nextString(10))).await
           }
 
           eventually(timeout(Span(2, Seconds)), interval(Span(200, Milliseconds))) {
@@ -311,7 +311,7 @@ class BasicLiveTest extends TestBase with ScalaFutures {
       cons.withResource { consumer =>
         rabbitConnection.newProducer[Bytes]("testing", Monitor.noOp()).withResource { sender =>
           for (_ <- 1 to 10) {
-            (cs.shift >> sender.send("test", Bytes.copyFromUtf8(Random.nextString(10)))).unsafeRunSync()
+            sender.send("test", Bytes.copyFromUtf8(Random.nextString(10))).await
           }
 
           eventually(timeout = timeout(Span(5, Seconds))) {
@@ -319,8 +319,8 @@ class BasicLiveTest extends TestBase with ScalaFutures {
           }
 
           for (_ <- 1 to 3) {
-            val PullResult.Ok(dwh) = consumer.pull().unsafeRunSync()
-            dwh.handle(DeliveryResult.Ack).unsafeRunSync()
+            val PullResult.Ok(dwh) = consumer.pull().await
+            dwh.handle(DeliveryResult.Ack).await
           }
 
           eventually(timeout = timeout(Span(5, Seconds))) {
@@ -328,8 +328,8 @@ class BasicLiveTest extends TestBase with ScalaFutures {
           }
 
           for (_ <- 1 to 7) {
-            val PullResult.Ok(dwh) = consumer.pull().unsafeRunSync()
-            dwh.handle(DeliveryResult.Ack).unsafeRunSync()
+            val PullResult.Ok(dwh) = consumer.pull().await
+            dwh.handle(DeliveryResult.Ack).await
           }
 
           eventually(timeout = timeout(Span(5, Seconds))) {
@@ -337,7 +337,7 @@ class BasicLiveTest extends TestBase with ScalaFutures {
           }
 
           for (_ <- 1 to 10) {
-            assertResult(PullResult.EmptyQueue)(consumer.pull().unsafeRunSync())
+            assertResult(PullResult.EmptyQueue)(consumer.pull().await)
           }
         }
       }
@@ -379,7 +379,7 @@ class BasicLiveTest extends TestBase with ScalaFutures {
 
       cons.withResource { _ =>
         rabbitConnection.newProducer[Bytes]("testing", Monitor.noOp()).withResource { sender =>
-          sender.send("test", Bytes.copyFromUtf8(randomString(10))).unsafeRunSync()
+          sender.send("test", Bytes.copyFromUtf8(randomString(10))).await
 
           eventually(timeout = timeout(Span(5, Seconds))) {
             assertResult(0)(testHelper.queue.getMessagesCount(queueName1))
