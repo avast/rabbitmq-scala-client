@@ -112,7 +112,7 @@ class PoisonedMessageHandlerLiveTest extends TestBase with ScalaFutures {
               sender.send(initialRoutingKey, Bytes.copyFromUtf8(n.toString), Some(MessageProperties(messageId = Some(s"msg_${n}_")))).await
             }
 
-            eventually(timeout(Span(60, Seconds)), interval(Span(0.25, Seconds))) {
+            eventually(timeout(Span(60, Seconds)), interval(Span(1, Seconds))) {
               println(s"PROCESSED COUNT: ${processed.get()}")
               assertResult(messagesCount * 2)(processed.get())
               assertResult(0)(testHelper.queue.getMessagesCount(queueName1)) // original dest. queue
@@ -166,7 +166,7 @@ class PoisonedMessageHandlerLiveTest extends TestBase with ScalaFutures {
               sender.send(initialRoutingKey, Bytes.copyFromUtf8(n.toString), Some(MessageProperties(messageId = Some(s"msg_${n}_")))).await
             }
 
-            eventually(timeout(Span(60, Seconds)), interval(Span(0.25, Seconds))) {
+            eventually(timeout(Span(60, Seconds)), interval(Span(1, Seconds))) {
               println(s"PROCESSED COUNT: ${processed.get()}")
               assertResult(1.5 * messagesCount)(processed.get())
               assertResult(0)(testHelper.queue.getMessagesCount(queueName1)) // original dest. queue
@@ -207,7 +207,7 @@ class PoisonedMessageHandlerLiveTest extends TestBase with ScalaFutures {
             }
           })
 
-          eventually(timeout(Span(60, Seconds)), interval(Span(0.25, Seconds))) {
+          eventually(timeout(Span(60, Seconds)), interval(Span(1, Seconds))) {
             println(s"PROCESSED COUNT: ${processed.get()}")
             assertResult(2 * messagesCount)(processed.get())
             assertResult(0)(testHelper.queue.getMessagesCount(queueName1)) // original dest. queue
@@ -252,7 +252,7 @@ class PoisonedMessageHandlerLiveTest extends TestBase with ScalaFutures {
             sender.send(initialRoutingKey, Bytes.copyFromUtf8(n.toString), Some(MessageProperties(messageId = Some(s"msg_${n}_")))).await
           }
 
-          eventually(timeout(Span(30, Seconds)), interval(Span(0.25, Seconds))) {
+          eventually(timeout(Span(30, Seconds)), interval(Span(1, Seconds))) {
             println(s"PROCESSED COUNT: ${processed.get()}")
             // we can't assert the `processed` here - some deliveries may have been cancelled before they were even executed
             assertResult(0)(testHelper.queue.getMessagesCount(queueName1)) // original dest. queue
@@ -313,7 +313,7 @@ class PoisonedMessageHandlerLiveTest extends TestBase with ScalaFutures {
             sender.send(initialRoutingKey, Bytes.copyFromUtf8(n.toString), Some(MessageProperties(messageId = Some(s"msg_${n}_")))).await
           }
 
-          eventually(timeout(Span(60, Seconds)), interval(Span(0.25, Seconds))) {
+          eventually(timeout(Span(60, Seconds)), interval(Span(1, Seconds))) {
             println(s"PROCESSED COUNT: ${processed.get()}")
             // we can't assert the `processed` here - some deliveries may have been cancelled before they were even executed
             assertResult(0)(testHelper.queue.getMessagesCount(queueName1))

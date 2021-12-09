@@ -67,7 +67,7 @@ class StreamingConsumerLiveTest extends TestBase with ScalaFutures {
     import c._
 
     RabbitMQConnection.fromConfig[Task](config, ex).withResource { rabbitConnection =>
-      val count = Random.nextInt(50000) + 50000 // random 50 - 100k messages
+      val count = Random.nextInt(25000) + 25000 // random 25 - 50k messages
 
       logger.info(s"Sending $count messages")
 
@@ -109,7 +109,6 @@ class StreamingConsumerLiveTest extends TestBase with ScalaFutures {
           eventually(timeout(Span(4, Minutes)), interval(Span(1, Seconds))) {
             println("D: " + d.get())
             assertResult(count + 10000)(d.get())
-            println("LATCH: " + latch.getCount)
             assertResult(true)(latch.await(1000, TimeUnit.MILLISECONDS))
             assertResult(0)(testHelper.queue.getMessagesCount(queueName1))
           }
