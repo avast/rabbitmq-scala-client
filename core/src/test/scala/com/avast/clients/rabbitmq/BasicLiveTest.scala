@@ -1,6 +1,7 @@
 package com.avast.clients.rabbitmq
 
 import cats.effect.{ContextShift, IO, Timer}
+import cats.implicits.catsSyntaxFlatMapOps
 import com.avast.bytes.Bytes
 import com.avast.clients.rabbitmq.api.DeliveryResult._
 import com.avast.clients.rabbitmq.api._
@@ -217,7 +218,7 @@ class BasicLiveTest extends TestBase with ScalaFutures {
     val c = createConfig()
     import c._
 
-    implicit val cs: ContextShift[IO] = IO.contextShift(ExecutionContext.global)
+    implicit val cs: ContextShift[IO] = IO.contextShift(TestBase.testBlockingScheduler)
     implicit val timer: Timer[IO] = IO.timer(ExecutionContext.global)
 
     RabbitMQConnection.fromConfig[IO](config, ex).withResource { rabbitConnection =>
@@ -232,7 +233,7 @@ class BasicLiveTest extends TestBase with ScalaFutures {
       cons.withResource { _ =>
         rabbitConnection.newProducer[Bytes]("testing", Monitor.noOp()).withResource { sender =>
           for (_ <- 1 to 10) {
-            sender.send("test", Bytes.copyFromUtf8(Random.nextString(10))).unsafeRunSync()
+            (cs.shift >> sender.send("test", Bytes.copyFromUtf8(Random.nextString(10)))).unsafeRunSync()
           }
 
           eventually(timeout(Span(5, Seconds)), interval(Span(0.5, Seconds))) {
@@ -254,7 +255,7 @@ class BasicLiveTest extends TestBase with ScalaFutures {
                      |--(test) --> EXCHANGE1 --(test)--> QUEUE1
      */
 
-    implicit val cs: ContextShift[IO] = IO.contextShift(ExecutionContext.global)
+    implicit val cs: ContextShift[IO] = IO.contextShift(TestBase.testBlockingScheduler)
     implicit val timer: Timer[IO] = IO.timer(ExecutionContext.global)
 
     RabbitMQConnection.fromConfig[IO](config, ex).withResource { rabbitConnection =>
@@ -283,7 +284,7 @@ class BasicLiveTest extends TestBase with ScalaFutures {
           assertResult(0)(testHelper.queue.getMessagesCount(queueName2))
 
           for (_ <- 1 to 10) {
-            sender.send("test", Bytes.copyFromUtf8(Random.nextString(10))).unsafeRunSync()
+            sender.send("test", Bytes.copyFromUtf8(Random.nextString(10))).unsafeRunAsyncAndForget()
           }
 
           eventually(timeout(Span(2, Seconds)), interval(Span(200, Milliseconds))) {
@@ -310,7 +311,7 @@ class BasicLiveTest extends TestBase with ScalaFutures {
       cons.withResource { consumer =>
         rabbitConnection.newProducer[Bytes]("testing", Monitor.noOp()).withResource { sender =>
           for (_ <- 1 to 10) {
-            sender.send("test", Bytes.copyFromUtf8(Random.nextString(10))).unsafeRunSync()
+            (cs.shift >> sender.send("test", Bytes.copyFromUtf8(Random.nextString(10)))).unsafeRunSync()
           }
 
           eventually(timeout = timeout(Span(5, Seconds))) {
