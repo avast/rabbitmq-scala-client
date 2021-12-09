@@ -35,10 +35,8 @@ Gradle:
 
 ## Migration
 
-There is a [migration guide](Migration-5-6.md) between versions 5 and 6.0.x.  
-There is a [migration guide](Migration-6-6_1.md) between versions 6.0.x and 6.1.x.  
-There is a [migration guide](Migration-6_1-7.md) between versions 6.1.x and 7.0.x.  
-There is a [migration guide](Migration-6_1-8.md) between versions 6.1.x and 8.0.x.
+There exists a [migration guide](Migration-6_1-8.md) between versions 6.1.x and 8.0.x.
+There exists a [migration guide](Migration-8-9.md) between versions 8.x and 9.0.x.
 
 Please note that configuration from Typesafe/Lightbend config has been moved to [pureconfig module](pureconfig) since 8.x.
 
@@ -222,34 +220,78 @@ Both the producer and consumer require type argument when creating from _connect
 There are multiple options where to get the _converter_ (it's the same case for `DeliveryConverter` as for `ProductConverter`):
 
 1. Implement your own implicit _converter_ for the type
-1. Modules [extras-circe](extras-circe/README.md) and [extras-scalapb](extras-scalapb/README.md) provide support for JSON and GPB conversion.
+1. Modules [extras-circe](extras-circe/README.md) and [extras-scalapb](extras-scalapb/README.md) provide support for JSON and GPB
+   conversion.
 1. Use `identity` converter by specifying `Bytes` type argument. No further action needed in that case.
 
-### Consumer middlewares
+### Poisoned message handler
 
-The client also uses the well-known concept of _middlewares_ for both ("normal" and streaming) consumers. It basically means you can somehow
-adjust the `Delivery` before handing it to the processing, and, analogically, adjust the `DeliveryResult` before the client receives it.  
-The middlewares are part of the consumer, and they are passed during the configuration (creation) phase:
+It's quite often use-case we want to republish failed message but want to avoid the message to be republishing forever. You can use
+the `PoisonedMessageHandler` to solve this issue. It will count no. of attempts and won't let the message be republished again and again (
+above the limit you set).  
+_Note: it works ONLY for `Republish` and not for `Retry`!_
 
-```scala
-import com.avast.clients.rabbitmq.api.DeliveryResult._
+The `PoisonedMessageHandler` is built into the both "normal" and streaming consumers. After the execution of the poisoned-message action,
+the delivery is REJECTed (so it's not in the original queue anymore).
 
-val connection: RabbitMQConnection[Task] = ???
+All types (except no-op) of the poisoned message handler has `maxAttempts` configuration option which determines how many times the message
+can be delivered to the consumer. What it means in practice is that if `maxAttempts == 3` and you choose to republish it for the third time,
+the PMH takes its action - as the next delivery of the message would be already fourth, which is over the configured limit.
 
-val myMiddleware: RabbitMQConsumerMiddleware[Task, Bytes] = new RabbitMQConsumerMiddleware[Task, Bytes] {
-   override def adjustDelivery(d: Delivery[Bytes]): Task[Delivery[Bytes]] = Task.now(d)
-   override def adjustResult(rawDelivery: Delivery[Bytes], r: Task[DeliveryResult]): Task[DeliveryResult] = {
-      r.map {
-         case Retry => Republish() // turn all retries into republish!
-         case r => r
+Internally, the attempts counting is done via incrementing (or adding, the first time)  the `X-Republish-Count` header in the message. Feel
+free to use its value for your own logging or whatever. You can even set it to your own value - just bear in mind that you might affect the
+PMH's functionality (of course, that might be your intention).
+
+It can happen that you know that you have PMH configured and you need to republish the message and "not count the attempt". There exists the
+new `isPoisoned` parameter now (defaults to `true`) determining whether the PMH (if configured) should count the attempt or not. This is an
+easy and clean way how to influence the PMH behavior.
+
+#### Dead-queue poisoned message handler
+
+The most common and useful type, which will take all "poisoned" messages and publish them to a queue of your choice.  
+In its configuration, you basically configure a _producer_ which is used to send the message into the dead-queue. While the producer will
+create its exchange it publishes to, *you are responsible for creating the queue and binding* to the producer's exchange. You can use the
+[additional declaration/bindings functionality](#additional-declarations-and-bindings) of the client. If you forget to do so, your messages
+will be lost completely.
+
+#### Logging poisoned message handler
+
+As the name suggests, this PMH only logs the poisoned message before it's thrown away (and lost forever).
+
+#### No-op poisoned message handler
+
+This PMH does nothing.
+
+#### Example HOCON configuration
+
+Please mind that the PMH is *only* responsible for publishing the poisoned messages, not for declaring/binding the queue where they'll end!
+
+```hocon
+myConsumer {
+  name = "MyVeryImportantConsumer"
+
+  // ...
+  // the usual stuff for consumer - timeout, bindings, ...
+  // ...
+
+  poisonedMessageHandling {
+    type = "deadQueue" // deadqueue, logging, noop (default noop)
+
+    maxAttempts = 2 // <-- required for deadqueue and logging types
+
+    // required only for deadQueue type:
+    deadQueueProducer {
+      routingKey = "dead"
+      name = "DeadQueueProducer"
+      exchange = "EXCHANGE3"
+      declare {
+        enabled = true
+        type = "direct"
       }
-   }
+    }
+  }
 }
-
-connection.newConsumer[Bytes](???, ???, List(myMiddleware))
 ```
-
-You can either crate your own middleware like in this example above or use some prepared in the [extras](extras) module.
 
 ### Caveats
 
@@ -420,6 +462,8 @@ rabbitConnection.bindExchange(
   )
 ) // : F[Unit]
 ```
+
+### Correlation-ID handling
 
 ### Pull consumer
 
