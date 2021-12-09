@@ -302,7 +302,7 @@ class BasicLiveTest extends TestBase with ScalaFutures {
     val c = createConfig()
     import c._
 
-    implicit val cs: ContextShift[IO] = IO.contextShift(ExecutionContext.global)
+    implicit val cs: ContextShift[IO] = IO.contextShift(TestBase.testBlockingScheduler)
     implicit val timer: Timer[IO] = IO.timer(ExecutionContext.global)
 
     RabbitMQConnection.fromConfig[IO](config, ex).withResource { rabbitConnection =>
@@ -352,7 +352,7 @@ class BasicLiveTest extends TestBase with ScalaFutures {
 
     implicit val conv: DeliveryConverter[Abc] = JsonDeliveryConverter.derive[Abc]()
 
-    implicit val cs: ContextShift[IO] = IO.contextShift(ExecutionContext.global)
+    implicit val cs: ContextShift[IO] = IO.contextShift(TestBase.testBlockingScheduler)
     implicit val timer: Timer[IO] = IO.timer(ExecutionContext.global)
 
     RabbitMQConnection.fromConfig[IO](config, ex).withResource { rabbitConnection =>
