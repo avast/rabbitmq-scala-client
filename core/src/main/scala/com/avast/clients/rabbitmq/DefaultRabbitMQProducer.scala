@@ -33,14 +33,14 @@ class DefaultRabbitMQProducer[F[_], A: ProductConverter](name: String,
 
   channel.addReturnListener(if (reportUnroutable) LoggingReturnListener else NoOpReturnListener)
 
-  override def send(routingKey: String, body: A, properties: Option[MessageProperties] = None)(implicit correlationId: CorrelationId =
-                                                                                                 CorrelationId.createUnsafe): F[Unit] = {
+  override def send(routingKey: String, body: A, properties: Option[MessageProperties] = None)(
+      implicit correlationId: CorrelationId = CorrelationId.create(properties)): F[Unit] = {
     val finalProperties = converter.fillProperties {
       val initialProperties = properties.getOrElse(defaultProperties)
 
       initialProperties.copy(
         messageId = initialProperties.messageId.orElse(Some(UUID.randomUUID().toString)),
-        correlationId = initialProperties.correlationId.orElse(Some(correlationId.value))
+        correlationId = Some(correlationId.value) // it was taken from it if it was there
       )
     }
 

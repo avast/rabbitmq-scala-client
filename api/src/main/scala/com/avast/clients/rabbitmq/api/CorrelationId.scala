@@ -22,4 +22,12 @@ object CorrelationId {
     val id = Random.alphanumeric.take(20).mkString
     CorrelationId(id)
   }
+
+  def create(mp: Option[MessageProperties]): CorrelationId = mp match {
+    case Some(p) =>
+      // take it from properties or from header (as a fallback)... if still empty, generate new
+      p.correlationId.orElse(p.headers.get(KeyName).map(_.toString)).map(CorrelationId(_)).getOrElse(createUnsafe)
+
+    case None => createUnsafe
+  }
 }
