@@ -112,7 +112,7 @@ class BasicLiveTest extends TestBase with ScalaFutures {
     import c._
 
     RabbitMQConnection.fromConfig[Task](config, ex).withResource { rabbitConnection =>
-      val count = Random.nextInt(5000) + 5000 // 5-10k
+      val count = Random.nextInt(2000) + 2000 // 2-4k
 
       logger.info(s"Sending $count messages")
 
@@ -121,15 +121,15 @@ class BasicLiveTest extends TestBase with ScalaFutures {
       val d = new AtomicInteger(0)
 
       val cons = rabbitConnection.newConsumer("testing", Monitor.noOp()) { _: Delivery[Bytes] =>
-        Task {
-          val n = d.incrementAndGet()
+        Task(d.incrementAndGet()).flatMap { n =>
+          Task.sleep((if (n % 5 == 0) 150 else 0).millis) >>
+            Task {
+              latch.countDown()
 
-          Thread.sleep(if (n % 2 == 0) 150 else 0)
-          latch.countDown()
+              if (n < (count - 100) || n > count) Ack else Retry
 
-          if (n < (count - 100) || n > count) Ack else Retry
-
-          // ^ example: 750 messages in total => 650 * Ack, 100 * Retry => processing 850 (== +100) messages in total
+              // ^ example: 750 messages in total => 650 * Ack, 100 * Retry => processing 850 (== +100) messages in total
+            }
         }
       }
 
@@ -144,7 +144,7 @@ class BasicLiveTest extends TestBase with ScalaFutures {
             assertResult(count)(testHelper.queue.getPublishedCount(queueName1))
           }
 
-          eventually(timeout(Span(50, Seconds)), interval(Span(1, Seconds))) {
+          eventually(timeout(Span(120, Seconds)), interval(Span(2, Seconds))) {
             val inQueue = testHelper.queue.getMessagesCount(queueName1)
             println(s"In QUEUE COUNT: $inQueue")
             assertResult(true)(latch.await(1000, TimeUnit.MILLISECONDS))

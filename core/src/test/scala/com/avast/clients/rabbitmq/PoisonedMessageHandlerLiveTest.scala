@@ -202,7 +202,7 @@ class PoisonedMessageHandlerLiveTest extends TestBase with ScalaFutures {
           }
 
           // run async:
-          sched.execute(() => {
+          ex.execute(() => {
             while (true) {
               val PullResult.Ok(dwh) = cons.pull().await
               processed.incrementAndGet()

@@ -131,7 +131,7 @@ class StreamingConsumerLiveTest extends TestBase with ScalaFutures {
 
       val latch = new CountDownLatch(count)
 
-      def toStream(cons1: RabbitMQStreamingConsumer[Task, Bytes], count: Int, d: AtomicInteger): fs2.Stream[Task, Unit] = {
+      def toStream(cons1: RabbitMQStreamingConsumer[Task, Bytes], d: AtomicInteger): fs2.Stream[Task, Unit] = {
         cons1.deliveryStream
           .parEvalMapUnordered(20) {
             _.handleWith { _ =>
@@ -152,8 +152,8 @@ class StreamingConsumerLiveTest extends TestBase with ScalaFutures {
           val d1 = new AtomicInteger(0)
           val d2 = new AtomicInteger(0)
 
-          val stream1 = toStream(cons1, count, d1)
-          val stream2 = toStream(cons2, count, d2)
+          val stream1 = toStream(cons1, d1)
+          val stream2 = toStream(cons2, d2)
 
           rabbitConnection.newProducer[Bytes]("testing", Monitor.noOp()).withResource { sender =>
             for (_ <- 1 to count) {
@@ -165,17 +165,18 @@ class StreamingConsumerLiveTest extends TestBase with ScalaFutures {
               assertResult(count)(testHelper.queue.getPublishedCount(queueName1))
             }
 
-            sched.execute(() => stream1.compile.drain.runSyncUnsafe()) // run the stream
-            sched.execute(() => stream2.compile.drain.runSyncUnsafe()) // run the stream
+            ex.execute(() => stream1.compile.drain.runSyncUnsafe()) // run the stream
+            ex.execute(() => stream2.compile.drain.runSyncUnsafe()) // run the stream
 
-            eventually(timeout(Span(5, Minutes)), interval(Span(1, Seconds))) {
-              println(s"D: ${d1.get}/${d2.get()}")
+            eventually(timeout(Span(5, Minutes)), interval(Span(5, Seconds))) {
+              val inQueue = testHelper.queue.getMessagesCount(queueName1)
+              println(s"D: ${d1.get}/${d2.get()}, IN QUEUE $inQueue")
               assertResult(count)(d1.get() + d2.get())
               assert(d1.get() > 0)
               assert(d2.get() > 0)
               println("LATCH: " + latch.getCount)
               assertResult(true)(latch.await(1000, TimeUnit.MILLISECONDS))
-              assertResult(0)(testHelper.queue.getMessagesCount(queueName1))
+              assertResult(0)(inQueue)
             }
           }
         }
@@ -224,7 +225,7 @@ class StreamingConsumerLiveTest extends TestBase with ScalaFutures {
               assertResult(count)(testHelper.queue.getPublishedCount(queueName1))
             }
 
-            sched.execute(() => stream.compile.drain.runSyncUnsafe()) // run the stream
+            ex.execute(() => stream.compile.drain.runSyncUnsafe()) // run the stream
 
             eventually(timeout(Span(5, Minutes)), interval(Span(1, Seconds))) {
               println("D: " + d.get())
@@ -278,7 +279,7 @@ class StreamingConsumerLiveTest extends TestBase with ScalaFutures {
               assertResult(count)(testHelper.queue.getPublishedCount(queueName1))
             }
 
-            sched.execute(() => stream.compile.drain.runSyncUnsafe()) // run the stream
+            ex.execute(() => stream.compile.drain.runSyncUnsafe()) // run the stream
 
             eventually(timeout(Span(5, Minutes)), interval(Span(1, Seconds))) {
               println("D: " + d.get())
@@ -323,7 +324,7 @@ class StreamingConsumerLiveTest extends TestBase with ScalaFutures {
             assertResult(count)(testHelper.queue.getPublishedCount(queueName1))
           }
 
-          sched.execute(() => stream.compile.drain.runSyncUnsafe()) // run the stream
+          ex.execute(() => stream.compile.drain.runSyncUnsafe()) // run the stream
 
           eventually(timeout(Span(30, Seconds)), interval(Span(1, Seconds))) {
             println("D: " + d.get())
