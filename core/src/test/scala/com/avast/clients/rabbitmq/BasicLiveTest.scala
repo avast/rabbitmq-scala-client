@@ -1,7 +1,6 @@
 package com.avast.clients.rabbitmq
 
 import cats.effect.{ContextShift, IO, Timer}
-import cats.implicits.catsSyntaxFlatMapOps
 import com.avast.bytes.Bytes
 import com.avast.clients.rabbitmq.api.DeliveryResult._
 import com.avast.clients.rabbitmq.api._
@@ -128,12 +127,9 @@ class BasicLiveTest extends TestBase with ScalaFutures {
           Thread.sleep(if (n % 2 == 0) 150 else 0)
           latch.countDown()
 
-          if (n < (count - 100) || n > count) Ack
-          else {
-            if (n < (count - 50)) Retry else Republish()
-          }
+          if (n < (count - 100) || n > count) Ack else Retry
 
-          // ^ example: 750 messages in total => 650 * Ack, 50 * Retry, 50 * Republish => processing 850 (== +100) messages in total
+          // ^ example: 750 messages in total => 650 * Ack, 100 * Retry => processing 850 (== +100) messages in total
         }
       }
 
