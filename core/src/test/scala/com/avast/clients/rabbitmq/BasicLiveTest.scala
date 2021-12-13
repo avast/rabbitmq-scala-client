@@ -71,7 +71,10 @@ class BasicLiveTest extends TestBase with ScalaFutures {
 
     val ex: ExecutorService = ExecutionContext.fromExecutorService(Executors.newCachedThreadPool())
 
-    implicit val sched: Scheduler = Scheduler(Executors.newCachedThreadPool())
+    implicit val sched: Scheduler = Scheduler(
+      Executors.newScheduledThreadPool(4),
+      ExecutionContext.fromExecutor(new ForkJoinPool())
+    )
   }
 
   test("basic") {

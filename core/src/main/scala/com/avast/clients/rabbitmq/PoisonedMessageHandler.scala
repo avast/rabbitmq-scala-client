@@ -85,7 +85,13 @@ object PoisonedMessageHandler {
     config match {
       case Some(LoggingPoisonedMessageHandling(maxAttempts)) => Resource.pure(new LoggingPoisonedMessageHandler[F, A](maxAttempts))
       case Some(c: DeadQueuePoisonedMessageHandling) => DeadQueuePoisonedMessageHandler.make(c, connection, monitor)
-      case Some(NoOpPoisonedMessageHandling) | None => Resource.pure(new NoOpPoisonedMessageHandler[F, A])
+      case Some(NoOpPoisonedMessageHandling) | None =>
+        Resource.eval {
+          val logger = ImplicitContextLogger.createLogger[F, NoOpPoisonedMessageHandler[F, A]]
+          logger.plainWarn("Using NO-OP poisoned message handler. Potential poisoned messages will cycle forever.").as {
+            new NoOpPoisonedMessageHandler[F, A]
+          }
+        }
     }
   }
 

@@ -211,23 +211,21 @@ class DefaultRabbitMQStreamingConsumer[F[_]: ConcurrentEffect: Timer, A] private
             Deferred[F, Either[Throwable, DeliveryResult]].flatMap { deferred =>
               // we want just the enqueuing to be in the mutex!
               recoveringMutex
-                .withPermit {
-                  enqueueDelivery(delivery, deferred)
-                }
+                .withPermit { enqueueDelivery(delivery, deferred) }
                 .flatMap { ref =>
                   val enqueueTime = Instant.now()
 
                   val result = deferred.get.flatMap {
                     case Right(r) => F.pure(r)
                     case Left(err) =>
-                      consumerLogger.debug(err)(s"[$consumerName] Failure when processing delivery $messageId") >>
+                      consumerLogger.debug(err)(s"[$consumerName] Failure when processing delivery $messageId ($deliveryTag)") >>
                         F.raiseError[DeliveryResult](err)
                   }
 
                   watchForTimeoutIfConfigured(processTimeout, timeoutAction, timeoutLogLevel)(delivery, messageId, result) {
                     F.defer {
                       val l = java.time.Duration.between(enqueueTime, Instant.now())
-                      consumerLogger.debug(s"[$consumerName] Timeout after being $l in queue, cancelling processing of $messageId")
+                      consumerLogger.debug(s"[$consumerName] Timeout after $l, cancelling processing of $messageId ($deliveryTag)")
                     } >> ref.set(None) // cancel by this!
                   }
                 }
@@ -236,11 +234,12 @@ class DefaultRabbitMQStreamingConsumer[F[_]: ConcurrentEffect: Timer, A] private
     }
 
     def stopConsuming(): F[Unit] = {
-      receivingEnabled.set(false) >> blocker.delay {
-        consumerLogger.plainDebug(s"[$consumerName] Stopping consummation for $getConsumerTag")
-        channel.basicCancel(getConsumerTag)
-        channel.setDefaultConsumer(null)
-      }
+      receivingEnabled.set(false) >>
+        consumerLogger.plainDebug(s"[$consumerName] Stopping consummation for $getConsumerTag") >>
+        blocker.delay {
+          channel.basicCancel(getConsumerTag)
+          channel.setDefaultConsumer(null)
+        }
     }
   }
 }
