@@ -7,9 +7,11 @@ import com.avast.clients.rabbitmq.api._
 
 import java.util.concurrent.atomic.AtomicInteger
 
-class DefaultRabbitMQPullConsumer[F[_]: ConcurrentEffect, A: DeliveryConverter](base: ConsumerBase[F, A])
+class DefaultRabbitMQPullConsumer[F[_]: ConcurrentEffect, A: DeliveryConverter](base: ConsumerBase[F, A],
+                                                                                channelOps: ConsumerChannelOps[F, A])
     extends RabbitMQPullConsumer[F, A] {
   import base._
+  import channelOps._
 
   private val tasksMonitor = consumerRootMonitor.named("tasks")
 

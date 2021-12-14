@@ -266,6 +266,14 @@ class DefaultRabbitMQPullConsumerTest extends TestBase {
     val base = new ConsumerBase[Task, A](
       "test",
       "queueName",
+      TestBase.testBlocker,
+      ImplicitContextLogger.createLogger,
+      Monitor.noOp()
+    )
+
+    val channelOps = new ConsumerChannelOps[Task, A](
+      "test",
+      "queueName",
       channel,
       TestBase.testBlocker,
       RepublishStrategy.DefaultExchange[Task](),
@@ -275,7 +283,7 @@ class DefaultRabbitMQPullConsumerTest extends TestBase {
       Monitor.noOp()
     )
 
-    new DefaultRabbitMQPullConsumer[Task, A](base)
+    new DefaultRabbitMQPullConsumer[Task, A](base, channelOps)
   }
 
   class PMH[A] extends LoggingPoisonedMessageHandler[Task, A](3)

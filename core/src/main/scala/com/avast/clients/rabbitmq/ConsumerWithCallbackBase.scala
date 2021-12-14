@@ -14,10 +14,12 @@ import java.util.concurrent.atomic.AtomicInteger
 import scala.util.control.NonFatal
 
 abstract class ConsumerWithCallbackBase[F[_]: ConcurrentEffect: CatsTimer, A: DeliveryConverter](base: ConsumerBase[F, A],
+                                                                                                 channelOps: ConsumerChannelOps[F, A],
                                                                                                  failureAction: DeliveryResult,
                                                                                                  consumerListener: ConsumerListener[F])
-    extends DefaultConsumer(base.channel) {
+    extends DefaultConsumer(channelOps.channel) {
   import base._
+  import channelOps._
 
   protected val readMeter: Meter = consumerRootMonitor.meter("read")
 
@@ -34,7 +36,7 @@ abstract class ConsumerWithCallbackBase[F[_]: ConcurrentEffect: CatsTimer, A: De
   override def handleShutdownSignal(consumerTag: String, sig: ShutdownSignalException): Unit =
     consumerListener.onShutdown(this, channel, consumerName, consumerTag, sig)
 
-  protected def handleNewDelivery(d: DeliveryWithMetadata[A]): F[DeliveryResult]
+  protected def handleNewDelivery(d: DeliveryWithMetadata[A]): F[Option[DeliveryResult]]
 
   override final def handleDelivery(consumerTag: String, envelope: Envelope, properties: BasicProperties, body: Array[Byte]): Unit = {
     val action = F.delay(processingCount.incrementAndGet()) >> {
@@ -87,13 +89,15 @@ abstract class ConsumerWithCallbackBase[F[_]: ConcurrentEffect: CatsTimer, A: De
 
     handleNewDelivery(delivery)
       .flatMap {
-        handleResult(messageId, deliveryTag, properties, routingKey, rawBody, delivery.delivery)(_)
+        case Some(dr) => handleResult(messageId, deliveryTag, properties, routingKey, rawBody, delivery.delivery)(dr)
+        case None => consumerLogger.trace(s"[$consumerName] Delivery result for $messageId ignored")
       }
       .flatTap(_ =>
         F.delay {
           val duration = taskDuration()
           consumerLogger.debug(s"[$consumerName] Delivery $messageId handling succeeded in $duration")
           processedTimer.update(duration)
+          processingCount.decrementAndGet()
       })
       .recoverWith {
         case NonFatal(t) =>

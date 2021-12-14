@@ -335,4 +335,53 @@ class StreamingConsumerLiveTest extends TestBase with ScalaFutures {
       }
     }
   }
+
+  test("can be closed properly") {
+    val c = createConfig()
+    import c._
+
+    // single stream
+    RabbitMQConnection.fromConfig[Task](config, ex).withResource { rabbitConnection =>
+      rabbitConnection.newStreamingConsumer[Bytes]("testingStreamingWithTimeout", Monitor.noOp()).withResource { cons =>
+        val stream = cons.deliveryStream
+          .evalMap {
+            _.handleWith { _ =>
+              Task.now(Ack)
+            }
+          }
+
+        rabbitConnection.newProducer[Bytes]("testing", Monitor.noOp()).withResource { sender =>
+          for (_ <- 1 to 50) sender.send("test", Bytes.copyFromUtf8(Random.nextString(10))).await
+        }
+
+        stream.take(1).compile.drain.runSyncUnsafe()
+      }
+    }
+
+    // two streams
+    RabbitMQConnection.fromConfig[Task](config, ex).withResource { rabbitConnection =>
+      rabbitConnection.newStreamingConsumer[Bytes]("testingStreamingWithTimeout", Monitor.noOp()).withResource { cons =>
+        def createStream(): fs2.Stream[Task, Unit] =
+          cons.deliveryStream
+            .evalMap {
+              _.handleWith { _ =>
+                Task.now(Ack)
+              }
+            }
+
+        rabbitConnection.newProducer[Bytes]("testing", Monitor.noOp()).withResource { sender =>
+          for (_ <- 1 to 50) {
+            sender.send("test", Bytes.copyFromUtf8(Random.nextString(10))).await
+          }
+        }
+
+        val stream1 = createStream().take(1).compile.drain.start
+        val stream2 = createStream().take(1).compile.drain.start
+
+        Task.map2(stream1, stream2)((a, b) => a.join >> b.join).flatten.await
+      }
+    }
+
+    // ok
+  }
 }

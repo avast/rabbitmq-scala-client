@@ -95,6 +95,7 @@ private[rabbitmq] class DefaultRabbitMQClientFactory[F[_]: ConcurrentEffect: Tim
     }
   }
 
+  // scalastyle:off method.length
   private def prepareStreamingConsumer[A: DeliveryConverter](consumerConfig: StreamingConsumerConfig,
                                                              consumerListener: ConsumerListener[F],
                                                              monitor: Monitor): Resource[F, DefaultRabbitMQStreamingConsumer[F, A]] = {
@@ -102,47 +103,53 @@ private[rabbitmq] class DefaultRabbitMQClientFactory[F[_]: ConcurrentEffect: Tim
 
     val logger = ImplicitContextLogger.createLogger[F, DefaultRabbitMQStreamingConsumer[F, A]]
 
-    connection
-      .newChannel()
-      .evalTap { channel =>
-        // auto declare exchanges
-        declareExchangesFromBindings(channel, consumerConfig.bindings)(logger) >>
-          // auto declare queue; if configured
-          consumerConfig.declare.map { declareQueue(consumerConfig.queueName, channel, _)(logger) }.getOrElse(F.unit) >>
-          // auto bind
-          bindQueue(channel, consumerConfig.queueName, consumerConfig.bindings)(logger) >>
-          bindQueueForRepublishing(channel, consumerConfig.queueName, republishStrategy)(logger)
-      }
-      .flatMap { channel =>
-        PoisonedMessageHandler
-          .make[F, A](consumerConfig.poisonedMessageHandling, connection, monitor.named("poisonedMessageHandler"))
-          .flatMap { pmh =>
-            val base = new ConsumerBase[F, A](
-              name,
-              queueName,
-              channel,
-              blocker,
-              republishStrategy.toRepublishStrategy[F],
-              pmh,
-              connectionInfo,
-              ImplicitContextLogger.createLogger[F, DefaultRabbitMQStreamingConsumer[F, A]],
-              monitor
-            )
+    Resource.eval(connection.withChannel { channel =>
+      // auto declare exchanges
+      declareExchangesFromBindings(channel, consumerConfig.bindings)(logger) >>
+        // auto declare queue; if configured
+        consumerConfig.declare.map { declareQueue(consumerConfig.queueName, channel, _)(logger) }.getOrElse(F.unit) >>
+        // auto bind
+        bindQueue(channel, consumerConfig.queueName, consumerConfig.bindings)(logger) >>
+        bindQueueForRepublishing(channel, consumerConfig.queueName, republishStrategy)(logger)
+    }) >>
+      PoisonedMessageHandler
+        .make[F, A](consumerConfig.poisonedMessageHandling, connection, monitor.named("poisonedMessageHandler"))
+        .flatMap { pmh =>
+          val base = new ConsumerBase[F, A](
+            name,
+            queueName,
+            blocker,
+            ImplicitContextLogger.createLogger[F, DefaultRabbitMQStreamingConsumer[F, A]],
+            monitor
+          )
 
-            DefaultRabbitMQStreamingConsumer.make(
-              base,
-              connection.newChannel().evalTap(ch => Sync[F].delay(ch.basicQos(consumerConfig.prefetchCount))),
-              consumerTag,
-              consumerListener,
-              queueBufferSize,
-              processTimeout,
-              timeoutAction,
-              timeoutLogLevel,
-            )
-          }
-      }
+          val channelOpsFactory = new ConsumerChannelOpsFactory[F, A](
+            name,
+            queueName,
+            blocker,
+            republishStrategy.toRepublishStrategy[F],
+            pmh,
+            connectionInfo,
+            ImplicitContextLogger.createLogger[F, DefaultRabbitMQStreamingConsumer[F, A]],
+            monitor,
+            connection.newChannel().evalTap(ch => Sync[F].delay(ch.basicQos(consumerConfig.prefetchCount)))
+          )
+
+          DefaultRabbitMQStreamingConsumer.make(
+            base,
+            channelOpsFactory,
+            consumerTag,
+            consumerListener,
+            queueBufferSize,
+            processTimeout,
+            timeoutAction,
+            timeoutLogLevel,
+          )
+        }
   }
+  // scalastyle:on method.length
 
+  // scalastyle:off method.length
   private def prepareConsumer[A: DeliveryConverter](consumerConfig: ConsumerConfig,
                                                     consumerListener: ConsumerListener[F],
                                                     readAction: DeliveryReadAction[F, A],
@@ -171,17 +178,26 @@ private[rabbitmq] class DefaultRabbitMQClientFactory[F[_]: ConcurrentEffect: Tim
             val base = new ConsumerBase[F, A](
               name,
               queueName,
+              blocker,
+              logger,
+              monitor
+            )
+
+            val channelOps = new ConsumerChannelOps[F, A](
+              name,
+              queueName,
               channel,
               blocker,
               republishStrategy.toRepublishStrategy[F],
               pmh,
               connectionInfo,
-              logger,
+              ImplicitContextLogger.createLogger[F, DefaultRabbitMQStreamingConsumer[F, A]],
               monitor
             )
 
             new DefaultRabbitMQConsumer[F, A](
               base,
+              channelOps,
               processTimeout,
               timeoutAction,
               timeoutLogLevel,
@@ -194,6 +210,7 @@ private[rabbitmq] class DefaultRabbitMQClientFactory[F[_]: ConcurrentEffect: Tim
           }
       }
   }
+  // scalastyle:on method.length
 
   private def preparePullConsumer[A: DeliveryConverter](consumerConfig: PullConsumerConfig,
                                                         monitor: Monitor): Resource[F, DefaultRabbitMQPullConsumer[F, A]] = {
@@ -219,16 +236,24 @@ private[rabbitmq] class DefaultRabbitMQClientFactory[F[_]: ConcurrentEffect: Tim
             val base = new ConsumerBase[F, A](
               name,
               queueName,
+              blocker,
+              logger,
+              monitor
+            )
+
+            val channelOps = new ConsumerChannelOps[F, A](
+              name,
+              queueName,
               channel,
               blocker,
               republishStrategy.toRepublishStrategy[F],
               pmh,
               connectionInfo,
-              logger,
+              ImplicitContextLogger.createLogger[F, DefaultRabbitMQStreamingConsumer[F, A]],
               monitor
             )
 
-            new DefaultRabbitMQPullConsumer[F, A](base)
+            new DefaultRabbitMQPullConsumer[F, A](base, channelOps)
           }
       }
   }

@@ -10,22 +10,23 @@ import scala.concurrent.duration.FiniteDuration
 
 class DefaultRabbitMQConsumer[F[_]: ConcurrentEffect: Timer, A: DeliveryConverter](
     private[rabbitmq] val base: ConsumerBase[F, A],
+    channelOps: ConsumerChannelOps[F, A],
     processTimeout: FiniteDuration,
     timeoutAction: DeliveryResult,
     timeoutLogLevel: Level,
     failureAction: DeliveryResult,
     consumerListener: ConsumerListener[F])(userAction: DeliveryReadAction[F, A])
-    extends ConsumerWithCallbackBase(base, failureAction, consumerListener)
+    extends ConsumerWithCallbackBase(base, channelOps, failureAction, consumerListener)
     with RabbitMQConsumer[F] {
   import base._
 
-  override protected def handleNewDelivery(d: DeliveryWithMetadata[A]): F[DeliveryResult] = {
+  override protected def handleNewDelivery(d: DeliveryWithMetadata[A]): F[Option[DeliveryResult]] = {
     import d._
     import metadata._
 
     val resultAction = blocker.delay { userAction(delivery) }.flatten // we try to catch also long-lasting synchronous work on the thread
 
-    watchForTimeoutIfConfigured(processTimeout, timeoutAction, timeoutLogLevel)(delivery, messageId, resultAction)(F.unit)
+    watchForTimeoutIfConfigured(processTimeout, timeoutAction, timeoutLogLevel)(delivery, messageId, resultAction)(F.unit).map(Some(_))
   }
 
 }

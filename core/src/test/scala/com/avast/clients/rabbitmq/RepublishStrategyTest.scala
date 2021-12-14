@@ -99,18 +99,23 @@ class RepublishStrategyTest extends TestBase {
 
   private def newConsumer(channel: ServerChannel, republishStrategy: RepublishStrategy[Task])(
       userAction: DeliveryReadAction[Task, Bytes]): DefaultRabbitMQConsumer[Task, Bytes] = {
-    val base = new ConsumerBase[Task, Bytes]("test",
-                                             "queueName",
-                                             channel,
-                                             TestBase.testBlocker,
-                                             republishStrategy,
-                                             PMH,
-                                             connectionInfo,
-                                             ImplicitContextLogger.createLogger,
-                                             Monitor.noOp())
+    val base = new ConsumerBase[Task, Bytes]("test", "queueName", TestBase.testBlocker, ImplicitContextLogger.createLogger, Monitor.noOp())
+
+    val channelOps = new ConsumerChannelOps[Task, Bytes](
+      "test",
+      "queueName",
+      channel,
+      TestBase.testBlocker,
+      republishStrategy,
+      PMH,
+      connectionInfo,
+      ImplicitContextLogger.createLogger,
+      Monitor.noOp()
+    )
 
     new DefaultRabbitMQConsumer[Task, Bytes](
       base,
+      channelOps,
       10.seconds,
       DeliveryResult.Republish(),
       Level.ERROR,

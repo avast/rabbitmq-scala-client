@@ -414,6 +414,14 @@ class DefaultRabbitMQConsumerTest extends TestBase {
     val base = new ConsumerBase[Task, Bytes](
       "test",
       "queueName",
+      TestBase.testBlocker,
+      ImplicitContextLogger.createLogger,
+      monitor
+    )
+
+    val channelOps = new ConsumerChannelOps[Task, Bytes](
+      "test",
+      "queueName",
       channel,
       TestBase.testBlocker,
       RepublishStrategy.DefaultExchange[Task](),
@@ -425,6 +433,7 @@ class DefaultRabbitMQConsumerTest extends TestBase {
 
     new DefaultRabbitMQConsumer[Task, Bytes](
       base,
+      channelOps,
       10.seconds,
       DeliveryResult.Republish(),
       Level.ERROR,
