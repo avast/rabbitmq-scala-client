@@ -1,2 +1,2 @@
 rabbit:
-  image: rabbitmq:3.6.1-management
+  image: rabbitmq:3.9.12-management
