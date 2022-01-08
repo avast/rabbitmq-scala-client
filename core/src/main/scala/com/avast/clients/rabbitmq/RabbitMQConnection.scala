@@ -198,6 +198,7 @@ object RabbitMQConnection {
     factory.setAutomaticRecoveryEnabled(networkRecovery.enabled)
     factory.setExceptionHandler(exceptionHandler)
     factory.setRequestedHeartbeat(heartBeatInterval.toSeconds.toInt)
+    factory.setRequestedChannelMax(channelMax)
 
     if (networkRecovery.enabled) factory.setRecoveryDelayHandler(networkRecovery.handler)
 

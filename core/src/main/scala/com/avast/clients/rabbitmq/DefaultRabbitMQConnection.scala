@@ -37,8 +37,10 @@ class DefaultRabbitMQConnection[F[_]] private (connection: ServerConnection,
               channelListener.onCreate(channel).unsafeStartAndForget()
               channel
 
+            case null => throw new IllegalStateException(s"New channel could not be created, maybe the max. count limit was reached?")
+
             // since the connection is `Recoverable`, the channel should always be `Recoverable` too (based on docs), so the exception will never be thrown
-            case _ => throw new IllegalStateException(s"Required Recoverable Channel")
+            case n => throw new IllegalStateException(s"Required Recoverable Channel")
           }
         } catch {
           case NonFatal(e) =>

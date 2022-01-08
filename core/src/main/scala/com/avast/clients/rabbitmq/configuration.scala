@@ -17,6 +17,7 @@ final case class RabbitMQConnectionConfig(name: String,
                                           heartBeatInterval: FiniteDuration = 30.seconds,
                                           topologyRecovery: Boolean = true,
                                           networkRecovery: NetworkRecoveryConfig = NetworkRecoveryConfig(),
+                                          channelMax: Int = 2047,
                                           credentials: CredentialsConfig,
                                           republishStrategy: RepublishStrategyConfig = RepublishStrategyConfig.DefaultExchange)
 

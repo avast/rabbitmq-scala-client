@@ -1,6 +1,6 @@
 package com.avast.clients.rabbitmq
 
-import cats.effect.{ContextShift, IO, Timer}
+import cats.effect.{ContextShift, IO, Resource, Timer}
 import com.avast.bytes.Bytes
 import com.avast.clients.rabbitmq.api.DeliveryResult._
 import com.avast.clients.rabbitmq.api._
@@ -462,6 +462,38 @@ class BasicLiveTest extends TestBase with ScalaFutures {
             assertResult(0)(testHelper.queue.getMessagesCount(queueName1))
           }
         }
+      }
+    }
+  }
+
+  test("limits number of channels") {
+    val c = createConfig()
+    import c._
+
+    RabbitMQConnection.fromConfig[Task](config, ex).withResource { rabbitConnection =>
+      def createChannels(count: Int): Resource[Task, List[ServerChannel]] =
+        (1 to count)
+          .map(_ => rabbitConnection.newChannel())
+          .foldLeft(Resource.pure[Task, List[ServerChannel]](List.empty)) {
+            case (prev, ch) =>
+              ch.flatMap { nch =>
+                prev.map { nch +: _ }
+              }
+          }
+
+      // max is set to 20...
+      createChannels(19).withResource { channels =>
+        assertResult(19)(channels.size)
+      }
+
+      try {
+        createChannels(21).withResource { _ =>
+          fail("should have failed")
+        }
+        fail("should have failed")
+      } catch {
+        case e: IllegalStateException =>
+          assertResult("New channel could not be created, maybe the max. count limit was reached?")(e.getMessage)
       }
     }
   }

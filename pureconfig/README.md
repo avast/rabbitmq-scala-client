@@ -82,6 +82,7 @@ myConfig {
   }
 
   connectionTimeout = 5s
+  channelMax = 200 // default 2047
 
   networkRecovery {
     enabled = true // enabled by default
