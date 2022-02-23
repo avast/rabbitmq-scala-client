@@ -1,2 +1,4 @@
-rabbit:
-  image: rabbitmq:3.6.1-management
+version: "3"
+services:
+  rabbit:
+    image: rabbitmq:3.9.13-management

@@ -179,7 +179,9 @@ class BasicLiveTest extends TestBase with ScalaFutures {
             }
 
             assertResult(true, latch.getCount)(latch.await(1000, TimeUnit.MILLISECONDS))
-            assertResult(0)(testHelper.queue.getMessagesCount(queueName1))
+            eventually {
+              assertResult(0)(testHelper.queue.getMessagesCount(queueName1))
+            }
           }
         }
       }
@@ -207,7 +209,7 @@ class BasicLiveTest extends TestBase with ScalaFutures {
             sender.send("test", Bytes.copyFromUtf8(Random.nextString(10))).await
           }
 
-          eventually(timeout(Span(3, Seconds)), interval(Span(0.5, Seconds))) {
+          eventually(timeout(Span(5, Seconds)), interval(Span(0.5, Seconds))) {
             assert(cnt.get() >= 40)
             assert(testHelper.queue.getMessagesCount(queueName1) <= 20)
           }
@@ -280,16 +282,18 @@ class BasicLiveTest extends TestBase with ScalaFutures {
             _ <- rabbitConnection.bindQueue("bindQueue")
           } yield ()).unsafeRunSync()
 
-          assertResult(Map("x-max-length" -> 1000000))(testHelper.queue.getArguments(queueName2))
+          eventually {
+            assertResult(Map("x-max-length" -> 1000000))(testHelper.queue.getArguments(queueName2))
 
-          assertResult(0)(testHelper.queue.getMessagesCount(queueName1))
-          assertResult(0)(testHelper.queue.getMessagesCount(queueName2))
+            assertResult(0)(testHelper.queue.getMessagesCount(queueName1))
+            assertResult(0)(testHelper.queue.getMessagesCount(queueName2))
+          }
 
           for (_ <- 1 to 10) {
             sender.send("test", Bytes.copyFromUtf8(Random.nextString(10))).await
           }
 
-          eventually(timeout(Span(2, Seconds)), interval(Span(200, Milliseconds))) {
+          eventually(timeout(Span(5, Seconds)), interval(Span(200, Milliseconds))) {
             assertResult(true)(latch.await(500, TimeUnit.MILLISECONDS))
 
             assertResult(0)(testHelper.queue.getMessagesCount(queueName1))
