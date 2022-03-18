@@ -13,7 +13,12 @@ object DeliveryResult {
   /** The message cannot be processed but is worth - it will be requeued to the top of the queue. */
   case object Retry extends DeliveryResult
 
-  /** The message cannot be processed but is worth - it will be requeued to the bottom of the queue. */
-  case class Republish(newHeaders: Map[String, AnyRef] = Map.empty) extends DeliveryResult
+  /** The message cannot be processed but is worth - it will be requeued to the bottom of the queue.
+    *
+    * @param countAsPoisoned Determines whether the PoisonedMessageHandler should count this republish and throw the delivery away if it's reached the limit.
+    * @param newHeaders Headers to be added to the delivery before requeueing.
+    *
+    * */
+  case class Republish(countAsPoisoned: Boolean = true, newHeaders: Map[String, AnyRef] = Map.empty) extends DeliveryResult
 
 }

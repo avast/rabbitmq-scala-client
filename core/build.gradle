@@ -17,28 +17,26 @@ test.doFirst {
 dependencies {
     api project(":api")
 
-    api "com.avast.metrics:metrics-scala_$scalaVersion:${metricsVersion}"
-    api "com.typesafe.scala-logging:scala-logging_$scalaVersion:3.9.2"
+    api "com.avast.metrics:metrics-cats-effect-2_$scalaVersion:${metricsVersion}"
+    api "org.typelevel:log4cats-slf4j_$scalaVersion:1.4.0"
 
     api "com.avast.bytes:bytes-core:${bytesVersion}"
 
-    api 'com.rabbitmq:amqp-client:5.14.0'
+    api 'com.rabbitmq:amqp-client:5.14.2'
 
     api "org.typelevel:cats-core_$scalaVersion:$catsVersion"
     api "org.typelevel:cats-effect_$scalaVersion:$catsEffectVersion"
 
     api 'org.xbib:jsr-305:1.0.0'
+    api "org.scala-lang:scala-reflect:$scalaVersionFull"
 
     testImplementation project(":extras")
     testImplementation project(":extras-circe")
-    testImplementation project(":extras-cactus")
 
     testImplementation project(":extras")
     testImplementation project(":pureconfig")
 
     testImplementation "io.circe:circe-generic_$scalaVersion:$circeVersion"
     testImplementation "io.circe:circe-generic-extras_$scalaVersion:$circeVersion"
-    testImplementation "com.avast.cactus:cactus-gpbv2_$scalaVersion:$cactusVersion"
-    testImplementation "com.avast.cactus:cactus-bytes-gpbv2_$scalaVersion:$cactusVersion"
     testImplementation "com.google.protobuf:protobuf-java:$protobufVersion"
 }

@@ -1,23 +1,27 @@
 package com.avast.clients.rabbitmq
 
-import java.time.Duration
-import java.util.UUID
-
+import com.avast.bytes.Bytes
+import com.avast.clients.rabbitmq.DefaultRabbitMQConsumer.CorrelationIdHeaderName
 import com.avast.clients.rabbitmq.RabbitMQConnection.DefaultListeners
 import com.avast.clients.rabbitmq.api.DeliveryResult
-import com.avast.metrics.scalaapi._
+import com.avast.clients.rabbitmq.api.DeliveryResult.Republish
+import com.avast.clients.rabbitmq.logging.ImplicitContextLogger
+import com.avast.metrics.scalaeffectapi._
 import com.rabbitmq.client.AMQP.BasicProperties
 import com.rabbitmq.client.Envelope
 import com.rabbitmq.client.impl.recovery.AutorecoveringChannel
 import monix.eval.Task
 import monix.execution.Scheduler.Implicits.global
-import org.mockito.{ArgumentCaptor, Matchers}
 import org.mockito.Mockito._
+import org.mockito.{ArgumentCaptor, Matchers}
 import org.scalatest.time.{Seconds, Span}
+import org.slf4j.event.Level
 
-import scala.jdk.CollectionConverters._
+import java.time.Duration
+import java.util.UUID
 import scala.collection.immutable
-import scala.concurrent.{ExecutionContext, Future}
+import scala.concurrent.duration.{DurationInt, Duration => ScalaDuration}
+import scala.jdk.CollectionConverters._
 import scala.util._
 
 class DefaultRabbitMQConsumerTest extends TestBase {
@@ -32,23 +36,12 @@ class DefaultRabbitMQConsumerTest extends TestBase {
     val envelope = mock[Envelope]
     when(envelope.getDeliveryTag).thenReturn(deliveryTag)
 
-    val properties = mock[BasicProperties]
-    when(properties.getMessageId).thenReturn(messageId)
+    val properties = new BasicProperties.Builder().messageId(messageId).build()
 
     val channel = mock[AutorecoveringChannel]
     when(channel.isOpen).thenReturn(true)
 
-    val consumer = new DefaultRabbitMQConsumer[Task](
-      "test",
-      channel,
-      "queueName",
-      connectionInfo,
-      Monitor.noOp,
-      DeliveryResult.Reject,
-      DefaultListeners.DefaultConsumerListener,
-      RepublishStrategy.DefaultExchange,
-      TestBase.testBlocker
-    )({ delivery =>
+    val consumer = newConsumer(channel)({ delivery =>
       assertResult(Some(messageId))(delivery.properties.messageId)
 
       Task.now(DeliveryResult.Ack)
@@ -73,23 +66,12 @@ class DefaultRabbitMQConsumerTest extends TestBase {
     val envelope = mock[Envelope]
     when(envelope.getDeliveryTag).thenReturn(deliveryTag)
 
-    val properties = mock[BasicProperties]
-    when(properties.getMessageId).thenReturn(messageId)
+    val properties = new BasicProperties.Builder().messageId(messageId).build()
 
     val channel = mock[AutorecoveringChannel]
     when(channel.isOpen).thenReturn(true)
 
-    val consumer = new DefaultRabbitMQConsumer[Task](
-      "test",
-      channel,
-      "queueName",
-      connectionInfo,
-      Monitor.noOp,
-      DeliveryResult.Reject,
-      DefaultListeners.DefaultConsumerListener,
-      RepublishStrategy.DefaultExchange,
-      TestBase.testBlocker
-    )({ delivery =>
+    val consumer = newConsumer(channel)({ delivery =>
       assertResult(Some(messageId))(delivery.properties.messageId)
 
       Task.now(DeliveryResult.Retry)
@@ -114,23 +96,12 @@ class DefaultRabbitMQConsumerTest extends TestBase {
     val envelope = mock[Envelope]
     when(envelope.getDeliveryTag).thenReturn(deliveryTag)
 
-    val properties = mock[BasicProperties]
-    when(properties.getMessageId).thenReturn(messageId)
+    val properties = new BasicProperties.Builder().messageId(messageId).build()
 
     val channel = mock[AutorecoveringChannel]
     when(channel.isOpen).thenReturn(true)
 
-    val consumer = new DefaultRabbitMQConsumer[Task](
-      "test",
-      channel,
-      "queueName",
-      connectionInfo,
-      Monitor.noOp,
-      DeliveryResult.Reject,
-      DefaultListeners.DefaultConsumerListener,
-      RepublishStrategy.DefaultExchange,
-      TestBase.testBlocker
-    )({ delivery =>
+    val consumer = newConsumer(channel)({ delivery =>
       assertResult(Some(messageId))(delivery.properties.messageId)
 
       Task.now(DeliveryResult.Reject)
@@ -161,17 +132,7 @@ class DefaultRabbitMQConsumerTest extends TestBase {
     val channel = mock[AutorecoveringChannel]
     when(channel.isOpen).thenReturn(true)
 
-    val consumer = new DefaultRabbitMQConsumer[Task](
-      "test",
-      channel,
-      "queueName",
-      connectionInfo,
-      Monitor.noOp,
-      DeliveryResult.Reject,
-      DefaultListeners.DefaultConsumerListener,
-      RepublishStrategy.DefaultExchange,
-      TestBase.testBlocker
-    )({ delivery =>
+    val consumer = newConsumer(channel)({ delivery =>
       assertResult(Some(messageId))(delivery.properties.messageId)
 
       Task.now(DeliveryResult.Republish())
@@ -198,23 +159,12 @@ class DefaultRabbitMQConsumerTest extends TestBase {
     val envelope = mock[Envelope]
     when(envelope.getDeliveryTag).thenReturn(deliveryTag)
 
-    val properties = mock[BasicProperties]
-    when(properties.getMessageId).thenReturn(messageId)
+    val properties = new BasicProperties.Builder().messageId(messageId).build()
 
     val channel = mock[AutorecoveringChannel]
     when(channel.isOpen).thenReturn(true)
 
-    val consumer = new DefaultRabbitMQConsumer[Task](
-      "test",
-      channel,
-      "queueName",
-      connectionInfo,
-      Monitor.noOp,
-      DeliveryResult.Retry,
-      DefaultListeners.DefaultConsumerListener,
-      RepublishStrategy.DefaultExchange,
-      TestBase.testBlocker
-    )({ delivery =>
+    val consumer = newConsumer(channel, failureAction = DeliveryResult.Retry)({ delivery =>
       assertResult(Some(messageId))(delivery.properties.messageId)
 
       Task.raiseError(new RuntimeException)
@@ -236,23 +186,12 @@ class DefaultRabbitMQConsumerTest extends TestBase {
     val envelope = mock[Envelope]
     when(envelope.getDeliveryTag).thenReturn(deliveryTag)
 
-    val properties = mock[BasicProperties]
-    when(properties.getMessageId).thenReturn(messageId)
+    val properties = new BasicProperties.Builder().messageId(messageId).build()
 
     val channel = mock[AutorecoveringChannel]
     when(channel.isOpen).thenReturn(true)
 
-    val consumer = new DefaultRabbitMQConsumer[Task](
-      "test",
-      channel,
-      "queueName",
-      connectionInfo,
-      Monitor.noOp,
-      DeliveryResult.Retry,
-      DefaultListeners.DefaultConsumerListener,
-      RepublishStrategy.DefaultExchange,
-      TestBase.testBlocker
-    )({ delivery =>
+    val consumer = newConsumer(channel, failureAction = DeliveryResult.Retry)({ delivery =>
       assertResult(Some(messageId))(delivery.properties.messageId)
 
       throw new RuntimeException
@@ -274,44 +213,45 @@ class DefaultRabbitMQConsumerTest extends TestBase {
     val envelope = mock[Envelope]
     when(envelope.getDeliveryTag).thenReturn(deliveryTag)
 
-    val properties = mock[BasicProperties]
-    when(properties.getMessageId).thenReturn(messageId)
+    val properties = new BasicProperties.Builder().messageId(messageId).build()
 
     val channel = mock[AutorecoveringChannel]
     when(channel.isOpen).thenReturn(true)
 
-    val monitor = mock[Monitor]
-    when(monitor.meter(Matchers.anyString())).thenReturn(Monitor.noOp.meter(""))
-    when(monitor.named(Matchers.eq("results"))).thenReturn(Monitor.noOp())
-    val tasksMonitor = mock[Monitor]
+    val monitor = mock[Monitor[Task]]
+    when(monitor.meter(Matchers.anyString())).thenReturn(Monitor.noOp[Task]().meter(""))
+    when(monitor.named(Matchers.eq("results"))).thenReturn(Monitor.noOp[Task]())
+    val tasksMonitor = mock[Monitor[Task]]
     when(monitor.named(Matchers.eq("tasks"))).thenReturn(tasksMonitor)
-    when(tasksMonitor.gauge(Matchers.anyString())(Matchers.any()))
-      .thenReturn(Monitor.noOp().gauge("")(() => 0).asInstanceOf[Gauge[Nothing]])
+    when(tasksMonitor.gauge).thenReturn(new GaugeFactory[Task] {
+      override def settableLong(n: String, replaceExisting: Boolean): SettableGauge[Task, Long] = new SettableGauge[Task, Long] {
+        override def set(value: Long): Task[Unit] = fail("Should have not be called")
+        override def update(f: Long => Long): Task[Long] = fail("Should have not be called")
+        override def inc: Task[Long] = Task.now(42) // returned value is not used anywhere
+        override def dec: Task[Long] = Task.now(42) // returned value is not used anywhere
+        override def value: Task[Long] = fail("Should have not be called")
+        override def name: String = n
+      }
+      override def settableDouble(name: String, replaceExisting: Boolean): SettableGauge[Task, Double] = fail("Should have not be called")
+      override def generic[T](name: String, replaceExisting: Boolean)(gauge: () => T): Gauge[Task, T] = fail("Should have not be called")
+    })
 
     var successLengths = Seq.newBuilder[Long] // scalastyle:ignore
     var failuresLengths = Seq.newBuilder[Long] // scalastyle:ignore
 
-    when(tasksMonitor.timerPair(Matchers.eq("processed"))).thenReturn(new TimerPair {
-      override def update(duration: Duration): Unit = successLengths += duration.toMillis
-      override def updateFailure(duration: Duration): Unit = failuresLengths += duration.toMillis
+    when(tasksMonitor.timerPair(Matchers.eq("processed"))).thenReturn(new TimerPair[Task] {
+      override def update(duration: Duration): Task[Unit] = Task.delay(successLengths += duration.toMillis)
+      override def updateFailure(duration: Duration): Task[Unit] = Task.delay(failuresLengths += duration.toMillis)
 
-      override def start(): TimeContext = fail("Should have not be called")
-      override def time[A](block: => A): A = fail("Should have not be called")
-      override def time[A](future: => Future[A])(implicit ec: ExecutionContext): Future[A] = fail("Should have not be called")
+      override def update(duration: ScalaDuration): Task[Unit] = fail("Should have not be called")
+      override def updateFailure(duration: ScalaDuration): Task[Unit] = fail("Should have not be called")
+      override def start(): Task[TimerPairContext] = fail("Should have not be called")
+      override def time[T](action: Task[T]): Task[T] = fail("Should have not be called")
+      override def time[T](action: Task[T])(successCheck: T => Boolean): Task[T] = fail("Should have not be called")
     })
 
     {
-      val consumer = new DefaultRabbitMQConsumer[Task](
-        "test",
-        channel,
-        "queueName",
-        connectionInfo,
-        monitor,
-        DeliveryResult.Retry,
-        DefaultListeners.DefaultConsumerListener,
-        RepublishStrategy.DefaultExchange,
-        TestBase.testBlocker
-      )({ delivery =>
+      val consumer = newConsumer(channel, DeliveryResult.Retry, monitor)({ delivery =>
         assertResult(Some(messageId))(delivery.properties.messageId)
         Task.now(DeliveryResult.Ack) // immediate
       })
@@ -330,17 +270,7 @@ class DefaultRabbitMQConsumerTest extends TestBase {
     failuresLengths = Seq.newBuilder
 
     {
-      val consumer = new DefaultRabbitMQConsumer[Task](
-        "test",
-        channel,
-        "queueName",
-        connectionInfo,
-        monitor,
-        DeliveryResult.Retry,
-        DefaultListeners.DefaultConsumerListener,
-        RepublishStrategy.DefaultExchange,
-        TestBase.testBlocker
-      )({ delivery =>
+      val consumer = newConsumer(channel, DeliveryResult.Retry, monitor)({ delivery =>
         assertResult(Some(messageId))(delivery.properties.messageId)
         import scala.concurrent.duration._
         Task.now(DeliveryResult.Ack).delayResult(2.second)
@@ -365,44 +295,45 @@ class DefaultRabbitMQConsumerTest extends TestBase {
     val envelope = mock[Envelope]
     when(envelope.getDeliveryTag).thenReturn(deliveryTag)
 
-    val properties = mock[BasicProperties]
-    when(properties.getMessageId).thenReturn(messageId)
+    val properties = new BasicProperties.Builder().messageId(messageId).build()
 
     val channel = mock[AutorecoveringChannel]
     when(channel.isOpen).thenReturn(true)
 
-    val monitor = mock[Monitor]
-    when(monitor.meter(Matchers.anyString())).thenReturn(Monitor.noOp.meter(""))
-    when(monitor.named(Matchers.eq("results"))).thenReturn(Monitor.noOp())
-    val tasksMonitor = mock[Monitor]
+    val monitor = mock[Monitor[Task]]
+    when(monitor.meter(Matchers.anyString())).thenReturn(Monitor.noOp[Task]().meter(""))
+    when(monitor.named(Matchers.eq("results"))).thenReturn(Monitor.noOp[Task]())
+    val tasksMonitor = mock[Monitor[Task]]
     when(monitor.named(Matchers.eq("tasks"))).thenReturn(tasksMonitor)
-    when(tasksMonitor.gauge(Matchers.anyString())(Matchers.any()))
-      .thenReturn(Monitor.noOp().gauge("")(() => 0).asInstanceOf[Gauge[Nothing]])
+    when(tasksMonitor.gauge).thenReturn(new GaugeFactory[Task] {
+      override def settableLong(n: String, replaceExisting: Boolean): SettableGauge[Task, Long] = new SettableGauge[Task, Long] {
+        override def set(value: Long): Task[Unit] = fail("Should have not be called")
+        override def update(f: Long => Long): Task[Long] = fail("Should have not be called")
+        override def inc: Task[Long] = Task.now(42) // returned value is not used anywhere
+        override def dec: Task[Long] = Task.now(42) // returned value is not used anywhere
+        override def value: Task[Long] = fail("Should have not be called")
+        override def name: String = n
+      }
+      override def settableDouble(name: String, replaceExisting: Boolean): SettableGauge[Task, Double] = fail("Should have not be called")
+      override def generic[T](name: String, replaceExisting: Boolean)(gauge: () => T): Gauge[Task, T] = fail("Should have not be called")
+    })
 
     var successLengths = Seq.newBuilder[Long] // scalastyle:ignore
     var failuresLengths = Seq.newBuilder[Long] // scalastyle:ignore
 
-    when(tasksMonitor.timerPair(Matchers.eq("processed"))).thenReturn(new TimerPair {
-      override def update(duration: Duration): Unit = successLengths += duration.toMillis
-      override def updateFailure(duration: Duration): Unit = failuresLengths += duration.toMillis
+    when(tasksMonitor.timerPair(Matchers.eq("processed"))).thenReturn(new TimerPair[Task] {
+      override def update(duration: Duration): Task[Unit] = Task.delay(successLengths += duration.toMillis)
+      override def updateFailure(duration: Duration): Task[Unit] = Task.delay(failuresLengths += duration.toMillis)
 
-      override def start(): TimeContext = fail("Should have not be called")
-      override def time[A](block: => A): A = fail("Should have not be called")
-      override def time[A](future: => Future[A])(implicit ec: ExecutionContext): Future[A] = fail("Should have not be called")
+      override def update(duration: ScalaDuration): Task[Unit] = fail("Should have not be called")
+      override def updateFailure(duration: ScalaDuration): Task[Unit] = fail("Should have not be called")
+      override def start(): Task[TimerPairContext] = fail("Should have not be called")
+      override def time[T](action: Task[T]): Task[T] = fail("Should have not be called")
+      override def time[T](action: Task[T])(successCheck: T => Boolean): Task[T] = fail("Should have not be called")
     })
 
     {
-      val consumer = new DefaultRabbitMQConsumer[Task](
-        "test",
-        channel,
-        "queueName",
-        connectionInfo,
-        monitor,
-        DeliveryResult.Retry,
-        DefaultListeners.DefaultConsumerListener,
-        RepublishStrategy.DefaultExchange,
-        TestBase.testBlocker
-      )({ delivery =>
+      val consumer = newConsumer(channel, DeliveryResult.Retry, monitor)({ delivery =>
         assertResult(Some(messageId))(delivery.properties.messageId)
         Task.raiseError(new RuntimeException) // immediate
       })
@@ -421,20 +352,10 @@ class DefaultRabbitMQConsumerTest extends TestBase {
     failuresLengths = Seq.newBuilder
 
     {
-      val consumer = new DefaultRabbitMQConsumer[Task](
-        "test",
-        channel,
-        "queueName",
-        connectionInfo,
-        monitor,
-        DeliveryResult.Retry,
-        DefaultListeners.DefaultConsumerListener,
-        RepublishStrategy.DefaultExchange,
-        TestBase.testBlocker
-      )({ delivery =>
+      val consumer = newConsumer(channel, DeliveryResult.Retry, monitor)({ delivery =>
         assertResult(Some(messageId))(delivery.properties.messageId)
         import scala.concurrent.duration._
-        Task.raiseError(new RuntimeException).delayExecution(2.second)
+        Task.raiseError(new RuntimeException("my exception")).delayExecution(2.second)
       })
 
       consumer.handleDelivery("abcd", envelope, properties, Random.nextString(5).getBytes)
@@ -448,4 +369,101 @@ class DefaultRabbitMQConsumerTest extends TestBase {
     }
   }
 
+  test("passes correlation id") {
+    val messageId = UUID.randomUUID().toString
+    val correlationId = UUID.randomUUID().toString
+
+    val deliveryTag = Random.nextInt(1000)
+
+    val envelope = mock[Envelope]
+    when(envelope.getDeliveryTag).thenReturn(deliveryTag)
+
+    val properties = new BasicProperties.Builder().messageId(messageId).correlationId(correlationId).build()
+
+    val channel = mock[AutorecoveringChannel]
+    when(channel.isOpen).thenReturn(true)
+
+    val consumer = newConsumer(channel, failureAction = DeliveryResult.Reject)({ delivery =>
+      assertResult(Some(messageId))(delivery.properties.messageId)
+      assertResult(Some(correlationId))(delivery.properties.correlationId)
+
+      Task.now(DeliveryResult.Ack)
+    })
+
+    val body = Random.nextString(5).getBytes
+    consumer.handleDelivery("abcd", envelope, properties, body)
+
+    eventually(timeout(Span(1, Seconds)), interval(Span(0.1, Seconds))) {
+      verify(channel, times(1)).basicAck(deliveryTag, false)
+      verify(channel, times(0)).basicReject(deliveryTag, false)
+    }
+  }
+
+  test("parses correlation id from header") {
+    val messageId = UUID.randomUUID().toString
+    val correlationId = UUID.randomUUID().toString
+
+    val deliveryTag = Random.nextInt(1000)
+
+    val envelope = mock[Envelope]
+    when(envelope.getDeliveryTag).thenReturn(deliveryTag)
+
+    val properties = new BasicProperties.Builder()
+      .messageId(messageId)
+      .headers(Map(CorrelationIdHeaderName -> correlationId.asInstanceOf[AnyRef]).asJava)
+      .build()
+
+    val channel = mock[AutorecoveringChannel]
+    when(channel.isOpen).thenReturn(true)
+
+    val consumer = newConsumer(channel, failureAction = DeliveryResult.Reject) { delivery =>
+      assertResult(Some(messageId))(delivery.properties.messageId)
+      assertResult(Some(correlationId))(delivery.properties.correlationId)
+
+      Task.now(DeliveryResult.Ack)
+    }
+
+    val body = Random.nextString(5).getBytes
+    consumer.handleDelivery("abcd", envelope, properties, body)
+
+    eventually(timeout(Span(1, Seconds)), interval(Span(0.1, Seconds))) {
+      verify(channel, times(1)).basicAck(deliveryTag, false)
+      verify(channel, times(0)).basicReject(deliveryTag, false)
+    }
+  }
+
+  private def newConsumer(channel: ServerChannel, failureAction: DeliveryResult = Republish(), monitor: Monitor[Task] = Monitor.noOp())(
+      userAction: DeliveryReadAction[Task, Bytes]): DefaultRabbitMQConsumer[Task, Bytes] = {
+    val base = new ConsumerBase[Task, Bytes](
+      "test",
+      "queueName",
+      TestBase.testBlocker,
+      ImplicitContextLogger.createLogger,
+      monitor
+    )
+
+    val channelOps = new ConsumerChannelOps[Task, Bytes](
+      "test",
+      "queueName",
+      channel,
+      TestBase.testBlocker,
+      RepublishStrategy.DefaultExchange[Task](),
+      PMH,
+      connectionInfo,
+      ImplicitContextLogger.createLogger,
+      monitor
+    )
+
+    new DefaultRabbitMQConsumer[Task, Bytes](
+      base,
+      channelOps,
+      10.seconds,
+      DeliveryResult.Republish(),
+      Level.ERROR,
+      failureAction,
+      DefaultListeners.defaultConsumerListener,
+    )(userAction)
+  }
+
+  object PMH extends LoggingPoisonedMessageHandler[Task, Bytes](3)
 }

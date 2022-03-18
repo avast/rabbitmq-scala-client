@@ -103,6 +103,11 @@ class PureconfigImplicits(implicit namingConvention: NamingConvention = CamelCas
     case unknownName => Failure(new IllegalArgumentException(s"Unknown addressResolverType: $unknownName"))
   }
 
+  implicit val deadQueueProducerConfigReader: ConfigReader[DeadQueueProducerConfig] = deriveReader
+  implicit val poisonedMessageHandlingConfigReader: ConfigReader[PoisonedMessageHandlingConfig] = PoisonedMessageHandlingConfigReader
+  implicit val loggingPoisonedMessageHandlingConfigReader: ConfigReader[LoggingPoisonedMessageHandling] = deriveReader
+  implicit val deadQueuePoisonedMessageHandlingConfigReader: ConfigReader[DeadQueuePoisonedMessageHandling] = deriveReader
+
   implicit val deliveryResultReader: ConfigReader[DeliveryResult] = ConfigReader.stringConfigReader.map {
     _.toLowerCase match {
       case "ack" => Ack
@@ -199,6 +204,22 @@ class PureconfigImplicits(implicit namingConvention: NamingConvention = CamelCas
           case t =>
             cur.fluent.at("type").cursor.flatMap { cursor => // because of correct location
               Left(ConfigReaderFailures(CannotParse(s"Unknown republish strategy type: $t", cursor.origin)))
+            }
+        }
+      }
+    }
+  }
+
+  private object PoisonedMessageHandlingConfigReader extends ConfigReader[PoisonedMessageHandlingConfig] {
+    override def from(cur: ConfigCursor): Result[PoisonedMessageHandlingConfig] = {
+      withType(cur) { (config, `type`) =>
+        `type`.toLowerCase match {
+          case "noop" => Right(NoOpPoisonedMessageHandling)
+          case "logging" => ConfigReader[LoggingPoisonedMessageHandling].from(config.root())
+          case "deadqueue" => ConfigReader[DeadQueuePoisonedMessageHandling].from(config.root())
+          case t =>
+            cur.fluent.at("type").cursor.flatMap { cursor => // because of correct location
+              Left(ConfigReaderFailures(CannotParse(s"Unknown poisoned message handler type: $t", cursor.origin)))
             }
         }
       }

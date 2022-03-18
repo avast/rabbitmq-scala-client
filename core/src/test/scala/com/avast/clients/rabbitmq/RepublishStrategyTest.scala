@@ -1,10 +1,11 @@
 package com.avast.clients.rabbitmq
 
-import java.util.UUID
-
+import com.avast.bytes.Bytes
 import com.avast.clients.rabbitmq.RabbitMQConnection.DefaultListeners
 import com.avast.clients.rabbitmq.api.DeliveryResult
-import com.avast.metrics.scalaapi.Monitor
+import com.avast.clients.rabbitmq.api.DeliveryResult.Republish
+import com.avast.clients.rabbitmq.logging.ImplicitContextLogger
+import com.avast.metrics.scalaeffectapi.Monitor
 import com.rabbitmq.client.AMQP.BasicProperties
 import com.rabbitmq.client.Envelope
 import com.rabbitmq.client.impl.recovery.AutorecoveringChannel
@@ -13,9 +14,12 @@ import monix.execution.Scheduler.Implicits.global
 import org.mockito.Mockito._
 import org.mockito.{ArgumentCaptor, Matchers}
 import org.scalatest.time.{Seconds, Span}
+import org.slf4j.event.Level
 
-import scala.jdk.CollectionConverters._
+import java.util.UUID
 import scala.collection.immutable
+import scala.concurrent.duration.DurationInt
+import scala.jdk.CollectionConverters._
 import scala.util.Random
 
 class RepublishStrategyTest extends TestBase {
@@ -36,21 +40,11 @@ class RepublishStrategyTest extends TestBase {
     val channel = mock[AutorecoveringChannel]
     when(channel.isOpen).thenReturn(true)
 
-    val consumer = new DefaultRabbitMQConsumer[Task](
-      "test",
-      channel,
-      "queueName",
-      connectionInfo,
-      Monitor.noOp,
-      DeliveryResult.Reject,
-      DefaultListeners.DefaultConsumerListener,
-      RepublishStrategy.DefaultExchange,
-      TestBase.testBlocker
-    )({ delivery =>
+    val consumer = newConsumer(channel, RepublishStrategy.DefaultExchange[Task]()) { delivery =>
       assertResult(Some(messageId))(delivery.properties.messageId)
 
       Task.now(DeliveryResult.Republish())
-    })
+    }
 
     val body = Random.nextString(5).getBytes
     consumer.handleDelivery("abcd", envelope, properties, body)
@@ -80,21 +74,11 @@ class RepublishStrategyTest extends TestBase {
     val channel = mock[AutorecoveringChannel]
     when(channel.isOpen).thenReturn(true)
 
-    val consumer = new DefaultRabbitMQConsumer[Task](
-      "test",
-      channel,
-      "queueName",
-      connectionInfo,
-      Monitor.noOp,
-      DeliveryResult.Reject,
-      DefaultListeners.DefaultConsumerListener,
-      RepublishStrategy.CustomExchange("myCustomExchange"),
-      TestBase.testBlocker
-    )({ delivery =>
+    val consumer = newConsumer(channel, RepublishStrategy.CustomExchange("myCustomExchange")) { delivery =>
       assertResult(Some(messageId))(delivery.properties.messageId)
 
       Task.now(DeliveryResult.Republish())
-    })
+    }
 
     val body = Random.nextString(5).getBytes
     consumer.handleDelivery("abcd", envelope, properties, body)
@@ -112,4 +96,33 @@ class RepublishStrategyTest extends TestBase {
       assertResult(Some(originalUserId))(propertiesCaptor.getValue.getHeaders.asScala.get(DefaultRabbitMQConsumer.RepublishOriginalUserId))
     }
   }
+
+  private def newConsumer(channel: ServerChannel, republishStrategy: RepublishStrategy[Task])(
+      userAction: DeliveryReadAction[Task, Bytes]): DefaultRabbitMQConsumer[Task, Bytes] = {
+    val base = new ConsumerBase[Task, Bytes]("test", "queueName", TestBase.testBlocker, ImplicitContextLogger.createLogger, Monitor.noOp())
+
+    val channelOps = new ConsumerChannelOps[Task, Bytes](
+      "test",
+      "queueName",
+      channel,
+      TestBase.testBlocker,
+      republishStrategy,
+      PMH,
+      connectionInfo,
+      ImplicitContextLogger.createLogger,
+      Monitor.noOp()
+    )
+
+    new DefaultRabbitMQConsumer[Task, Bytes](
+      base,
+      channelOps,
+      10.seconds,
+      DeliveryResult.Republish(),
+      Level.ERROR,
+      Republish(),
+      DefaultListeners.defaultConsumerListener,
+    )(userAction)
+  }
+
+  object PMH extends LoggingPoisonedMessageHandler[Task, Bytes](3)
 }

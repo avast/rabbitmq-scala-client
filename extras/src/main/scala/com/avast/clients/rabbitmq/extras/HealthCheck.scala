@@ -1,9 +1,12 @@
 package com.avast.clients.rabbitmq.extras
 
+import cats.effect.Sync
+import cats.effect.concurrent.Ref
+import cats.implicits.catsSyntaxFlatMapOps
 import com.avast.clients.rabbitmq.extras.HealthCheckStatus.{Failure, Ok}
+import com.avast.clients.rabbitmq.logging.ImplicitContextLogger
 import com.avast.clients.rabbitmq.{ChannelListener, ConnectionListener, ConsumerListener}
-import com.rabbitmq.client.{Channel, Connection, Consumer, ShutdownSignalException}
-import com.typesafe.scalalogging.StrictLogging
+import com.rabbitmq.client._
 
 sealed trait HealthCheckStatus
 
@@ -21,51 +24,52 @@ object HealthCheckStatus {
  * To use this class, simply pass the `rabbitExceptionHandler` as listener when constructing the RabbitMQ classes.
  * Then you can call `getStatus` method.
  */
-class HealthCheck extends StrictLogging {
+class HealthCheck[F[_]: Sync] {
+  private val F: Sync[F] = Sync[F] // scalastyle:ignore
 
-  // scalastyle:off
-  private var status: HealthCheckStatus = Ok
-  // scalastyle:on
+  private val logger = ImplicitContextLogger.createLogger[F, HealthCheck[F]]
 
-  def getStatus: HealthCheckStatus = status
+  private val ref = Ref.unsafe[F, HealthCheckStatus](Ok)
 
-  def fail(e: Throwable): Unit = {
+  def getStatus: F[HealthCheckStatus] = ref.get
+
+  def fail(e: Throwable): F[Unit] = {
     val s = Failure(e.getClass.getName + ": " + e.getMessage, e)
-    logger.warn(s"Failing HealthCheck with '${s.msg}'", e)
-    status = s
+    ref.set(s) >>
+      logger.plainWarn(e)(s"Failing HealthCheck with '${s.msg}'")
   }
 
-  val rabbitExceptionHandler: ConnectionListener with ChannelListener with ConsumerListener = new ConnectionListener with ChannelListener
-  with ConsumerListener {
-    override def onRecoveryCompleted(connection: Connection): Unit = ()
+  def rabbitExceptionHandler: ConnectionListener[F] with ChannelListener[F] with ConsumerListener[F] =
+    new ConnectionListener[F] with ChannelListener[F] with ConsumerListener[F] {
+      override def onRecoveryCompleted(connection: Connection): F[Unit] = F.unit
 
-    override def onRecoveryStarted(connection: Connection): Unit = ()
+      override def onRecoveryStarted(connection: Connection): F[Unit] = F.unit
 
-    override def onRecoveryFailure(connection: Connection, failure: Throwable): Unit = fail(failure)
+      override def onRecoveryFailure(connection: Connection, failure: Throwable): F[Unit] = fail(failure)
 
-    override def onCreate(connection: Connection): Unit = ()
+      override def onCreate(connection: Connection): F[Unit] = F.unit
 
-    override def onCreateFailure(failure: Throwable): Unit = fail(failure)
+      override def onCreateFailure(failure: Throwable): F[Unit] = fail(failure)
 
-    override def onRecoveryCompleted(channel: Channel): Unit = ()
+      override def onRecoveryCompleted(channel: Channel): F[Unit] = F.unit
 
-    override def onRecoveryStarted(channel: Channel): Unit = ()
+      override def onRecoveryStarted(channel: Channel): F[Unit] = F.unit
 
-    override def onRecoveryFailure(channel: Channel, failure: Throwable): Unit = fail(failure)
+      override def onRecoveryFailure(channel: Channel, failure: Throwable): F[Unit] = fail(failure)
 
-    override def onCreate(channel: Channel): Unit = ()
+      override def onCreate(channel: Channel): F[Unit] = F.unit
 
-    override def onError(consumer: Consumer, consumerName: String, channel: Channel, failure: Throwable): Unit = fail(failure)
+      override def onError(consumer: Consumer, consumerName: String, channel: Channel, failure: Throwable): F[Unit] = fail(failure)
 
-    override def onShutdown(consumer: Consumer,
-                            channel: Channel,
-                            consumerName: String,
-                            consumerTag: String,
-                            cause: ShutdownSignalException): Unit = fail(cause)
+      override def onShutdown(consumer: Consumer,
+                              channel: Channel,
+                              consumerName: String,
+                              consumerTag: String,
+                              cause: ShutdownSignalException): F[Unit] = fail(cause)
 
-    override def onShutdown(connection: Connection, cause: ShutdownSignalException): Unit = fail(cause)
+      override def onShutdown(connection: Connection, cause: ShutdownSignalException): F[Unit] = fail(cause)
 
-    override def onShutdown(cause: ShutdownSignalException, channel: Channel): Unit = fail(cause)
-  }
+      override def onShutdown(cause: ShutdownSignalException, channel: Channel): F[Unit] = fail(cause)
+    }
 
 }
