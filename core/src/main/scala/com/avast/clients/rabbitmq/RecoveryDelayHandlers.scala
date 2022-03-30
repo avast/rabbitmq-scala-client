@@ -17,17 +17,9 @@ object RecoveryDelayHandlers {
                          period: Duration = 5.seconds,
                          factor: Double = 2.0,
                          maxLength: Duration = 32.seconds)
-      extends RecoveryDelayHandler {
-    private val maxMillis = maxLength.toMillis
-
+      extends ExponentialDelay(initialDelay, period, factor, maxLength) with RecoveryDelayHandler {
     override def getDelay(recoveryAttempts: Int): Long = {
-      if (recoveryAttempts == 0) initialDelay.toMillis
-      else {
-        math.min(
-          maxMillis,
-          (period.toMillis * math.pow(factor, recoveryAttempts - 1)).toLong
-        )
-      }
+      getExponentialDelay(recoveryAttempts).toMillis
     }
   }
 }
