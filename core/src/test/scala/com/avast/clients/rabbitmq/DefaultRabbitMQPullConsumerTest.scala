@@ -266,6 +266,7 @@ class DefaultRabbitMQPullConsumerTest extends TestBase {
     val base = new ConsumerBase[Task, A](
       "test",
       "queueName",
+      false,
       TestBase.testBlocker,
       ImplicitContextLogger.createLogger,
       Monitor.noOp()

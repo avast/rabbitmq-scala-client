@@ -19,6 +19,7 @@ import scala.util._
 final private[rabbitmq] case class ConsumerBase[F[_]: ConcurrentEffect: Timer, A](
     consumerName: String,
     queueName: String,
+    redactPayload: Boolean,
     blocker: Blocker,
     consumerLogger: ImplicitContextLogger[F],
     consumerRootMonitor: Monitor[F])(implicit val contextShift: ContextShift[F], implicit val deliveryConverter: DeliveryConverter[A]) {
@@ -37,24 +38,26 @@ final private[rabbitmq] case class ConsumerBase[F[_]: ConcurrentEffect: Timer, A
         case Success(Right(a)) =>
           val delivery = Delivery(a, fixedProperties.asScala, dctx.routingKey.value)
 
-          consumerLogger.trace(s"[$consumerName] Received delivery from queue '$queueName': ${delivery.copy(body = rawBody)}").as {
-            delivery
-          }
+          consumerLogger
+            .trace(s"[$consumerName] Received delivery from queue '$queueName': ${logIfAllowed(delivery.toString)}")
+            .as(delivery)
 
         case Success(Left(ce)) =>
           val delivery = Delivery.MalformedContent(rawBody, fixedProperties.asScala, dctx.routingKey.value, ce)
 
-          consumerLogger.trace(s"[$consumerName] Received delivery from queue '$queueName' but could not convert it: $delivery").as {
-            delivery
-          }
+          consumerLogger
+            .trace(
+              s"[$consumerName] Received delivery from queue '$queueName' but could not convert it: ${logIfAllowed(delivery.toString)}"
+            )
+            .as(delivery)
 
         case Failure(ce) =>
           val ex = ConversionException("Unexpected failure", ce)
           val delivery = Delivery.MalformedContent(rawBody, fixedProperties.asScala, dctx.routingKey.value, ex)
 
           consumerLogger
-            .trace(
-              s"[$consumerName] Received delivery from queue '$queueName' but could not convert it as the convertor has failed: $delivery")
+            .trace(s"[$consumerName] Received delivery from queue '$queueName' but " +
+              s"could not convert it as the convertor has failed: ${logIfAllowed(delivery.toString)}")
             .as(delivery)
       }
       .map(DeliveryWithContext(_, dctx))
@@ -76,8 +79,9 @@ final private[rabbitmq] case class ConsumerBase[F[_]: ConcurrentEffect: Timer, A
               consumerLogger.trace(e)(s"[$consumerName] Timeout for $messageId") >>
               timeoutsMeter.mark >> {
 
-              lazy val msg =
-                s"[$consumerName] Task timed-out after $processTimeout of processing delivery $messageId with routing key ${delivery.routingKey}, applying DeliveryResult.$timeoutAction. Delivery was:\n$delivery"
+              lazy val msg = s"[$consumerName] Task timed-out after $processTimeout of processing delivery $messageId " +
+                s"with routing key ${delivery.routingKey}, applying DeliveryResult.$timeoutAction. " +
+                s"Delivery was:\n${logIfAllowed(delivery.toString)}"
 
               (timeoutLogLevel match {
                 case Level.ERROR => consumerLogger.error(msg)
@@ -91,5 +95,9 @@ final private[rabbitmq] case class ConsumerBase[F[_]: ConcurrentEffect: Timer, A
             }
         }
     } else result
+  }
+
+  def logIfAllowed(f: => String): String = {
+    if (!redactPayload) f else "--redacted--"
   }
 }
