@@ -118,6 +118,7 @@ private[rabbitmq] class DefaultRabbitMQClientFactory[F[_]: ConcurrentEffect: Tim
           val base = new ConsumerBase[F, A](
             name,
             queueName,
+            redactPayload,
             blocker,
             ImplicitContextLogger.createLogger[F, DefaultRabbitMQStreamingConsumer[F, A]],
             monitor
@@ -178,6 +179,7 @@ private[rabbitmq] class DefaultRabbitMQClientFactory[F[_]: ConcurrentEffect: Tim
             val base = new ConsumerBase[F, A](
               name,
               queueName,
+              redactPayload,
               blocker,
               logger,
               monitor
@@ -236,6 +238,7 @@ private[rabbitmq] class DefaultRabbitMQClientFactory[F[_]: ConcurrentEffect: Tim
             val base = new ConsumerBase[F, A](
               name,
               queueName,
+              redactPayload,
               blocker,
               logger,
               monitor
