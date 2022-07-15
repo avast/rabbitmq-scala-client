@@ -1,7 +1,7 @@
 package com.avast.clients.rabbitmq
 
 import com.avast.bytes.Bytes
-import com.avast.clients.rabbitmq.api.{CorrelationIdStrategy, MessageProperties}
+import com.avast.clients.rabbitmq.api._
 import com.avast.clients.rabbitmq.logging.ImplicitContextLogger
 import com.avast.metrics.scalaeffectapi.Monitor
 import com.rabbitmq.client.AMQP
@@ -31,6 +31,7 @@ class DefaultRabbitMQProducerTest extends TestBase {
       monitor = Monitor.noOp(),
       defaultProperties = MessageProperties.empty,
       reportUnroutable = false,
+      sizeLimitBytes = None,
       blocker = TestBase.testBlocker,
       logger = ImplicitContextLogger.createLogger
     )
@@ -72,6 +73,7 @@ class DefaultRabbitMQProducerTest extends TestBase {
       monitor = Monitor.noOp(),
       defaultProperties = MessageProperties.empty,
       reportUnroutable = false,
+      sizeLimitBytes = None,
       blocker = TestBase.testBlocker,
       logger = ImplicitContextLogger.createLogger
     )
@@ -113,6 +115,7 @@ class DefaultRabbitMQProducerTest extends TestBase {
       monitor = Monitor.noOp(),
       defaultProperties = MessageProperties.empty,
       reportUnroutable = false,
+      sizeLimitBytes = None,
       blocker = TestBase.testBlocker,
       logger = ImplicitContextLogger.createLogger
     )
@@ -151,6 +154,7 @@ class DefaultRabbitMQProducerTest extends TestBase {
       monitor = Monitor.noOp(),
       defaultProperties = MessageProperties.empty,
       reportUnroutable = false,
+      sizeLimitBytes = None,
       blocker = TestBase.testBlocker,
       logger = ImplicitContextLogger.createLogger
     )
@@ -168,5 +172,37 @@ class DefaultRabbitMQProducerTest extends TestBase {
 
     // check that some CID was generated
     assert(captor.getValue.getCorrelationId != null)
+  }
+
+  test("too big message is denied") {
+    val exchangeName = Random.nextString(10)
+    val routingKey = Random.nextString(10)
+
+    val limit = 500
+
+    val channel = mock[AutorecoveringChannel]
+
+    val producer = new DefaultRabbitMQProducer[Task, Bytes](
+      name = "test",
+      exchangeName = exchangeName,
+      channel = channel,
+      monitor = Monitor.noOp(),
+      defaultProperties = MessageProperties.empty,
+      reportUnroutable = false,
+      sizeLimitBytes = Some(limit),
+      blocker = TestBase.testBlocker,
+      logger = ImplicitContextLogger.createLogger
+    )
+
+    // don't test anything except it doesn't fail
+    producer.send(routingKey, Bytes.copyFrom(Array.fill(499)(32.toByte))).await
+
+    assertThrows[TooBigMessage] {
+      producer.send(routingKey, Bytes.copyFrom(Array.fill(501)(32.toByte))).await
+    }
+
+    assertThrows[TooBigMessage] {
+      producer.send(routingKey, Bytes.copyFrom(Array.fill(Random.nextInt(1000) + 500)(32.toByte))).await
+    }
   }
 }

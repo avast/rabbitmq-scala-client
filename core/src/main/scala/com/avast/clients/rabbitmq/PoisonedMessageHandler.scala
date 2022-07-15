@@ -62,11 +62,14 @@ object DeadQueuePoisonedMessageHandler {
                           connection: RabbitMQConnection[F],
                           monitor: Monitor[F]): Resource[F, DeadQueuePoisonedMessageHandler[F, A]] = {
     val dqpc = c.deadQueueProducer
-    val pc = ProducerConfig(name = dqpc.name,
-                            exchange = dqpc.exchange,
-                            declare = dqpc.declare,
-                            reportUnroutable = dqpc.reportUnroutable,
-                            properties = dqpc.properties)
+    val pc = ProducerConfig(
+      name = dqpc.name,
+      exchange = dqpc.exchange,
+      declare = dqpc.declare,
+      reportUnroutable = dqpc.reportUnroutable,
+      sizeLimitBytes = dqpc.sizeLimitBytes,
+      properties = dqpc.properties
+    )
 
     connection.newProducer[Bytes](pc, monitor.named("deadQueueProducer")).map { producer =>
       new DeadQueuePoisonedMessageHandler[F, A](c.maxAttempts)((d: Delivery[A], rawBody: Bytes, dctx: DeliveryContext) => {

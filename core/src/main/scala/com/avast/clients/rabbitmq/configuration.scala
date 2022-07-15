@@ -78,6 +78,7 @@ final case class ProducerConfig(name: String,
                                 exchange: String,
                                 declare: Option[AutoDeclareExchangeConfig] = None,
                                 reportUnroutable: Boolean = true,
+                                sizeLimitBytes: Option[Int] = None,
                                 properties: ProducerPropertiesConfig = ProducerPropertiesConfig())
 
 final case class ProducerPropertiesConfig(deliveryMode: Int = 2,
@@ -120,6 +121,7 @@ final case class DeadQueueProducerConfig(name: String,
                                          routingKey: String,
                                          declare: Option[AutoDeclareExchangeConfig] = None,
                                          reportUnroutable: Boolean = true,
+                                         sizeLimitBytes: Option[Int] = None,
                                          properties: ProducerPropertiesConfig = ProducerPropertiesConfig())
 
 case object NoOpPoisonedMessageHandling extends PoisonedMessageHandlingConfig
