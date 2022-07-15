@@ -286,6 +286,7 @@ private[rabbitmq] class DefaultRabbitMQClientFactory[F[_]: ConcurrentEffect: Tim
           channel,
           defaultProperties,
           producerConfig.reportUnroutable,
+          producerConfig.sizeLimitBytes,
           blocker,
           logger,
           monitor
