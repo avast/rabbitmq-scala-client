@@ -23,14 +23,16 @@ class DefaultRabbitMQProducerTest extends TestBase {
     val routingKey = Random.nextString(10)
 
     val channel = mock[AutorecoveringChannel]
+    val rChannel = mock[RecoverableChannel[Task]]
+
+    when(rChannel.get).thenReturn(Task.now(channel))
 
     val producer = new DefaultRabbitMQProducer[Task, Bytes](
       name = "test",
       exchangeName = exchangeName,
-      channel = channel,
+      channel = rChannel,
       monitor = Monitor.noOp(),
       defaultProperties = MessageProperties.empty,
-      reportUnroutable = false,
       blocker = TestBase.testBlocker,
       logger = ImplicitContextLogger.createLogger
     )
@@ -64,14 +66,16 @@ class DefaultRabbitMQProducerTest extends TestBase {
     val routingKey = Random.nextString(10)
 
     val channel = mock[AutorecoveringChannel]
+    val rChannel = mock[RecoverableChannel[Task]]
+
+    when(rChannel.get).thenReturn(Task.now(channel))
 
     val producer = new DefaultRabbitMQProducer[Task, Bytes](
       name = "test",
       exchangeName = exchangeName,
-      channel = channel,
+      channel = rChannel,
       monitor = Monitor.noOp(),
       defaultProperties = MessageProperties.empty,
-      reportUnroutable = false,
       blocker = TestBase.testBlocker,
       logger = ImplicitContextLogger.createLogger
     )
@@ -105,14 +109,16 @@ class DefaultRabbitMQProducerTest extends TestBase {
     val routingKey = Random.nextString(10)
 
     val channel = mock[AutorecoveringChannel]
+    val rChannel = mock[RecoverableChannel[Task]]
+
+    when(rChannel.get).thenReturn(Task.now(channel))
 
     val producer = new DefaultRabbitMQProducer[Task, Bytes](
       name = "test",
       exchangeName = exchangeName,
-      channel = channel,
+      channel = rChannel,
       monitor = Monitor.noOp(),
       defaultProperties = MessageProperties.empty,
-      reportUnroutable = false,
       blocker = TestBase.testBlocker,
       logger = ImplicitContextLogger.createLogger
     )
@@ -143,14 +149,50 @@ class DefaultRabbitMQProducerTest extends TestBase {
     val routingKey = Random.nextString(10)
 
     val channel = mock[AutorecoveringChannel]
+    val rChannel = mock[RecoverableChannel[Task]]
+
+    when(rChannel.get).thenReturn(Task.now(channel))
 
     val producer = new DefaultRabbitMQProducer[Task, Bytes](
       name = "test",
       exchangeName = exchangeName,
-      channel = channel,
+      channel = rChannel,
       monitor = Monitor.noOp(),
       defaultProperties = MessageProperties.empty,
-      reportUnroutable = false,
+      blocker = TestBase.testBlocker,
+      logger = ImplicitContextLogger.createLogger
+    )
+
+    val body = Bytes.copyFromUtf8(Random.nextString(10))
+
+    producer.send(routingKey, body).await
+
+    val captor = ArgumentCaptor.forClass(classOf[AMQP.BasicProperties])
+
+    verify(channel, times(1)).basicPublish(Matchers.eq(exchangeName),
+                                           Matchers.eq(routingKey),
+                                           captor.capture(),
+                                           Matchers.eq(body.toByteArray))
+
+    // check that some CID was generated
+    assert(captor.getValue.getCorrelationId != null)
+  }
+
+  test("channel is recovered after failure") {
+    val exchangeName = Random.nextString(10)
+    val routingKey = Random.nextString(10)
+
+    val channel = mock[AutorecoveringChannel]
+    val rChannel = mock[RecoverableChannel[Task]]
+
+    when(rChannel.get).thenReturn(Task.now(channel))
+
+    val producer = new DefaultRabbitMQProducer[Task, Bytes](
+      name = "test",
+      exchangeName = exchangeName,
+      channel = rChannel,
+      monitor = Monitor.noOp(),
+      defaultProperties = MessageProperties.empty,
       blocker = TestBase.testBlocker,
       logger = ImplicitContextLogger.createLogger
     )

@@ -1,13 +1,15 @@
 package com.avast.clients.rabbitmq
 
 import cats.effect._
-import cats.implicits.{catsSyntaxFlatMapOps, toFunctorOps, toTraverseOps}
+import cats.effect.concurrent.Ref
+import cats.implicits.{catsSyntaxFlatMapOps, toFlatMapOps, toFunctorOps, toTraverseOps}
 import com.avast.bytes.Bytes
 import com.avast.clients.rabbitmq.DefaultRabbitMQClientFactory.startConsumingQueue
 import com.avast.clients.rabbitmq.api._
 import com.avast.clients.rabbitmq.logging.ImplicitContextLogger
-import com.avast.metrics.scalaeffectapi.Monitor
-import com.rabbitmq.client.Consumer
+import com.avast.metrics.scalaeffectapi.{Meter, Monitor}
+import com.rabbitmq.client.AMQP.BasicProperties
+import com.rabbitmq.client.{Consumer, ReturnListener}
 
 import scala.collection.compat._
 import scala.collection.immutable
@@ -266,31 +268,101 @@ private[rabbitmq] class DefaultRabbitMQClientFactory[F[_]: ConcurrentEffect: Tim
                                                    monitor: Monitor[F]): Resource[F, DefaultRabbitMQProducer[F, A]] = {
     val logger = ImplicitContextLogger.createLogger[F, DefaultRabbitMQProducer[F, A]]
 
-    connection
-      .newChannel()
-      .evalTap { channel =>
-        // auto declare exchange; if configured
-        producerConfig.declare.map { declareExchange(producerConfig.exchange, channel, _)(logger) }.getOrElse(F.unit)
-      }
-      .map { channel =>
-        val defaultProperties = MessageProperties(
-          deliveryMode = DeliveryMode.fromCode(producerConfig.properties.deliveryMode),
-          contentType = producerConfig.properties.contentType,
-          contentEncoding = producerConfig.properties.contentEncoding,
-          priority = producerConfig.properties.priority.map(Integer.valueOf)
-        )
+    RecoverableChannel
+      .make[F](connection)
+//      .evalTap { channel =>
+//        // auto declare exchange; if configured
+//        producerConfig.declare
+//          .map {
+//            declareExchange(producerConfig.exchange, channel.channel, _)(logger)
+//          }
+//          .getOrElse(F.unit)
+//      }
+      .evalMap { channel =>
+        channel.get
+          .flatMap { ch =>
+            blocker.delay {
+              ch.addReturnListener(
+                if (producerConfig.reportUnroutable) new LoggingReturnListener(logger, monitor.meter("unroutable"), producerConfig.name)
+                else new NoOpReturnListener(logger, monitor.meter("unroutable"), producerConfig.name)
+              )
+            }
+          }
+          .map { _ =>
+            val defaultProperties = MessageProperties(
+              deliveryMode = DeliveryMode.fromCode(producerConfig.properties.deliveryMode),
+              contentType = producerConfig.properties.contentType,
+              contentEncoding = producerConfig.properties.contentEncoding,
+              priority = producerConfig.properties.priority.map(Integer.valueOf)
+            )
 
-        new DefaultRabbitMQProducer[F, A](
-          producerConfig.name,
-          producerConfig.exchange,
-          channel,
-          defaultProperties,
-          producerConfig.reportUnroutable,
-          blocker,
-          logger,
-          monitor
-        )
+            new DefaultRabbitMQProducer[F, A](
+              producerConfig.name,
+              producerConfig.exchange,
+              channel,
+              defaultProperties,
+              blocker,
+              logger,
+              monitor
+            )
+          }
       }
+
+//    Resource {
+//      connection
+//        .newChannel()
+//        .evalTap { channel =>
+//          // auto declare exchange; if configured
+//          producerConfig.declare
+//            .map {
+//              declareExchange(producerConfig.exchange, channel, _)(logger)
+//            }
+//            .getOrElse(F.unit)
+//        }
+//        .allocated
+//        .map {
+//          case (channel, chclose) =>
+//            val defaultProperties = MessageProperties(
+//              deliveryMode = DeliveryMode.fromCode(producerConfig.properties.deliveryMode),
+//              contentType = producerConfig.properties.contentType,
+//              contentEncoding = producerConfig.properties.contentEncoding,
+//              priority = producerConfig.properties.priority.map(Integer.valueOf)
+//            )
+//
+//            channel.addReturnListener(
+//              if (producerConfig.reportUnroutable) new LoggingReturnListener(logger, monitor.meter("unroutable"), producerConfig.name)
+//              else new NoOpReturnListener(logger, monitor.meter("unroutable"), producerConfig.name)
+//            )
+//
+//            val channelRef = Ref.unsafe[F, ServerChannel](channel)
+//            val channelClose = Ref.unsafe[F, F[Unit]](chclose)
+//
+//            def recoverChannel: F[Unit] = {
+//              logger.plainInfo(s"[${producerConfig.name}] Recovering the channel after failure") >>
+//                connection.newChannel().allocated.flatMap {
+//                  case (channel, chclose) =>
+//                    for {
+//                      _ <- channelRef.set(channel)
+//                      closeOld <- channelClose.getAndSet(chclose)
+//                      _ <- closeOld
+//                    } yield ()
+//                }
+//            }
+//
+//            val producer = new DefaultRabbitMQProducer[F, A](
+//              producerConfig.name,
+//              producerConfig.exchange,
+//              channelRef,
+//              recoverChannel,
+//              defaultProperties,
+//              blocker,
+//              logger,
+//              monitor
+//            )
+//
+//            (producer, channelClose.get.flatten)
+//        }
+//    }
   }
 
   private[rabbitmq] def declareExchange(name: String, channel: ServerChannel, autoDeclareExchange: AutoDeclareExchangeConfig,
@@ -452,6 +524,38 @@ object DefaultRabbitMQClientFactory {
     blocker.delay {
       channel.setDefaultConsumer(consumer) // see `setDefaultConsumer` javadoc; this is possible because the channel is here exclusively for this consumer
       channel.basicConsume(queueName, false, if (consumerTag == "Default") "" else consumerTag, consumer)
+    }
+  }
+}
+
+// scalastyle:off
+private class LoggingReturnListener[F[_]: Effect](logger: ImplicitContextLogger[F], unroutableMeter: Meter[F], producerName: String)
+    extends ReturnListener {
+  override def handleReturn(replyCode: Int,
+                            replyText: String,
+                            exchange: String,
+                            routingKey: String,
+                            properties: BasicProperties,
+                            body: Array[Byte]): Unit = {
+    startAndForget {
+      unroutableMeter.mark >>
+        logger.plainWarn(
+          s"[$producerName] Message sent with routingKey '$routingKey' to exchange '$exchange' (message ID '${properties.getMessageId}', body size ${body.length} B) is unroutable ($replyCode: $replyText)"
+        )
+    }
+  }
+}
+
+private class NoOpReturnListener[F[_]: Effect](logger: ImplicitContextLogger[F], unroutableMeter: Meter[F], producerName: String)
+    extends ReturnListener {
+  override def handleReturn(replyCode: Int,
+                            replyText: String,
+                            exchange: String,
+                            routingKey: String,
+                            properties: BasicProperties,
+                            body: Array[Byte]): Unit = {
+    startAndForget {
+      unroutableMeter.mark
     }
   }
 }
