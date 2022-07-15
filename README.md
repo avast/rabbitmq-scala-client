@@ -308,6 +308,13 @@ myConsumer {
 }
 ```
 
+### Payload logging or redaction
+
+By default, the client logs received delivery (on the TRACE level, unless timeout or sth happens - it's on some higher levels then) for
+better debugging experience. However, if you transfer some sensitive data and you don't want the delivery to be logged, you can easily
+turn it off by using `redactPayload = true` parameter in consumer configs (note: producer doesn't log the delivery at all, just its
+metadata like routing key and properties).
+
 ### Caveats
 
 1. `null` instead of converter instance  

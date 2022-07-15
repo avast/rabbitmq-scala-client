@@ -206,9 +206,13 @@ class PoisonedMessageHandlerLiveTest extends TestBase with ScalaFutures {
           // run async:
           ex.execute(() => {
             while (true) {
-              val PullResult.Ok(dwh) = cons.pull().await
-              processed.incrementAndGet()
-              dwh.handle(DeliveryResult.Republish()).await
+              cons.pull().await match {
+                case PullResult.Ok(dwh) =>
+                  processed.incrementAndGet()
+                  dwh.handle(DeliveryResult.Republish()).await
+
+                case PullResult.EmptyQueue => // 🤷‍
+              }
             }
           })
 
@@ -318,7 +322,7 @@ class PoisonedMessageHandlerLiveTest extends TestBase with ScalaFutures {
             sender.send(initialRoutingKey, Bytes.copyFromUtf8(n.toString), Some(MessageProperties(messageId = Some(s"msg_${n}_")))).await
           }
 
-          eventually(timeout(Span(90, Seconds)), interval(Span(1, Seconds))) {
+          eventually(timeout(Span(120, Seconds)), interval(Span(1, Seconds))) {
             println(s"PROCESSED COUNT: ${processed.get()}")
             // we can't assert the `processed` here - some deliveries may have been cancelled before they were even executed
             assertResult(0)(testHelper.queue.getMessagesCount(queueName1))
