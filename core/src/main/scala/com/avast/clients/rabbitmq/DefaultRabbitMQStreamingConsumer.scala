@@ -62,7 +62,7 @@ class DefaultRabbitMQStreamingConsumer[F[_]: ConcurrentEffect: Timer, A] private
                 .take(1) // wait for a single (first) update
                 .compile
                 .last
-                .map(_.getOrElse(throw new IllegalStateException("This must not happen!")))
+                .flatMap(_.getOrElse(throw new IllegalStateException("This must not happen!")))
             }
 
             val waitForFinish = {
