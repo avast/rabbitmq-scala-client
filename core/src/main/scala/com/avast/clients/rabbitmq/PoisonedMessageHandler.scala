@@ -4,12 +4,13 @@ import cats.Applicative
 import cats.effect.{Resource, Sync}
 import cats.implicits.{catsSyntaxApplicativeError, catsSyntaxFlatMapOps, toFunctorOps}
 import com.avast.bytes.Bytes
-import com.avast.clients.rabbitmq.PoisonedMessageHandler.defaultHandlePoisonedMessage
+import com.avast.clients.rabbitmq.PoisonedMessageHandler.{defaultHandlePoisonedMessage, DiscardedTimeHeaderName}
 import com.avast.clients.rabbitmq.api.DeliveryResult.{Reject, Republish}
 import com.avast.clients.rabbitmq.api._
 import com.avast.clients.rabbitmq.logging.ImplicitContextLogger
 import com.avast.metrics.scalaeffectapi.Monitor
 
+import java.time.Instant
 import scala.util.Try
 import scala.util.control.NonFatal
 
@@ -78,7 +79,11 @@ object DeadQueuePoisonedMessageHandler {
           case None => CorrelationIdStrategy.RandomNew
         }
 
-        producer.send(dqpc.routingKey, rawBody, Some(d.properties))(cidStrategy)
+        val now = Instant.now()
+
+        val finalProperties = d.properties.copy(headers = d.properties.headers.updated(DiscardedTimeHeaderName, now.toString))
+
+        producer.send(dqpc.routingKey, rawBody, Some(finalProperties))(cidStrategy)
       })
     }
   }
@@ -86,6 +91,7 @@ object DeadQueuePoisonedMessageHandler {
 
 object PoisonedMessageHandler {
   final val RepublishCountHeaderName: String = "X-Republish-Count"
+  final val DiscardedTimeHeaderName: String = "X-Discarded-Time"
 
   private[rabbitmq] def make[F[_]: Sync, A](config: Option[PoisonedMessageHandlingConfig],
                                             connection: RabbitMQConnection[F],
@@ -140,7 +146,23 @@ object PoisonedMessageHandler {
         Applicative[F].pure(
           Republish(countAsPoisoned = true, newHeaders = newHeaders + (RepublishCountHeaderName -> attempt.asInstanceOf[AnyRef])))
       } else {
-        handlePoisonedMessage(delivery, maxAttempts)
+        val now = Instant.now()
+
+        def updateProperties(properties: MessageProperties): MessageProperties = {
+          properties.copy(
+            headers = properties.headers
+              .updated(DiscardedTimeHeaderName, now.toString)
+              .updated(RepublishCountHeaderName, maxAttempts.asInstanceOf[AnyRef]))
+        }
+
+        val finalDelivery = delivery match {
+          case Delivery.Ok(body, properties, routingKey) =>
+            Delivery.Ok(body, updateProperties(properties), routingKey)
+          case Delivery.MalformedContent(body, properties, routingKey, ce) =>
+            Delivery.MalformedContent(body, updateProperties(properties), routingKey, ce)
+        }
+
+        handlePoisonedMessage(finalDelivery, maxAttempts)
           .recoverWith {
             case NonFatal(e) =>
               logger.warn(e)("Custom poisoned message handler failed")
