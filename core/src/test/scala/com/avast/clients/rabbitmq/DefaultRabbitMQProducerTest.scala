@@ -4,11 +4,15 @@ import com.avast.bytes.Bytes
 import com.avast.clients.rabbitmq.api._
 import com.avast.clients.rabbitmq.logging.ImplicitContextLogger
 import com.avast.metrics.scalaeffectapi.Monitor
-import com.rabbitmq.client.AMQP
+import com.rabbitmq.client.{AMQP, ConfirmCallback, ConfirmListener}
+import com.rabbitmq.client.AMQP.Confirm
 import com.rabbitmq.client.impl.recovery.AutorecoveringChannel
 import monix.eval.Task
 import monix.execution.Scheduler.Implicits.global
+import org.mockito.Matchers.any
 import org.mockito.Mockito._
+import org.mockito.invocation.InvocationOnMock
+import org.mockito.stubbing.Answer
 import org.mockito.{ArgumentCaptor, Matchers}
 
 import scala.util.Random
@@ -204,5 +208,50 @@ class DefaultRabbitMQProducerTest extends TestBase {
     assertThrows[TooBigMessage] {
       producer.send(routingKey, Bytes.copyFrom(Array.fill(Random.nextInt(1000) + 500)(32.toByte))).await
     }
+  }
+
+  test("counts ACKs and NACKs") {
+    val exchangeName = Random.nextString(10)
+    val routingKey = Random.nextString(10)
+
+    val monitor = new TestMonitor[Task]
+    val channel = mock[AutorecoveringChannel]
+
+    when(channel.confirmSelect()).thenReturn(new Confirm.SelectOk.Builder().build())
+
+    var ackCallback: ConfirmCallback = null
+    var nackCallback: ConfirmCallback = null
+
+    when(channel.addConfirmListener(any[ConfirmCallback], any[ConfirmCallback])).thenAnswer((invocation: InvocationOnMock) => {
+      ackCallback = invocation.getArgumentAt(0, classOf[ConfirmCallback])
+      nackCallback = invocation.getArgumentAt(1, classOf[ConfirmCallback])
+      new ConfirmListener {
+        override def handleAck(deliveryTag: Long, multiple: Boolean): Unit = ()
+        override def handleNack(deliveryTag: Long, multiple: Boolean): Unit = ()
+      }
+    })
+
+    val producer = new DefaultRabbitMQProducer[Task, Bytes](
+      name = "test",
+      exchangeName = exchangeName,
+      channel = channel,
+      monitor = monitor,
+      defaultProperties = MessageProperties.empty,
+      reportUnroutable = false,
+      sizeLimitBytes = None,
+      blocker = TestBase.testBlocker,
+      logger = ImplicitContextLogger.createLogger
+    )
+
+    // not needed to actually send anything...
+
+    val acks = Random.nextInt(100)
+    val nacks = Random.nextInt(100)
+
+    for (_ <- 1 to acks) ackCallback.handle(0, true)
+    for (_ <- 1 to nacks) nackCallback.handle(0, true)
+
+    assertResult(acks)(monitor.registry.meterCount("ack"))
+    assertResult(nacks)(monitor.registry.meterCount("nack"))
   }
 }

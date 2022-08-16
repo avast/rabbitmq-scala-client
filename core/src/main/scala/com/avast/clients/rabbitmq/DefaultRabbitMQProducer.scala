@@ -29,11 +29,20 @@ class DefaultRabbitMQProducer[F[_], A: ProductConverter](name: String,
   private val sentFailedMeter = monitor.meter("sentFailed")
   private val unroutableMeter = monitor.meter("unroutable")
 
+  private val ackMeter = monitor.meter("ack")
+  private val nackMeter = monitor.meter("nack")
+
   private val converter = implicitly[ProductConverter[A]]
 
   private val sendLock = new Object
 
   channel.addReturnListener(if (reportUnroutable) LoggingReturnListener else NoOpReturnListener)
+
+  channel.waitForConfirms()
+  channel.addConfirmListener(
+    (_: Long, _: Boolean) => startAndForget(logger.plainDebug("Delivery was sent and ACKed") >> ackMeter.mark),
+    (_: Long, _: Boolean) => startAndForget(logger.plainDebug("Delivery was sent but NACKed") >> nackMeter.mark)
+  )
 
   override def send(routingKey: String, body: A, properties: Option[MessageProperties] = None)(
       implicit cidStrategy: CorrelationIdStrategy = FromPropertiesOrRandomNew(properties)): F[Unit] = {
