@@ -41,7 +41,7 @@ class DefaultRabbitMQProducer[F[_], A: ProductConverter](name: String,
   channel.waitForConfirms()
   channel.addConfirmListener(
     (_: Long, _: Boolean) => startAndForget(logger.plainDebug("Delivery was sent and ACKed") >> ackMeter.mark),
-    (_: Long, _: Boolean) => startAndForget(logger.plainDebug("Delivery was sent but NACKed") >> nackMeter.mark)
+    (_: Long, _: Boolean) => startAndForget(logger.plainWarn("Delivery was sent but NACKed") >> nackMeter.mark)
   )
 
   override def send(routingKey: String, body: A, properties: Option[MessageProperties] = None)(
