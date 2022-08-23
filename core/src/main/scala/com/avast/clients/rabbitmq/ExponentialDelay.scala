@@ -3,7 +3,7 @@ package com.avast.clients.rabbitmq
 import java.util.concurrent.TimeUnit
 import scala.concurrent.duration.{Duration, FiniteDuration}
 
-class ExponentialDelay(initialDelay: Duration, period: Duration, factor: Double, maxLength: Duration) {
+class ExponentialDelay(val initialDelay: Duration, val period: Duration, val factor: Double, val maxLength: Duration) {
   private val maxMillis = maxLength.toMillis
 
   def getExponentialDelay(attempt: Int): FiniteDuration = {

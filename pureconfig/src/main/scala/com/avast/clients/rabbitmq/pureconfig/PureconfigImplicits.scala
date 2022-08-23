@@ -90,6 +90,7 @@ class PureconfigImplicits(implicit namingConvention: NamingConvention = CamelCas
   implicit val autoBindQueueConfigReader: ConfigReader[AutoBindQueueConfig] = deriveReader
   implicit val autoBindExchangeConfigReader: ConfigReader[AutoBindExchangeConfig] = deriveReader
   implicit val producerPropertiesConfigReader: ConfigReader[ProducerPropertiesConfig] = deriveReader
+  implicit val exponentialDelayConfigReader: ConfigReader[ExponentialDelay] = deriveReader
 
   implicit val logLevelReader: ConfigReader[Level] = ConfigReader.stringConfigReader.map(Level.valueOf)
   implicit val recoveryDelayHandlerReader: ConfigReader[RecoveryDelayHandler] = RecoveryDelayHandlerReader
@@ -108,7 +109,6 @@ class PureconfigImplicits(implicit namingConvention: NamingConvention = CamelCas
   implicit val loggingPoisonedMessageHandlingConfigReader: ConfigReader[LoggingPoisonedMessageHandling] = deriveReader
   implicit val deadQueuePoisonedMessageHandlingConfigReader: ConfigReader[DeadQueuePoisonedMessageHandling] = deriveReader
 
-  implicit val exponentialDealyConfigReader: ConfigReader[ExponentialDelay] = deriveReader
   implicit val deliveryResultReader: ConfigReader[DeliveryResult] = ConfigReader.stringConfigReader.map {
     _.toLowerCase match {
       case "ack" => Ack
