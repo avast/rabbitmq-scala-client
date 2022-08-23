@@ -25,7 +25,7 @@ class PoisonedMessageHandlerTest extends TestBase {
     val movedCount = new AtomicInteger(0)
 
     PoisonedMessageHandler
-      .handleResult[Task, Bytes](Delivery.Ok(Bytes.empty(), MessageProperties(), ""), MessageId("msg-id"), 1, ilogger, (_, _) => {
+      .handleResult[Task, Bytes](Delivery.Ok(Bytes.empty(), MessageProperties(), ""), MessageId("msg-id"), 1, ilogger, None, (_, _) => {
         Task.delay { movedCount.incrementAndGet() }
       })(Republish(countAsPoisoned = false))
       .await
@@ -35,7 +35,7 @@ class PoisonedMessageHandlerTest extends TestBase {
     movedCount.set(0)
 
     PoisonedMessageHandler
-      .handleResult[Task, Bytes](Delivery.Ok(Bytes.empty(), MessageProperties(), ""), MessageId("msg-id"), 1, ilogger, (_, _) => {
+      .handleResult[Task, Bytes](Delivery.Ok(Bytes.empty(), MessageProperties(), ""), MessageId("msg-id"), 1, ilogger, None, (_, _) => {
         Task.delay { movedCount.incrementAndGet() }
       })(Republish())
       .await
@@ -48,7 +48,7 @@ class PoisonedMessageHandlerTest extends TestBase {
       Task.now(Republish())
     }
 
-    val handler = new LoggingPoisonedMessageHandler[Task, Bytes](5)
+    val handler = new LoggingPoisonedMessageHandler[Task, Bytes](5, None)
 
     val properties = (1 to 4).foldLeft(MessageProperties.empty) {
       case (p, _) =>
@@ -91,7 +91,7 @@ class PoisonedMessageHandlerTest extends TestBase {
 
     val movedCount = new AtomicInteger(0)
 
-    val handler = new DeadQueuePoisonedMessageHandler[Task, Bytes](5)({ (_, _, _) =>
+    val handler = new DeadQueuePoisonedMessageHandler[Task, Bytes](5, None)({ (_, _, _) =>
       Task.delay(movedCount.incrementAndGet())
     })
 
@@ -119,7 +119,7 @@ class PoisonedMessageHandlerTest extends TestBase {
 
     val movedCount = new AtomicInteger(0)
 
-    val handler = new DeadQueuePoisonedMessageHandler[Task, Bytes](3)({ (d, _, _) =>
+    val handler = new DeadQueuePoisonedMessageHandler[Task, Bytes](3, None)({ (d, _, _) =>
       // test it's there and it can be parsed
       assert(Instant.parse(d.properties.headers(DiscardedTimeHeaderName).asInstanceOf[String]).toEpochMilli > 0)
 
@@ -147,7 +147,7 @@ class PoisonedMessageHandlerTest extends TestBase {
 
     val movedCount = new AtomicInteger(0)
 
-    val handler = new DeadQueuePoisonedMessageHandler[Task, Bytes](5)({ (_, _, _) =>
+    val handler = new DeadQueuePoisonedMessageHandler[Task, Bytes](5, None)({ (_, _, _) =>
       Task.delay(movedCount.incrementAndGet())
     })
 

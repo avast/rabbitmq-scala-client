@@ -287,5 +287,5 @@ class DefaultRabbitMQPullConsumerTest extends TestBase {
     new DefaultRabbitMQPullConsumer[Task, A](base, channelOps)
   }
 
-  class PMH[A] extends LoggingPoisonedMessageHandler[Task, A](3)
+  class PMH[A] extends LoggingPoisonedMessageHandler[Task, A](3, None)
 }
