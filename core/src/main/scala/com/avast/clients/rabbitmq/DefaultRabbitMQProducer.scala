@@ -19,6 +19,7 @@ class DefaultRabbitMQProducer[F[_], A: ProductConverter](name: String,
                                                          channel: ServerChannel,
                                                          defaultProperties: MessageProperties,
                                                          reportUnroutable: Boolean,
+                                                         sizeLimitBytes: Option[Int],
                                                          blocker: Blocker,
                                                          logger: ImplicitContextLogger[F],
                                                          monitor: Monitor[F])(implicit F: Effect[F], cs: ContextShift[F])
@@ -54,7 +55,8 @@ class DefaultRabbitMQProducer[F[_], A: ProductConverter](name: String,
   }
 
   private def send(routingKey: String, body: Bytes, properties: MessageProperties)(implicit correlationId: CorrelationId): F[Unit] = {
-    logger.debug(s"Sending message with ${body.size()} B to exchange $exchangeName with routing key '$routingKey' and $properties") >>
+    checkSize(body, routingKey) >>
+      logger.debug(s"Sending message with ${body.size()} B to exchange $exchangeName with routing key '$routingKey' and $properties") >>
       blocker
         .delay {
           sendLock.synchronized {
@@ -74,6 +76,20 @@ class DefaultRabbitMQProducer[F[_], A: ProductConverter](name: String,
               sentFailedMeter.mark >>
               F.raiseError[Unit](e)
         }
+  }
+
+  private def checkSize(bytes: Bytes, routingKey: String)(implicit correlationId: CorrelationId): F[Unit] = {
+    sizeLimitBytes match {
+      case Some(limit) =>
+        val size = bytes.size()
+        if (size >= limit) {
+          logger.warn {
+            s"[$name] Will not send message with $size B to exchange $exchangeName with routing key '$routingKey' as it is over the limit $limit B"
+          } >> F.raiseError[Unit](TooBigMessage(s"Message too big ($size/$limit)"))
+        } else F.unit
+
+      case None => F.unit
+    }
   }
 
   // scalastyle:off

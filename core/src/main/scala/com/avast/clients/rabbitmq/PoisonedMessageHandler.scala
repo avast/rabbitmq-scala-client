@@ -4,12 +4,13 @@ import cats.Applicative
 import cats.effect.{Resource, Sync, Timer}
 import cats.implicits.{catsSyntaxApplicativeError, catsSyntaxFlatMapOps, toFunctorOps}
 import com.avast.bytes.Bytes
-import com.avast.clients.rabbitmq.PoisonedMessageHandler.defaultHandlePoisonedMessage
+import com.avast.clients.rabbitmq.PoisonedMessageHandler.{defaultHandlePoisonedMessage, DiscardedTimeHeaderName}
 import com.avast.clients.rabbitmq.api.DeliveryResult.{Reject, Republish}
 import com.avast.clients.rabbitmq.api._
 import com.avast.clients.rabbitmq.logging.ImplicitContextLogger
 import com.avast.metrics.scalaeffectapi.Monitor
 
+import java.time.Instant
 import scala.util.Try
 import scala.util.control.NonFatal
 
@@ -69,11 +70,14 @@ object DeadQueuePoisonedMessageHandler {
                                  connection: RabbitMQConnection[F],
                                  monitor: Monitor[F]): Resource[F, DeadQueuePoisonedMessageHandler[F, A]] = {
     val dqpc = c.deadQueueProducer
-    val pc = ProducerConfig(name = dqpc.name,
-                            exchange = dqpc.exchange,
-                            declare = dqpc.declare,
-                            reportUnroutable = dqpc.reportUnroutable,
-                            properties = dqpc.properties)
+    val pc = ProducerConfig(
+      name = dqpc.name,
+      exchange = dqpc.exchange,
+      declare = dqpc.declare,
+      reportUnroutable = dqpc.reportUnroutable,
+      sizeLimitBytes = dqpc.sizeLimitBytes,
+      properties = dqpc.properties
+    )
 
     connection.newProducer[Bytes](pc, monitor.named("deadQueueProducer")).map { producer =>
       new DeadQueuePoisonedMessageHandler[F, A](c.maxAttempts, c.republishDelay)(
@@ -83,7 +87,11 @@ object DeadQueuePoisonedMessageHandler {
             case None => CorrelationIdStrategy.RandomNew
           }
 
-          producer.send(dqpc.routingKey, rawBody, Some(d.properties))(cidStrategy)
+          val now = Instant.now()
+
+        val finalProperties = d.properties.copy(headers = d.properties.headers.updated(DiscardedTimeHeaderName, now.toString))
+
+        producer.send(dqpc.routingKey, rawBody, Some(finalProperties))(cidStrategy)
         })
     }
   }
@@ -91,6 +99,7 @@ object DeadQueuePoisonedMessageHandler {
 
 object PoisonedMessageHandler {
   final val RepublishCountHeaderName: String = "X-Republish-Count"
+  final val DiscardedTimeHeaderName: String = "X-Discarded-Time"
 
   private[rabbitmq] def make[F[_]: Sync: Timer, A](config: Option[PoisonedMessageHandlingConfig],
                                                    connection: RabbitMQConnection[F],
@@ -151,7 +160,23 @@ object PoisonedMessageHandler {
           _ <- republishDelay.traverse(d => Timer[F].sleep(d.getExponentialDelay(attempt)))
         } yield Republish(countAsPoisoned = true, newHeaders = newHeaders + (RepublishCountHeaderName -> attempt.asInstanceOf[AnyRef]))
       } else {
-        handlePoisonedMessage(delivery, maxAttempts)
+        val now = Instant.now()
+
+        def updateProperties(properties: MessageProperties): MessageProperties = {
+          properties.copy(
+            headers = properties.headers
+              .updated(DiscardedTimeHeaderName, now.toString)
+              .updated(RepublishCountHeaderName, maxAttempts.asInstanceOf[AnyRef]))
+        }
+
+        val finalDelivery = delivery match {
+          case Delivery.Ok(body, properties, routingKey) =>
+            Delivery.Ok(body, updateProperties(properties), routingKey)
+          case Delivery.MalformedContent(body, properties, routingKey, ce) =>
+            Delivery.MalformedContent(body, updateProperties(properties), routingKey, ce)
+        }
+
+        handlePoisonedMessage(finalDelivery, maxAttempts)
           .recoverWith {
             case NonFatal(e) =>
               logger.warn(e)("Custom poisoned message handler failed")

@@ -33,6 +33,7 @@ final case class ConsumerConfig(name: String,
                                 timeoutAction: DeliveryResult = DeliveryResult.Republish(),
                                 timeoutLogLevel: Level = Level.WARN,
                                 prefetchCount: Int = 100,
+                                redactPayload: Boolean = false,
                                 declare: Option[AutoDeclareQueueConfig] = None,
                                 consumerTag: String = "Default",
                                 poisonedMessageHandling: Option[PoisonedMessageHandlingConfig] = None)
@@ -45,6 +46,7 @@ final case class StreamingConsumerConfig(name: String,
                                          timeoutLogLevel: Level = Level.WARN,
                                          prefetchCount: Int = 100,
                                          queueBufferSize: Int = 100,
+                                         redactPayload: Boolean = false,
                                          declare: Option[AutoDeclareQueueConfig] = None,
                                          consumerTag: String = "Default",
                                          poisonedMessageHandling: Option[PoisonedMessageHandlingConfig] = None)
@@ -52,6 +54,7 @@ final case class StreamingConsumerConfig(name: String,
 final case class PullConsumerConfig(name: String,
                                     queueName: String,
                                     bindings: immutable.Seq[AutoBindQueueConfig],
+                                    redactPayload: Boolean = false,
                                     declare: Option[AutoDeclareQueueConfig] = None,
                                     poisonedMessageHandling: Option[PoisonedMessageHandlingConfig] = None)
 
@@ -75,6 +78,7 @@ final case class ProducerConfig(name: String,
                                 exchange: String,
                                 declare: Option[AutoDeclareExchangeConfig] = None,
                                 reportUnroutable: Boolean = true,
+                                sizeLimitBytes: Option[Int] = None,
                                 properties: ProducerPropertiesConfig = ProducerPropertiesConfig())
 
 final case class ProducerPropertiesConfig(deliveryMode: Int = 2,
@@ -117,6 +121,7 @@ final case class DeadQueueProducerConfig(name: String,
                                          routingKey: String,
                                          declare: Option[AutoDeclareExchangeConfig] = None,
                                          reportUnroutable: Boolean = true,
+                                         sizeLimitBytes: Option[Int] = None,
                                          properties: ProducerPropertiesConfig = ProducerPropertiesConfig())
 
 case object NoOpPoisonedMessageHandling extends PoisonedMessageHandlingConfig

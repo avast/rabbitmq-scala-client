@@ -437,6 +437,7 @@ class DefaultRabbitMQConsumerTest extends TestBase {
     val base = new ConsumerBase[Task, Bytes](
       "test",
       "queueName",
+      false,
       TestBase.testBlocker,
       ImplicitContextLogger.createLogger,
       monitor

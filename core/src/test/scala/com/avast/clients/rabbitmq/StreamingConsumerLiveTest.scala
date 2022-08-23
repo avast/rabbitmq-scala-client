@@ -338,6 +338,55 @@ class StreamingConsumerLiveTest extends TestBase with ScalaFutures {
     }
   }
 
+  test("streaming consumer cancels the task after timeout") {
+    val c = createConfig()
+    import c._
+
+    RabbitMQConnection.fromConfig[Task](config, ex).withResource { rabbitConnection =>
+      val count = Random.nextInt(100) + 100
+
+      logger.info(s"Sending $count messages")
+
+      val delivered = new AtomicInteger(0)
+      val executed = new AtomicInteger(0)
+
+      rabbitConnection.newStreamingConsumer[Bytes]("testingStreamingWithTimeout", Monitor.noOp()).withResource { cons =>
+        val stream = cons.deliveryStream
+          .mapAsyncUnordered(50) {
+            _.handleWith { d =>
+              Task.delay(delivered.incrementAndGet()) >>
+                Task.sleep(800.millis) >>
+                // the consumer has timeout to 500ms so this should never get executed!
+                Task {
+                  logger.info(s"Executed: ${d.properties.messageId.getOrElse("-no-message-id-")}")
+                  executed.incrementAndGet()
+                }.as(Ack)
+            }
+          }
+
+        rabbitConnection.newProducer[Bytes]("testing", Monitor.noOp()).withResource { sender =>
+          for (_ <- 1 to count) {
+            sender.send("test", Bytes.copyFromUtf8(Random.nextString(10))).await
+          }
+
+          // it takes some time before the stats appear... :-|
+          eventually(timeout(Span(5, Seconds)), interval(Span(0.5, Seconds))) {
+            assertResult(count)(testHelper.queue.getPublishedCount(queueName1))
+          }
+
+          ex.execute(() => stream.compile.drain.runSyncUnsafe()) // run the stream
+
+          eventually(timeout(Span(60, Seconds)), interval(Span(1, Seconds))) {
+            println(s"D: ${delivered.get()} EX: ${executed.get()}")
+            assert(delivered.get() >= count)
+            assertResult(0)(executed.get())
+            assert(testHelper.exchange.getPublishedCount(exchange5) > 0)
+          }
+        }
+      }
+    }
+  }
+
   test("can be closed properly") {
     val c = createConfig()
     import c._
@@ -421,7 +470,7 @@ class StreamingConsumerLiveTest extends TestBase with ScalaFutures {
 
         createStream().map(_ => processedFromRest.incrementAndGet()).compile.drain.startAndForget.await // run asynchronously
 
-        eventually(timeout(Span(5, Seconds)), interval(Span(0.2, Seconds))) {
+        eventually(timeout(Span(10, Seconds)), interval(Span(0.2, Seconds))) {
           println("D: " + processedFromRest.get())
           assertResult(9)(processedFromRest.get())
           assertResult(0)(testHelper.queue.getMessagesCount(queueName1))

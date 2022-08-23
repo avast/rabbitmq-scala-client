@@ -8,6 +8,7 @@ import com.avast.clients.rabbitmq.logging.ImplicitContextLogger
 import monix.eval.Task
 import monix.execution.Scheduler.Implicits.global
 
+import java.time.Instant
 import java.util.concurrent.atomic.AtomicInteger
 
 class PoisonedMessageHandlerTest extends TestBase {
@@ -108,6 +109,34 @@ class PoisonedMessageHandlerTest extends TestBase {
     // check it will Reject the message on 5th attempt
     assertResult(DeliveryResult.Reject)(run(handler, readAction, properties))
 
+    assertResult(1)(movedCount.get())
+  }
+
+  test("DeadQueuePoisonedMessageHandler adds discarded time") {
+    def readAction(d: Delivery[Bytes]): Task[DeliveryResult] = {
+      Task.now(Republish())
+    }
+
+    val movedCount = new AtomicInteger(0)
+
+    val handler = new DeadQueuePoisonedMessageHandler[Task, Bytes](3)({ (d, _, _) =>
+      // test it's there and it can be parsed
+      assert(Instant.parse(d.properties.headers(DiscardedTimeHeaderName).asInstanceOf[String]).toEpochMilli > 0)
+
+      Task.delay(movedCount.incrementAndGet())
+    })
+
+    val properties = (1 to 2).foldLeft(MessageProperties.empty) {
+      case (p, _) =>
+        run(handler, readAction, p) match {
+          case Republish(_, h) => MessageProperties(headers = h)
+          case _ => MessageProperties.empty
+        }
+    }
+
+    assertResult(DeliveryResult.Reject)(run(handler, readAction, properties))
+
+    // if the assert above has failed, this won't assert
     assertResult(1)(movedCount.get())
   }
 
