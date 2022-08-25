@@ -156,7 +156,10 @@ object PoisonedMessageHandler {
     logger.debug(s"Attempt $attempt/$maxAttempts for $messageId") >> {
       if (attempt < maxAttempts) {
         for {
-          _ <- republishDelay.traverse(d => Timer[F].sleep(d.getExponentialDelay(attempt)))
+          _ <- republishDelay.traverse { d =>
+            val delay = d.getExponentialDelay(attempt)
+            logger.debug(s"Will republish the message in $delay") >> Timer[F].sleep(delay)
+          }
         } yield Republish(countAsPoisoned = true, newHeaders = newHeaders + (RepublishCountHeaderName -> attempt.asInstanceOf[AnyRef]))
       } else {
         val now = Instant.now()
