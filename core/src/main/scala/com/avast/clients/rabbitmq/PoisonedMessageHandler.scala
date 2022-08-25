@@ -81,17 +81,17 @@ object DeadQueuePoisonedMessageHandler {
 
     connection.newProducer[Bytes](pc, monitor.named("deadQueueProducer")).map { producer =>
       new DeadQueuePoisonedMessageHandler[F, A](c.maxAttempts, c.republishDelay)((d: Delivery[A], rawBody: Bytes, dctx: DeliveryContext) => {
-          val cidStrategy = dctx.correlationId match {
-            case Some(value) => CorrelationIdStrategy.Fixed(value.value)
-            case None => CorrelationIdStrategy.RandomNew
-          }
+        val cidStrategy = dctx.correlationId match {
+          case Some(value) => CorrelationIdStrategy.Fixed(value.value)
+          case None => CorrelationIdStrategy.RandomNew
+        }
 
-          val now = Instant.now()
+        val now = Instant.now()
 
         val finalProperties = d.properties.copy(headers = d.properties.headers.updated(DiscardedTimeHeaderName, now.toString))
 
         producer.send(dqpc.routingKey, rawBody, Some(finalProperties))(cidStrategy)
-        })
+      })
     }
   }
 }
