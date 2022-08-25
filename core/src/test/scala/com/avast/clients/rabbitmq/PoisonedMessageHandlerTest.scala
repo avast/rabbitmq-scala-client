@@ -65,6 +65,32 @@ class PoisonedMessageHandlerTest extends TestBase {
     assertResult(DeliveryResult.Reject)(run(handler, readAction, properties))
   }
 
+  test("LoggingPoisonedMessageHandler exponential delay") {
+    import scala.concurrent.duration._
+
+    def readAction(d: Delivery[Bytes]): Task[DeliveryResult] = {
+      Task.now(Republish())
+    }
+
+    val handler = new LoggingPoisonedMessageHandler[Task, Bytes](5, Some(new ExponentialDelay(1.seconds, 1.seconds, 2, 2.seconds)))
+    val timeBeforeExecution = Instant.now()
+    val properties = (1 to 4).foldLeft(MessageProperties.empty) {
+      case (p, _) =>
+        run(handler, readAction, p) match {
+          case Republish(_, h) => MessageProperties(headers = h)
+          case _ => MessageProperties.empty
+        }
+    }
+
+    val now = Instant.now()
+    assert(now.minusSeconds(7).isAfter(timeBeforeExecution) && now.minusSeconds(8).isBefore(timeBeforeExecution))
+    // check it increases the header with count
+    assertResult(MessageProperties(headers = Map(RepublishCountHeaderName -> 4.asInstanceOf[AnyRef])))(properties)
+
+    // check it will Reject the message on 5th attempt
+    assertResult(DeliveryResult.Reject)(run(handler, readAction, properties))
+  }
+
   test("NoOpPoisonedMessageHandler basic") {
     def readAction(d: Delivery[Bytes]): Task[DeliveryResult] = {
       Task.now(Republish())

@@ -80,8 +80,7 @@ object DeadQueuePoisonedMessageHandler {
     )
 
     connection.newProducer[Bytes](pc, monitor.named("deadQueueProducer")).map { producer =>
-      new DeadQueuePoisonedMessageHandler[F, A](c.maxAttempts, c.republishDelay)(
-        (d: Delivery[A], rawBody: Bytes, dctx: DeliveryContext) => {
+      new DeadQueuePoisonedMessageHandler[F, A](c.maxAttempts, c.republishDelay)((d: Delivery[A], rawBody: Bytes, dctx: DeliveryContext) => {
           val cidStrategy = dctx.correlationId match {
             case Some(value) => CorrelationIdStrategy.Fixed(value.value)
             case None => CorrelationIdStrategy.RandomNew
