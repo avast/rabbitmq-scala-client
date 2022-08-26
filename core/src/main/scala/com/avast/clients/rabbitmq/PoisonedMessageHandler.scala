@@ -1,7 +1,7 @@
 package com.avast.clients.rabbitmq
 
 import cats.Applicative
-import cats.effect.{Resource, Sync}
+import cats.effect.{Resource, Sync, Timer}
 import cats.implicits.{catsSyntaxApplicativeError, catsSyntaxFlatMapOps, toFunctorOps}
 import com.avast.bytes.Bytes
 import com.avast.clients.rabbitmq.PoisonedMessageHandler.{defaultHandlePoisonedMessage, DiscardedTimeHeaderName}
@@ -19,7 +19,8 @@ sealed trait PoisonedMessageHandler[F[_], A] {
       implicit dctx: DeliveryContext): F[DeliveryResult]
 }
 
-class LoggingPoisonedMessageHandler[F[_]: Sync, A](maxAttempts: Int) extends PoisonedMessageHandler[F, A] {
+class LoggingPoisonedMessageHandler[F[_]: Sync: Timer, A](maxAttempts: Int, republishDelay: Option[ExponentialDelay])
+    extends PoisonedMessageHandler[F, A] {
   private val logger = ImplicitContextLogger.createLogger[F, LoggingPoisonedMessageHandler[F, A]]
 
   override def interceptResult(delivery: Delivery[A], messageId: MessageId, rawBody: Bytes)(result: DeliveryResult)(
@@ -28,6 +29,7 @@ class LoggingPoisonedMessageHandler[F[_]: Sync, A](maxAttempts: Int) extends Poi
                                         messageId,
                                         maxAttempts,
                                         logger,
+                                        republishDelay,
                                         (d: Delivery[A], _) => defaultHandlePoisonedMessage[F, A](maxAttempts, logger)(d))(result)
   }
 }
@@ -37,14 +39,19 @@ class NoOpPoisonedMessageHandler[F[_]: Sync, A] extends PoisonedMessageHandler[F
       implicit dctx: DeliveryContext): F[DeliveryResult] = Sync[F].pure(result)
 }
 
-class DeadQueuePoisonedMessageHandler[F[_]: Sync, A](maxAttempts: Int)(moveToDeadQueue: (Delivery[A], Bytes, DeliveryContext) => F[Unit])
+class DeadQueuePoisonedMessageHandler[F[_]: Sync: Timer, A](maxAttempts: Int, republishDelay: Option[ExponentialDelay])(
+    moveToDeadQueue: (Delivery[A], Bytes, DeliveryContext) => F[Unit])
     extends PoisonedMessageHandler[F, A] {
   private val logger = ImplicitContextLogger.createLogger[F, DeadQueuePoisonedMessageHandler[F, A]]
 
   override def interceptResult(delivery: Delivery[A], messageId: MessageId, rawBody: Bytes)(result: DeliveryResult)(
       implicit dctx: DeliveryContext): F[DeliveryResult] = {
-    PoisonedMessageHandler.handleResult(delivery, messageId, maxAttempts, logger, (d, _) => handlePoisonedMessage(d, messageId, rawBody))(
-      result)
+    PoisonedMessageHandler.handleResult(delivery,
+                                        messageId,
+                                        maxAttempts,
+                                        logger,
+                                        republishDelay,
+                                        (d, _) => handlePoisonedMessage(d, messageId, rawBody))(result)
   }
 
   private def handlePoisonedMessage(delivery: Delivery[A], messageId: MessageId, rawBody: Bytes)(
@@ -59,9 +66,9 @@ class DeadQueuePoisonedMessageHandler[F[_]: Sync, A](maxAttempts: Int)(moveToDea
 }
 
 object DeadQueuePoisonedMessageHandler {
-  def make[F[_]: Sync, A](c: DeadQueuePoisonedMessageHandling,
-                          connection: RabbitMQConnection[F],
-                          monitor: Monitor[F]): Resource[F, DeadQueuePoisonedMessageHandler[F, A]] = {
+  def make[F[_]: Sync: Timer, A](c: DeadQueuePoisonedMessageHandling,
+                                 connection: RabbitMQConnection[F],
+                                 monitor: Monitor[F]): Resource[F, DeadQueuePoisonedMessageHandler[F, A]] = {
     val dqpc = c.deadQueueProducer
     val pc = ProducerConfig(
       name = dqpc.name,
@@ -73,7 +80,7 @@ object DeadQueuePoisonedMessageHandler {
     )
 
     connection.newProducer[Bytes](pc, monitor.named("deadQueueProducer")).map { producer =>
-      new DeadQueuePoisonedMessageHandler[F, A](c.maxAttempts)((d: Delivery[A], rawBody: Bytes, dctx: DeliveryContext) => {
+      new DeadQueuePoisonedMessageHandler[F, A](c.maxAttempts, c.republishDelay)((d: Delivery[A], rawBody: Bytes, dctx: DeliveryContext) => {
         val cidStrategy = dctx.correlationId match {
           case Some(value) => CorrelationIdStrategy.Fixed(value.value)
           case None => CorrelationIdStrategy.RandomNew
@@ -93,11 +100,12 @@ object PoisonedMessageHandler {
   final val RepublishCountHeaderName: String = "X-Republish-Count"
   final val DiscardedTimeHeaderName: String = "X-Discarded-Time"
 
-  private[rabbitmq] def make[F[_]: Sync, A](config: Option[PoisonedMessageHandlingConfig],
-                                            connection: RabbitMQConnection[F],
-                                            monitor: Monitor[F]): Resource[F, PoisonedMessageHandler[F, A]] = {
+  private[rabbitmq] def make[F[_]: Sync: Timer, A](config: Option[PoisonedMessageHandlingConfig],
+                                                   connection: RabbitMQConnection[F],
+                                                   monitor: Monitor[F]): Resource[F, PoisonedMessageHandler[F, A]] = {
     config match {
-      case Some(LoggingPoisonedMessageHandling(maxAttempts)) => Resource.pure(new LoggingPoisonedMessageHandler[F, A](maxAttempts))
+      case Some(LoggingPoisonedMessageHandling(maxAttempts, republishDelay)) =>
+        Resource.pure(new LoggingPoisonedMessageHandler[F, A](maxAttempts, republishDelay))
       case Some(c: DeadQueuePoisonedMessageHandling) => DeadQueuePoisonedMessageHandler.make(c, connection, monitor)
       case Some(NoOpPoisonedMessageHandling) | None =>
         Resource.eval {
@@ -114,26 +122,30 @@ object PoisonedMessageHandler {
     logger.warn(s"Message failures reached the limit $maxAttempts attempts, throwing away: $delivery")
   }
 
-  private[rabbitmq] def handleResult[F[_]: Sync, A](
+  private[rabbitmq] def handleResult[F[_]: Sync: Timer, A](
       delivery: Delivery[A],
       messageId: MessageId,
       maxAttempts: Int,
       logger: ImplicitContextLogger[F],
+      republishDelay: Option[ExponentialDelay],
       handlePoisonedMessage: (Delivery[A], Int) => F[Unit])(r: DeliveryResult)(implicit dctx: DeliveryContext): F[DeliveryResult] = {
     r match {
       case Republish(isPoisoned, newHeaders) if isPoisoned =>
-        adjustDeliveryResult(delivery, messageId, maxAttempts, newHeaders, logger, handlePoisonedMessage)
+        adjustDeliveryResult(delivery, messageId, maxAttempts, newHeaders, logger, republishDelay, handlePoisonedMessage)
       case r => Applicative[F].pure(r) // keep other results as they are
     }
   }
 
-  private def adjustDeliveryResult[F[_]: Sync, A](
+  private def adjustDeliveryResult[F[_]: Sync: Timer, A](
       delivery: Delivery[A],
       messageId: MessageId,
       maxAttempts: Int,
       newHeaders: Map[String, AnyRef],
       logger: ImplicitContextLogger[F],
+      republishDelay: Option[ExponentialDelay],
       handlePoisonedMessage: (Delivery[A], Int) => F[Unit])(implicit dctx: DeliveryContext): F[DeliveryResult] = {
+    import cats.syntax.traverse._
+
     // get current attempt no. from passed headers with fallback to original (incoming) headers - the fallback will most likely happen
     // but we're giving the programmer chance to programmatically _pretend_ lower attempt number
     val attempt = (delivery.properties.headers ++ newHeaders)
@@ -143,8 +155,12 @@ object PoisonedMessageHandler {
 
     logger.debug(s"Attempt $attempt/$maxAttempts for $messageId") >> {
       if (attempt < maxAttempts) {
-        Applicative[F].pure(
-          Republish(countAsPoisoned = true, newHeaders = newHeaders + (RepublishCountHeaderName -> attempt.asInstanceOf[AnyRef])))
+        for {
+          _ <- republishDelay.traverse { d =>
+            val delay = d.getExponentialDelay(attempt)
+            logger.debug(s"Will republish the message in $delay") >> Timer[F].sleep(delay)
+          }
+        } yield Republish(countAsPoisoned = true, newHeaders = newHeaders + (RepublishCountHeaderName -> attempt.asInstanceOf[AnyRef]))
       } else {
         val now = Instant.now()
 

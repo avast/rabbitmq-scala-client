@@ -25,7 +25,7 @@ class PoisonedMessageHandlerTest extends TestBase {
     val movedCount = new AtomicInteger(0)
 
     PoisonedMessageHandler
-      .handleResult[Task, Bytes](Delivery.Ok(Bytes.empty(), MessageProperties(), ""), MessageId("msg-id"), 1, ilogger, (_, _) => {
+      .handleResult[Task, Bytes](Delivery.Ok(Bytes.empty(), MessageProperties(), ""), MessageId("msg-id"), 1, ilogger, None, (_, _) => {
         Task.delay { movedCount.incrementAndGet() }
       })(Republish(countAsPoisoned = false))
       .await
@@ -35,7 +35,7 @@ class PoisonedMessageHandlerTest extends TestBase {
     movedCount.set(0)
 
     PoisonedMessageHandler
-      .handleResult[Task, Bytes](Delivery.Ok(Bytes.empty(), MessageProperties(), ""), MessageId("msg-id"), 1, ilogger, (_, _) => {
+      .handleResult[Task, Bytes](Delivery.Ok(Bytes.empty(), MessageProperties(), ""), MessageId("msg-id"), 1, ilogger, None, (_, _) => {
         Task.delay { movedCount.incrementAndGet() }
       })(Republish())
       .await
@@ -48,7 +48,7 @@ class PoisonedMessageHandlerTest extends TestBase {
       Task.now(Republish())
     }
 
-    val handler = new LoggingPoisonedMessageHandler[Task, Bytes](5)
+    val handler = new LoggingPoisonedMessageHandler[Task, Bytes](5, None)
 
     val properties = (1 to 4).foldLeft(MessageProperties.empty) {
       case (p, _) =>
@@ -58,6 +58,32 @@ class PoisonedMessageHandlerTest extends TestBase {
         }
     }
 
+    // check it increases the header with count
+    assertResult(MessageProperties(headers = Map(RepublishCountHeaderName -> 4.asInstanceOf[AnyRef])))(properties)
+
+    // check it will Reject the message on 5th attempt
+    assertResult(DeliveryResult.Reject)(run(handler, readAction, properties))
+  }
+
+  test("LoggingPoisonedMessageHandler exponential delay") {
+    import scala.concurrent.duration._
+
+    def readAction(d: Delivery[Bytes]): Task[DeliveryResult] = {
+      Task.now(Republish())
+    }
+
+    val handler = new LoggingPoisonedMessageHandler[Task, Bytes](5, Some(new ExponentialDelay(1.seconds, 1.seconds, 2, 2.seconds)))
+    val timeBeforeExecution = Instant.now()
+    val properties = (1 to 4).foldLeft(MessageProperties.empty) {
+      case (p, _) =>
+        run(handler, readAction, p) match {
+          case Republish(_, h) => MessageProperties(headers = h)
+          case _ => MessageProperties.empty
+        }
+    }
+
+    val now = Instant.now()
+    assert(now.minusSeconds(7).isAfter(timeBeforeExecution) && now.minusSeconds(8).isBefore(timeBeforeExecution))
     // check it increases the header with count
     assertResult(MessageProperties(headers = Map(RepublishCountHeaderName -> 4.asInstanceOf[AnyRef])))(properties)
 
@@ -91,7 +117,7 @@ class PoisonedMessageHandlerTest extends TestBase {
 
     val movedCount = new AtomicInteger(0)
 
-    val handler = new DeadQueuePoisonedMessageHandler[Task, Bytes](5)({ (_, _, _) =>
+    val handler = new DeadQueuePoisonedMessageHandler[Task, Bytes](5, None)({ (_, _, _) =>
       Task.delay(movedCount.incrementAndGet())
     })
 
@@ -119,7 +145,7 @@ class PoisonedMessageHandlerTest extends TestBase {
 
     val movedCount = new AtomicInteger(0)
 
-    val handler = new DeadQueuePoisonedMessageHandler[Task, Bytes](3)({ (d, _, _) =>
+    val handler = new DeadQueuePoisonedMessageHandler[Task, Bytes](3, None)({ (d, _, _) =>
       // test it's there and it can be parsed
       assert(Instant.parse(d.properties.headers(DiscardedTimeHeaderName).asInstanceOf[String]).toEpochMilli > 0)
 
@@ -147,7 +173,7 @@ class PoisonedMessageHandlerTest extends TestBase {
 
     val movedCount = new AtomicInteger(0)
 
-    val handler = new DeadQueuePoisonedMessageHandler[Task, Bytes](5)({ (_, _, _) =>
+    val handler = new DeadQueuePoisonedMessageHandler[Task, Bytes](5, None)({ (_, _, _) =>
       Task.delay(movedCount.incrementAndGet())
     })
 

@@ -466,5 +466,5 @@ class DefaultRabbitMQConsumerTest extends TestBase {
     )(userAction)
   }
 
-  object PMH extends LoggingPoisonedMessageHandler[Task, Bytes](3)
+  object PMH extends LoggingPoisonedMessageHandler[Task, Bytes](3, None)
 }

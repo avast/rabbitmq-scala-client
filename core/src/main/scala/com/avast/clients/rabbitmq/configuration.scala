@@ -125,8 +125,8 @@ final case class DeadQueueProducerConfig(name: String,
                                          properties: ProducerPropertiesConfig = ProducerPropertiesConfig())
 
 case object NoOpPoisonedMessageHandling extends PoisonedMessageHandlingConfig
-final case class LoggingPoisonedMessageHandling(maxAttempts: Int) extends PoisonedMessageHandlingConfig
-final case class DeadQueuePoisonedMessageHandling(maxAttempts: Int, deadQueueProducer: DeadQueueProducerConfig)
+final case class LoggingPoisonedMessageHandling(maxAttempts: Int, republishDelay: Option[ExponentialDelay] = None) extends PoisonedMessageHandlingConfig
+final case class DeadQueuePoisonedMessageHandling(maxAttempts: Int, deadQueueProducer: DeadQueueProducerConfig, republishDelay: Option[ExponentialDelay] = None)
     extends PoisonedMessageHandlingConfig
 
 sealed trait AddressResolverType

@@ -13,21 +13,13 @@ object RecoveryDelayHandlers {
     }
   }
 
-  case class Exponential(initialDelay: Duration = 5.second,
-                         period: Duration = 5.seconds,
-                         factor: Double = 2.0,
-                         maxLength: Duration = 32.seconds)
-      extends RecoveryDelayHandler {
-    private val maxMillis = maxLength.toMillis
-
+  case class Exponential(override val initialDelay: Duration = 2.second,
+                         override val period: Duration = 2.seconds,
+                         override val factor: Double = 2.0,
+                         override val maxLength: Duration = 32.seconds)
+      extends ExponentialDelay(initialDelay, period, factor, maxLength) with RecoveryDelayHandler {
     override def getDelay(recoveryAttempts: Int): Long = {
-      if (recoveryAttempts == 0) initialDelay.toMillis
-      else {
-        math.min(
-          maxMillis,
-          (period.toMillis * math.pow(factor, recoveryAttempts - 1)).toLong
-        )
-      }
+      getExponentialDelay(recoveryAttempts).toMillis
     }
   }
 }
