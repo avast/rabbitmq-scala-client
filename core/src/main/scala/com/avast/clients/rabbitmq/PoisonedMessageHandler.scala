@@ -4,7 +4,7 @@ import cats.Applicative
 import cats.effect.{Resource, Sync, Timer}
 import cats.implicits.{catsSyntaxApplicativeError, catsSyntaxFlatMapOps, toFunctorOps}
 import com.avast.bytes.Bytes
-import com.avast.clients.rabbitmq.PoisonedMessageHandler.{defaultHandlePoisonedMessage, DiscardedTimeHeaderName}
+import com.avast.clients.rabbitmq.PoisonedMessageHandler.DiscardedTimeHeaderName
 import com.avast.clients.rabbitmq.api.DeliveryResult.{Reject, Republish}
 import com.avast.clients.rabbitmq.api._
 import com.avast.clients.rabbitmq.logging.ImplicitContextLogger
@@ -19,9 +19,18 @@ sealed trait PoisonedMessageHandler[F[_], A] {
       implicit dctx: DeliveryContext): F[DeliveryResult]
 }
 
-class LoggingPoisonedMessageHandler[F[_]: Sync: Timer, A](maxAttempts: Int, republishDelay: Option[ExponentialDelay])
+class LoggingPoisonedMessageHandler[F[_]: Sync: Timer, A](maxAttempts: Int,
+                                                          redactPayload: Boolean,
+                                                          republishDelay: Option[ExponentialDelay])
     extends PoisonedMessageHandler[F, A] {
   private val logger = ImplicitContextLogger.createLogger[F, LoggingPoisonedMessageHandler[F, A]]
+
+  private def defaultHandlePoisonedMessage[F[_]: Sync](maxAttempts: Int, logger: ImplicitContextLogger[F])(delivery: Delivery[A])(
+      implicit dctx: DeliveryContext): F[Unit] = {
+    val deliveryStr = (if (!redactPayload) delivery else delivery.withRedactedBody).toString
+
+    logger.warn(s"Message failures reached the limit $maxAttempts attempts, throwing away: $deliveryStr")
+  }
 
   override def interceptResult(delivery: Delivery[A], messageId: MessageId, rawBody: Bytes)(result: DeliveryResult)(
       implicit dctx: DeliveryContext): F[DeliveryResult] = {
@@ -30,7 +39,7 @@ class LoggingPoisonedMessageHandler[F[_]: Sync: Timer, A](maxAttempts: Int, repu
                                         maxAttempts,
                                         logger,
                                         republishDelay,
-                                        (d: Delivery[A], _) => defaultHandlePoisonedMessage[F, A](maxAttempts, logger)(d))(result)
+                                        (d: Delivery[A], _) => defaultHandlePoisonedMessage[F](maxAttempts, logger)(d))(result)
   }
 }
 
@@ -39,8 +48,10 @@ class NoOpPoisonedMessageHandler[F[_]: Sync, A] extends PoisonedMessageHandler[F
       implicit dctx: DeliveryContext): F[DeliveryResult] = Sync[F].pure(result)
 }
 
-class DeadQueuePoisonedMessageHandler[F[_]: Sync: Timer, A](maxAttempts: Int, republishDelay: Option[ExponentialDelay])(
-    moveToDeadQueue: (Delivery[A], Bytes, DeliveryContext) => F[Unit])
+class DeadQueuePoisonedMessageHandler[F[_]: Sync: Timer, A](
+    maxAttempts: Int,
+    redactPayload: Boolean,
+    republishDelay: Option[ExponentialDelay])(moveToDeadQueue: (Delivery[A], Bytes, DeliveryContext) => F[Unit])
     extends PoisonedMessageHandler[F, A] {
   private val logger = ImplicitContextLogger.createLogger[F, DeadQueuePoisonedMessageHandler[F, A]]
 
@@ -57,41 +68,44 @@ class DeadQueuePoisonedMessageHandler[F[_]: Sync: Timer, A](maxAttempts: Int, re
   private def handlePoisonedMessage(delivery: Delivery[A], messageId: MessageId, rawBody: Bytes)(
       implicit dctx: DeliveryContext): F[Unit] = {
 
-    logger.warn {
-      s"Message $messageId failures reached the limit $maxAttempts attempts, moving it to the dead queue: $delivery"
-    } >>
+    val deliveryStr = (if (!redactPayload) delivery else delivery.withRedactedBody).toString
+
+    logger.warn { s"Message $messageId failures reached the limit $maxAttempts attempts, moving it to the dead queue: $deliveryStr" } >>
       moveToDeadQueue(delivery, rawBody, dctx) >>
       logger.debug(s"Message $messageId moved to the dead queue")
   }
 }
 
 object DeadQueuePoisonedMessageHandler {
-  def make[F[_]: Sync: Timer, A](c: DeadQueuePoisonedMessageHandling,
+  def make[F[_]: Sync: Timer, A](conf: DeadQueuePoisonedMessageHandling,
                                  connection: RabbitMQConnection[F],
+                                 redactPayload: Boolean,
                                  monitor: Monitor[F]): Resource[F, DeadQueuePoisonedMessageHandler[F, A]] = {
-    val dqpc = c.deadQueueProducer
+    import conf._
+
     val pc = ProducerConfig(
-      name = dqpc.name,
-      exchange = dqpc.exchange,
-      declare = dqpc.declare,
-      reportUnroutable = dqpc.reportUnroutable,
-      sizeLimitBytes = dqpc.sizeLimitBytes,
-      properties = dqpc.properties
+      name = deadQueueProducer.name,
+      exchange = deadQueueProducer.exchange,
+      declare = deadQueueProducer.declare,
+      reportUnroutable = deadQueueProducer.reportUnroutable,
+      sizeLimitBytes = deadQueueProducer.sizeLimitBytes,
+      properties = deadQueueProducer.properties
     )
 
     connection.newProducer[Bytes](pc, monitor.named("deadQueueProducer")).map { producer =>
-      new DeadQueuePoisonedMessageHandler[F, A](c.maxAttempts, c.republishDelay)((d: Delivery[A], rawBody: Bytes, dctx: DeliveryContext) => {
-        val cidStrategy = dctx.correlationId match {
-          case Some(value) => CorrelationIdStrategy.Fixed(value.value)
-          case None => CorrelationIdStrategy.RandomNew
-        }
+      new DeadQueuePoisonedMessageHandler[F, A](maxAttempts, redactPayload, republishDelay)(
+        (d: Delivery[A], rawBody: Bytes, dctx: DeliveryContext) => {
+          val cidStrategy = dctx.correlationId match {
+            case Some(value) => CorrelationIdStrategy.Fixed(value.value)
+            case None => CorrelationIdStrategy.RandomNew
+          }
 
-        val now = Instant.now()
+          val now = Instant.now()
 
-        val finalProperties = d.properties.copy(headers = d.properties.headers.updated(DiscardedTimeHeaderName, now.toString))
+          val finalProperties = d.properties.copy(headers = d.properties.headers.updated(DiscardedTimeHeaderName, now.toString))
 
-        producer.send(dqpc.routingKey, rawBody, Some(finalProperties))(cidStrategy)
-      })
+          producer.send(deadQueueProducer.routingKey, rawBody, Some(finalProperties))(cidStrategy)
+        })
     }
   }
 }
@@ -102,11 +116,12 @@ object PoisonedMessageHandler {
 
   private[rabbitmq] def make[F[_]: Sync: Timer, A](config: Option[PoisonedMessageHandlingConfig],
                                                    connection: RabbitMQConnection[F],
+                                                   redactPayload: Boolean,
                                                    monitor: Monitor[F]): Resource[F, PoisonedMessageHandler[F, A]] = {
     config match {
       case Some(LoggingPoisonedMessageHandling(maxAttempts, republishDelay)) =>
-        Resource.pure(new LoggingPoisonedMessageHandler[F, A](maxAttempts, republishDelay))
-      case Some(c: DeadQueuePoisonedMessageHandling) => DeadQueuePoisonedMessageHandler.make(c, connection, monitor)
+        Resource.pure(new LoggingPoisonedMessageHandler[F, A](maxAttempts, redactPayload, republishDelay))
+      case Some(c: DeadQueuePoisonedMessageHandling) => DeadQueuePoisonedMessageHandler.make(c, connection, redactPayload, monitor)
       case Some(NoOpPoisonedMessageHandling) | None =>
         Resource.eval {
           val logger = ImplicitContextLogger.createLogger[F, NoOpPoisonedMessageHandler[F, A]]
@@ -115,11 +130,6 @@ object PoisonedMessageHandler {
           }
         }
     }
-  }
-
-  private[rabbitmq] def defaultHandlePoisonedMessage[F[_]: Sync, A](maxAttempts: Int, logger: ImplicitContextLogger[F])(
-      delivery: Delivery[A])(implicit dctx: DeliveryContext): F[Unit] = {
-    logger.warn(s"Message failures reached the limit $maxAttempts attempts, throwing away: $delivery")
   }
 
   private[rabbitmq] def handleResult[F[_]: Sync: Timer, A](
@@ -180,8 +190,7 @@ object PoisonedMessageHandler {
 
         handlePoisonedMessage(finalDelivery, maxAttempts)
           .recoverWith {
-            case NonFatal(e) =>
-              logger.warn(e)("Custom poisoned message handler failed")
+            case NonFatal(e) => logger.warn(e)("Poisoned message handler failed")
           }
           .map(_ => Reject) // always REJECT the message
       }

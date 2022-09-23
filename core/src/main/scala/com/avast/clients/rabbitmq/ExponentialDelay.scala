@@ -12,7 +12,7 @@ class ExponentialDelay(val initialDelay: Duration, val period: Duration, val fac
       val millis = math.min(
         maxMillis,
         (period.toMillis * math.pow(factor, attempt - 1)).toLong
-        )
+      )
       FiniteDuration(millis, TimeUnit.MILLISECONDS)
     }
   }
