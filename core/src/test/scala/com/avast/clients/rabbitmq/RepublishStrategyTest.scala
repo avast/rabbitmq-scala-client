@@ -25,6 +25,7 @@ import scala.util.Random
 class RepublishStrategyTest extends TestBase {
 
   private val connectionInfo = RabbitMQConnectionInfo(immutable.Seq("localhost"), "/", None)
+  private val pmhHelper = PoisonedMessageHandlerHelper[Task, RepublishStrategyTest](Monitor.noOp(), redactPayload = false)
 
   test("default exchange") {
     val messageId = UUID.randomUUID().toString
@@ -125,5 +126,5 @@ class RepublishStrategyTest extends TestBase {
     )(userAction)
   }
 
-  object PMH extends LoggingPoisonedMessageHandler[Task, Bytes](3, false, None)
+  object PMH extends LoggingPoisonedMessageHandler[Task, Bytes](3, None, pmhHelper)
 }

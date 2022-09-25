@@ -2,32 +2,40 @@ package com.avast.clients.rabbitmq
 
 import com.avast.bytes.Bytes
 import com.avast.clients.rabbitmq.PoisonedMessageHandler._
-import com.avast.clients.rabbitmq.api.DeliveryResult.Republish
+import com.avast.clients.rabbitmq.api.DeliveryResult.{DirectlyPoison, Republish}
 import com.avast.clients.rabbitmq.api._
-import com.avast.clients.rabbitmq.logging.ImplicitContextLogger
+import com.avast.metrics.scalaeffectapi.Monitor
 import monix.eval.Task
 import monix.execution.Scheduler.Implicits.global
 
 import java.time.Instant
 import java.util.concurrent.atomic.AtomicInteger
+import scala.util.Random
 
 class PoisonedMessageHandlerTest extends TestBase {
 
   implicit val dctx: DeliveryContext = TestDeliveryContext.create()
 
-  private val ilogger = ImplicitContextLogger.createLogger[Task, PoisonedMessageHandlerTest]
+  private val pmhHelper = PoisonedMessageHandlerHelper[Task, PoisonedMessageHandlerTest](Monitor.noOp(), redactPayload = false)
 
   test("PoisonedMessageHandler.handleResult ignores non-poisoned") {
-    def readAction(d: Delivery[Bytes]): Task[DeliveryResult] = {
-      Task.now(Republish(countAsPoisoned = false))
-    }
-
     val movedCount = new AtomicInteger(0)
 
+    val action = new PoisonedMessageHandlerAction[Task, Bytes] {
+      override def handlePoisonedMessage(rawBody: Bytes)(delivery: Delivery[Bytes],
+                                                         maxAttempts: Int)(implicit dctx: DeliveryContext): Task[Unit] = Task.delay {
+        movedCount.incrementAndGet()
+      }
+    }
+
     PoisonedMessageHandler
-      .handleResult[Task, Bytes](Delivery.Ok(Bytes.empty(), MessageProperties(), ""), MessageId("msg-id"), 1, ilogger, None, (_, _) => {
-        Task.delay { movedCount.incrementAndGet() }
-      })(Republish(countAsPoisoned = false))
+      .handleResult[Task, Bytes](Delivery.Ok(Bytes.empty(), MessageProperties(), ""),
+                                 Bytes.empty(),
+                                 MessageId("msg-id"),
+                                 1,
+                                 pmhHelper,
+                                 None,
+                                 action)(Republish(countAsPoisoned = false))
       .await
 
     assertResult(0)(movedCount.get())
@@ -35,9 +43,13 @@ class PoisonedMessageHandlerTest extends TestBase {
     movedCount.set(0)
 
     PoisonedMessageHandler
-      .handleResult[Task, Bytes](Delivery.Ok(Bytes.empty(), MessageProperties(), ""), MessageId("msg-id"), 1, ilogger, None, (_, _) => {
-        Task.delay { movedCount.incrementAndGet() }
-      })(Republish())
+      .handleResult[Task, Bytes](Delivery.Ok(Bytes.empty(), MessageProperties(), ""),
+                                 Bytes.empty(),
+                                 MessageId("msg-id"),
+                                 1,
+                                 pmhHelper,
+                                 None,
+                                 action)(Republish())
       .await
 
     assertResult(1)(movedCount.get())
@@ -48,7 +60,7 @@ class PoisonedMessageHandlerTest extends TestBase {
       Task.now(Republish())
     }
 
-    val handler = new LoggingPoisonedMessageHandler[Task, Bytes](5, false, None)
+    val handler = new LoggingPoisonedMessageHandler[Task, Bytes](5, None, pmhHelper)
 
     val properties = (1 to 4).foldLeft(MessageProperties.empty) {
       case (p, _) =>
@@ -72,7 +84,8 @@ class PoisonedMessageHandlerTest extends TestBase {
       Task.now(Republish())
     }
 
-    val handler = new LoggingPoisonedMessageHandler[Task, Bytes](5, false, Some(new ExponentialDelay(1.seconds, 1.seconds, 2, 2.seconds)))
+    val delay = Some(new ExponentialDelay(1.seconds, 1.seconds, 2, 2.seconds))
+    val handler = new LoggingPoisonedMessageHandler[Task, Bytes](5, delay, pmhHelper)
     val timeBeforeExecution = Instant.now()
     val properties = (1 to 4).foldLeft(MessageProperties.empty) {
       case (p, _) =>
@@ -91,12 +104,28 @@ class PoisonedMessageHandlerTest extends TestBase {
     assertResult(DeliveryResult.Reject)(run(handler, readAction, properties))
   }
 
+  test("LoggingPoisonedMessageHandler direct poisoning") {
+    import scala.concurrent.duration._
+
+    def readAction(d: Delivery[Bytes]): Task[DeliveryResult] = {
+      Task.now(DirectlyPoison)
+    }
+
+    val delay = Some(new ExponentialDelay(1.seconds, 1.seconds, 2, 2.seconds))
+    val handler = new LoggingPoisonedMessageHandler[Task, Bytes](5, delay, pmhHelper)
+
+    // check it will Reject the message on every attempt
+    for (_ <- 1 to Random.nextInt(10) + 10) {
+      assertResult(DeliveryResult.Reject)(run(handler, readAction, MessageProperties.empty))
+    }
+  }
+
   test("NoOpPoisonedMessageHandler basic") {
     def readAction(d: Delivery[Bytes]): Task[DeliveryResult] = {
       Task.now(Republish())
     }
 
-    val handler = new NoOpPoisonedMessageHandler[Task, Bytes]
+    val handler = new NoOpPoisonedMessageHandler[Task, Bytes](pmhHelper)
 
     val properties = (1 to 4).foldLeft(MessageProperties.empty) {
       case (p, _) =>
@@ -110,6 +139,22 @@ class PoisonedMessageHandlerTest extends TestBase {
     assertResult(MessageProperties(headers = Map.empty))(properties)
   }
 
+  test("NoOpPoisonedMessageHandler does nothing") {
+    def readAction(d: Delivery[Bytes]): Task[DeliveryResult] = {
+      Task.now(Republish())
+    }
+
+    val handler = new NoOpPoisonedMessageHandler[Task, Bytes](pmhHelper)
+
+    assertResult(DeliveryResult.Ack)(run(handler, _ => Task.now(DeliveryResult.Ack), MessageProperties.empty))
+    assertResult(DeliveryResult.Retry)(run(handler, _ => Task.now(DeliveryResult.Retry), MessageProperties.empty))
+    assertResult(DeliveryResult.Reject)(run(handler, _ => Task.now(DeliveryResult.Reject), MessageProperties.empty))
+    assertResult(DeliveryResult.Republish())(run(handler, _ => Task.now(DeliveryResult.Republish()), MessageProperties.empty))
+
+    // this is the only exception... turn DirectlyPoison to Reject
+    assertResult(DeliveryResult.Reject)(run(handler, _ => Task.now(DeliveryResult.DirectlyPoison), MessageProperties.empty))
+  }
+
   test("DeadQueuePoisonedMessageHandler basic") {
     def readAction(d: Delivery[Bytes]): Task[DeliveryResult] = {
       Task.now(Republish())
@@ -117,7 +162,7 @@ class PoisonedMessageHandlerTest extends TestBase {
 
     val movedCount = new AtomicInteger(0)
 
-    val handler = new DeadQueuePoisonedMessageHandler[Task, Bytes](5, false, None)({ (_, _, _) =>
+    val handler = new DeadQueuePoisonedMessageHandler[Task, Bytes](5, None, pmhHelper)({ (_, _, _) =>
       Task.delay(movedCount.incrementAndGet())
     })
 
@@ -138,6 +183,30 @@ class PoisonedMessageHandlerTest extends TestBase {
     assertResult(1)(movedCount.get())
   }
 
+  test("DeadQueuePoisonedMessageHandler direct poisoning") {
+    import scala.concurrent.duration._
+
+    def readAction(d: Delivery[Bytes]): Task[DeliveryResult] = {
+      Task.now(DirectlyPoison)
+    }
+
+    val movedCount = new AtomicInteger(0)
+
+    val delay = Some(new ExponentialDelay(1.seconds, 1.seconds, 2, 2.seconds))
+    val handler = new DeadQueuePoisonedMessageHandler[Task, Bytes](5, delay, pmhHelper)({ (_, _, _) =>
+      Task.delay(movedCount.incrementAndGet())
+    })
+
+    // check it will Reject the message on every attempt
+    val cnt = Random.nextInt(10) + 10
+
+    for (_ <- 1 to cnt) {
+      assertResult(DeliveryResult.Reject)(run(handler, readAction, MessageProperties.empty))
+    }
+
+    assertResult(cnt)(movedCount.get())
+  }
+
   test("DeadQueuePoisonedMessageHandler adds discarded time") {
     def readAction(d: Delivery[Bytes]): Task[DeliveryResult] = {
       Task.now(Republish())
@@ -145,7 +214,7 @@ class PoisonedMessageHandlerTest extends TestBase {
 
     val movedCount = new AtomicInteger(0)
 
-    val handler = new DeadQueuePoisonedMessageHandler[Task, Bytes](3, false, None)({ (d, _, _) =>
+    val handler = new DeadQueuePoisonedMessageHandler[Task, Bytes](3, None, pmhHelper)({ (d, _, _) =>
       // test it's there and it can be parsed
       assert(Instant.parse(d.properties.headers(DiscardedTimeHeaderName).asInstanceOf[String]).toEpochMilli > 0)
 
@@ -173,7 +242,7 @@ class PoisonedMessageHandlerTest extends TestBase {
 
     val movedCount = new AtomicInteger(0)
 
-    val handler = new DeadQueuePoisonedMessageHandler[Task, Bytes](5, false, None)({ (_, _, _) =>
+    val handler = new DeadQueuePoisonedMessageHandler[Task, Bytes](5, None, pmhHelper)({ (_, _, _) =>
       Task.delay(movedCount.incrementAndGet())
     })
 
