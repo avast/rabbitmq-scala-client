@@ -21,4 +21,7 @@ object DeliveryResult {
     * */
   case class Republish(countAsPoisoned: Boolean = true, newHeaders: Map[String, AnyRef] = Map.empty) extends DeliveryResult
 
+  /** The message cannot be processed and should be considered as _poisoned_ even without further retrying. */
+  case object DirectlyPoison extends DeliveryResult
+
 }

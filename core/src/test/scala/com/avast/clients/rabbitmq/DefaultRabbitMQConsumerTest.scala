@@ -27,6 +27,7 @@ import scala.util._
 class DefaultRabbitMQConsumerTest extends TestBase {
 
   private val connectionInfo = RabbitMQConnectionInfo(immutable.Seq("localhost"), "/", None)
+  private val pmhHelper = PoisonedMessageHandlerHelper[Task, DefaultRabbitMQConsumerTest](Monitor.noOp(), redactPayload = false)
 
   test("should ACK") {
     val messageId = UUID.randomUUID().toString
@@ -466,5 +467,5 @@ class DefaultRabbitMQConsumerTest extends TestBase {
     )(userAction)
   }
 
-  object PMH extends LoggingPoisonedMessageHandler[Task, Bytes](3, false, None)
+  object PMH extends LoggingPoisonedMessageHandler[Task, Bytes](3, None, pmhHelper)
 }

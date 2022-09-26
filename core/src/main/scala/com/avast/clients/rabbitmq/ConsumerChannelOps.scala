@@ -40,6 +40,7 @@ final private[rabbitmq] case class ConsumerChannelOps[F[_]: ConcurrentEffect: Ti
       case Reject => reject()
       case Retry => retry()
       case Republish(_, newHeaders) => republish(createPropertiesForRepublish(newHeaders, fixedProperties, routingKey), rawBody)
+      case DirectlyPoison => throw new IllegalStateException("Poison state should be handled by PMH, this is most probably a BUG")
     }
   }
 
