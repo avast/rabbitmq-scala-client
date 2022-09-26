@@ -39,7 +39,7 @@ final private[rabbitmq] case class ConsumerBase[F[_]: ConcurrentEffect: Timer, A
           val delivery = Delivery(a, fixedProperties.asScala, dctx.routingKey.value)
 
           consumerLogger
-            .trace(s"[$consumerName] Received delivery from queue '$queueName': ${logIfAllowed(delivery.toString)}")
+            .trace(s"[$consumerName] Received delivery from queue '$queueName': ${redactIfConfigured(delivery)}")
             .as(delivery)
 
         case Success(Left(ce)) =>
@@ -47,7 +47,7 @@ final private[rabbitmq] case class ConsumerBase[F[_]: ConcurrentEffect: Timer, A
 
           consumerLogger
             .trace(
-              s"[$consumerName] Received delivery from queue '$queueName' but could not convert it: ${logIfAllowed(delivery.toString)}"
+              s"[$consumerName] Received delivery from queue '$queueName' but could not convert it: ${redactIfConfigured(delivery)}"
             )
             .as(delivery)
 
@@ -57,7 +57,7 @@ final private[rabbitmq] case class ConsumerBase[F[_]: ConcurrentEffect: Timer, A
 
           consumerLogger
             .trace(s"[$consumerName] Received delivery from queue '$queueName' but " +
-              s"could not convert it as the convertor has failed: ${logIfAllowed(delivery.toString)}")
+              s"could not convert it as the convertor has failed: ${redactIfConfigured(delivery)}")
             .as(delivery)
       }
       .map(DeliveryWithContext(_, dctx))
@@ -81,7 +81,7 @@ final private[rabbitmq] case class ConsumerBase[F[_]: ConcurrentEffect: Timer, A
 
               lazy val msg = s"[$consumerName] Task timed-out after $processTimeout of processing delivery $messageId " +
                 s"with routing key ${delivery.routingKey}, applying DeliveryResult.$timeoutAction. " +
-                s"Delivery was:\n${logIfAllowed(delivery.toString)}"
+                s"Delivery was:\n${redactIfConfigured(delivery)}"
 
               (timeoutLogLevel match {
                 case Level.ERROR => consumerLogger.error(msg)
@@ -97,7 +97,7 @@ final private[rabbitmq] case class ConsumerBase[F[_]: ConcurrentEffect: Timer, A
     } else result
   }
 
-  def logIfAllowed(f: => String): String = {
-    if (!redactPayload) f else "--redacted--"
+  def redactIfConfigured(delivery: Delivery[_]): String = {
+    (if (!redactPayload) delivery else delivery.withRedactedBody).toString
   }
 }

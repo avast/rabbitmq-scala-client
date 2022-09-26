@@ -48,7 +48,7 @@ class PoisonedMessageHandlerTest extends TestBase {
       Task.now(Republish())
     }
 
-    val handler = new LoggingPoisonedMessageHandler[Task, Bytes](5, None)
+    val handler = new LoggingPoisonedMessageHandler[Task, Bytes](5, false, None)
 
     val properties = (1 to 4).foldLeft(MessageProperties.empty) {
       case (p, _) =>
@@ -72,7 +72,7 @@ class PoisonedMessageHandlerTest extends TestBase {
       Task.now(Republish())
     }
 
-    val handler = new LoggingPoisonedMessageHandler[Task, Bytes](5, Some(new ExponentialDelay(1.seconds, 1.seconds, 2, 2.seconds)))
+    val handler = new LoggingPoisonedMessageHandler[Task, Bytes](5, false, Some(new ExponentialDelay(1.seconds, 1.seconds, 2, 2.seconds)))
     val timeBeforeExecution = Instant.now()
     val properties = (1 to 4).foldLeft(MessageProperties.empty) {
       case (p, _) =>
@@ -117,7 +117,7 @@ class PoisonedMessageHandlerTest extends TestBase {
 
     val movedCount = new AtomicInteger(0)
 
-    val handler = new DeadQueuePoisonedMessageHandler[Task, Bytes](5, None)({ (_, _, _) =>
+    val handler = new DeadQueuePoisonedMessageHandler[Task, Bytes](5, false, None)({ (_, _, _) =>
       Task.delay(movedCount.incrementAndGet())
     })
 
@@ -145,7 +145,7 @@ class PoisonedMessageHandlerTest extends TestBase {
 
     val movedCount = new AtomicInteger(0)
 
-    val handler = new DeadQueuePoisonedMessageHandler[Task, Bytes](3, None)({ (d, _, _) =>
+    val handler = new DeadQueuePoisonedMessageHandler[Task, Bytes](3, false, None)({ (d, _, _) =>
       // test it's there and it can be parsed
       assert(Instant.parse(d.properties.headers(DiscardedTimeHeaderName).asInstanceOf[String]).toEpochMilli > 0)
 
@@ -173,7 +173,7 @@ class PoisonedMessageHandlerTest extends TestBase {
 
     val movedCount = new AtomicInteger(0)
 
-    val handler = new DeadQueuePoisonedMessageHandler[Task, Bytes](5, None)({ (_, _, _) =>
+    val handler = new DeadQueuePoisonedMessageHandler[Task, Bytes](5, false, None)({ (_, _, _) =>
       Task.delay(movedCount.incrementAndGet())
     })
 

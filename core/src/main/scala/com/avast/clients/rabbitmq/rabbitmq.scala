@@ -46,6 +46,8 @@ package object rabbitmq {
       case ok: Delivery.Ok[A] => f(ok)
       case m: Delivery.MalformedContent => m
     }
+
+    def withRedactedBody: Delivery[String] = mapBody(_ => "--redacted--")
   }
 
   private[rabbitmq] implicit class DeliveryBytesOps(val d: Delivery[Bytes]) extends AnyVal {

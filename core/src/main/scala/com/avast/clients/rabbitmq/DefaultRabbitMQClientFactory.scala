@@ -113,7 +113,7 @@ private[rabbitmq] class DefaultRabbitMQClientFactory[F[_]: ConcurrentEffect: Tim
         bindQueueForRepublishing(channel, consumerConfig.queueName, republishStrategy)(logger)
     }) >>
       PoisonedMessageHandler
-        .make[F, A](consumerConfig.poisonedMessageHandling, connection, monitor.named("poisonedMessageHandler"))
+        .make[F, A](consumerConfig.poisonedMessageHandling, connection, redactPayload, monitor.named("poisonedMessageHandler"))
         .flatMap { pmh =>
           val base = new ConsumerBase[F, A](
             name,
@@ -174,7 +174,7 @@ private[rabbitmq] class DefaultRabbitMQClientFactory[F[_]: ConcurrentEffect: Tim
       }
       .flatMap { channel =>
         PoisonedMessageHandler
-          .make[F, A](consumerConfig.poisonedMessageHandling, connection, monitor.named("poisonedMessageHandler"))
+          .make[F, A](consumerConfig.poisonedMessageHandling, connection, redactPayload, monitor.named("poisonedMessageHandler"))
           .map { pmh =>
             val base = new ConsumerBase[F, A](
               name,
@@ -233,7 +233,7 @@ private[rabbitmq] class DefaultRabbitMQClientFactory[F[_]: ConcurrentEffect: Tim
       }
       .flatMap { channel =>
         PoisonedMessageHandler
-          .make[F, A](consumerConfig.poisonedMessageHandling, connection, monitor.named("poisonedMessageHandler"))
+          .make[F, A](consumerConfig.poisonedMessageHandling, connection, redactPayload, monitor.named("poisonedMessageHandler"))
           .map { pmh =>
             val base = new ConsumerBase[F, A](
               name,
