@@ -36,4 +36,5 @@ class Registry(registry: MetricRegistry) {
   def timerCount(path: String): Long = registry.getTimers.asScala(path.replace('.', '/')).getCount
   def timerPairCountSuccesses(path: String): Long = registry.getTimers.asScala(path.replace('.', '/') + "Successes").getCount
   def timerPairCountFailures(path: String): Long = registry.getTimers.asScala(path.replace('.', '/') + "Failures").getCount
+  def gaugeLongValue(path: String): Long = registry.getGauges.asScala(path.replace('.', '/')).getValue.asInstanceOf[Long]
 }

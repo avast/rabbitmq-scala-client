@@ -2,7 +2,7 @@ package com.avast.clients.rabbitmq
 
 import com.avast.bytes.Bytes
 import com.avast.clients.rabbitmq.PoisonedMessageHandler._
-import com.avast.clients.rabbitmq.api.DeliveryResult.{DirectlyPoison, Republish}
+import com.avast.clients.rabbitmq.api.DeliveryResult.{DirectlyPoison, Reject, Republish}
 import com.avast.clients.rabbitmq.api._
 import com.avast.metrics.scalaeffectapi.Monitor
 import monix.eval.Task
@@ -10,13 +10,15 @@ import monix.execution.Scheduler.Implicits.global
 
 import java.time.Instant
 import java.util.concurrent.atomic.AtomicInteger
+import scala.concurrent.Await
 import scala.util.Random
 
 class PoisonedMessageHandlerTest extends TestBase {
 
   implicit val dctx: DeliveryContext = TestDeliveryContext.create()
 
-  private val pmhHelper = PoisonedMessageHandlerHelper[Task, PoisonedMessageHandlerTest](Monitor.noOp(), redactPayload = false)
+  private val monitor = new TestMonitor[Task]
+  private val pmhHelper = PoisonedMessageHandlerHelper[Task, PoisonedMessageHandlerTest](monitor, redactPayload = false)
 
   test("PoisonedMessageHandler.handleResult ignores non-poisoned") {
     val movedCount = new AtomicInteger(0)
@@ -70,33 +72,6 @@ class PoisonedMessageHandlerTest extends TestBase {
         }
     }
 
-    // check it increases the header with count
-    assertResult(MessageProperties(headers = Map(RepublishCountHeaderName -> 4.asInstanceOf[AnyRef])))(properties)
-
-    // check it will Reject the message on 5th attempt
-    assertResult(DeliveryResult.Reject)(run(handler, readAction, properties))
-  }
-
-  test("LoggingPoisonedMessageHandler exponential delay") {
-    import scala.concurrent.duration._
-
-    def readAction(d: Delivery[Bytes]): Task[DeliveryResult] = {
-      Task.now(Republish())
-    }
-
-    val delay = Some(new ExponentialDelay(1.seconds, 1.seconds, 2, 2.seconds))
-    val handler = new LoggingPoisonedMessageHandler[Task, Bytes](5, delay, pmhHelper)
-    val timeBeforeExecution = Instant.now()
-    val properties = (1 to 4).foldLeft(MessageProperties.empty) {
-      case (p, _) =>
-        run(handler, readAction, p) match {
-          case Republish(_, h) => MessageProperties(headers = h)
-          case _ => MessageProperties.empty
-        }
-    }
-
-    val now = Instant.now()
-    assert(now.minusSeconds(7).isAfter(timeBeforeExecution) && now.minusSeconds(8).isBefore(timeBeforeExecution))
     // check it increases the header with count
     assertResult(MessageProperties(headers = Map(RepublishCountHeaderName -> 4.asInstanceOf[AnyRef])))(properties)
 
@@ -233,6 +208,95 @@ class PoisonedMessageHandlerTest extends TestBase {
 
     // if the assert above has failed, this won't assert
     assertResult(1)(movedCount.get())
+  }
+
+  test("PoisonedMessageHandlerBase exponential delay of Republish") {
+    import scala.concurrent.duration._
+
+    def readAction(d: Delivery[Bytes]): Task[DeliveryResult] = {
+      Task.now(Republish())
+    }
+
+    val delay = Some(new ExponentialDelay(1.seconds, 1.seconds, 2, 2.seconds))
+    val handler = new PoisonedMessageHandlerBase[Task, Bytes](5, delay, pmhHelper) {
+      override def handlePoisonedMessage(rawBody: Bytes)(delivery: Delivery[Bytes],
+                                                         maxAttempts: Int)(implicit dctx: DeliveryContext): Task[Unit] = Task.unit
+    }
+    val timeBeforeExecution = Instant.now()
+    val properties = (1 to 4).foldLeft(MessageProperties.empty) {
+      case (p, _) =>
+        run(handler, readAction, p) match {
+          case Republish(_, h) => MessageProperties(headers = h)
+          case _ => MessageProperties.empty
+        }
+    }
+
+    val now = Instant.now()
+
+    // check it was delayed
+    assert(now.minusSeconds(7).isAfter(timeBeforeExecution) && now.minusSeconds(8).isBefore(timeBeforeExecution))
+
+    // check it increases the header with count
+    assertResult(MessageProperties(headers = Map(RepublishCountHeaderName -> 4.asInstanceOf[AnyRef])))(properties)
+
+    // check it will Reject the message on 5th attempt
+    assertResult(DeliveryResult.Reject)(run(handler, readAction, properties))
+  }
+
+  test("PoisonedMessageHandlerBase no delay of throw-away") {
+    import scala.concurrent.duration._
+
+    def readAction(d: Delivery[Bytes]): Task[DeliveryResult] = {
+      Task.now(Republish())
+    }
+
+    val delay = Some(new ExponentialDelay(1.seconds, 1.seconds, 2, 2.seconds))
+    val handler = new PoisonedMessageHandlerBase[Task, Bytes](1, delay, pmhHelper) {
+      override def handlePoisonedMessage(rawBody: Bytes)(delivery: Delivery[Bytes],
+                                                         maxAttempts: Int)(implicit dctx: DeliveryContext): Task[Unit] = Task.unit
+    }
+
+    val timeBeforeExecution = Instant.now()
+
+    assertResult(Reject)(run(handler, readAction, MessageProperties.empty))
+
+    val now = Instant.now()
+
+    // check it was not delayed (with some tolerance)
+    assert(now.minusMillis(500).isBefore(timeBeforeExecution))
+  }
+
+  test("PoisonedMessageHandlerBase puts delayed republish into gauge") {
+    import scala.concurrent.duration._
+
+    def readAction(d: Delivery[Bytes]): Task[DeliveryResult] = {
+      Task.now(Republish())
+    }
+
+    val delay = Some(new ExponentialDelay(1.seconds, 1.seconds, 2, 2.seconds))
+    val handler = new PoisonedMessageHandlerBase[Task, Bytes](5, delay, pmhHelper) {
+      override def handlePoisonedMessage(rawBody: Bytes)(delivery: Delivery[Bytes],
+                                                         maxAttempts: Int)(implicit dctx: DeliveryContext): Task[Unit] = Task.unit
+    }
+
+    assertResult(0)(monitor.registry.gaugeLongValue("delayingRepublish"))
+
+    val run = Task
+      .parSequence((1 to 5).map { _ =>
+        val r = Republish(countAsPoisoned = true, Map("X-Republish-Count" -> 1.asInstanceOf[AnyRef]))
+        handler.interceptResult(Delivery(Bytes.empty(), MessageProperties.empty, ""), MessageId("msg-id"), Bytes.empty())(r)
+      })
+      .map(_.toList)
+
+    val future = run.runToFuture
+
+    // running!
+    assertResult(5)(monitor.registry.gaugeLongValue("delayingRepublish"))
+
+    // await and check result
+    assertResult {
+      List.fill(5)(Republish(countAsPoisoned = true, Map("X-Republish-Count" -> 2.asInstanceOf[AnyRef])))
+    }(Await.result(future, 5.seconds))
   }
 
   test("pretend lower no. of attempts") {
