@@ -256,10 +256,25 @@ Internally, the attempts counting is done via incrementing (or adding, the first
 free to use its value for your own logging or whatever. You can even set it to your own value - just bear in mind that you might affect the
 PMH's functionality (of course, that might be your intention).
 
+While the republishing is meant to not let the other messages starve (it puts the message to the _start_ of the queue, meaning it'll be the
+last message to be processed at the moment), it may still happen that its retry is immediate - in other words, during the periods with a low
+traffic, it behaves very similarly to `Retry`. To prevent this, there is a support (since 9.2.0) for republish delaying - meaning the
+republishing is in-memory delayed before applying. Since it happens in the client itself and not in your application, the consumer timeout
+is not involved at that point.  
+However, it's important to note that if there are too many messages being republished and delayed, it might theoretically stop
+the consuming absolutely! This is due to the `prefetchCount` configuration value - the server just won't give the consumer any more
+messages. While this behavior might be desired (it may be considered as a way of self-throttling for the consumer), it doesn't have to be,
+and you should setup your consumer and republishing delay properly. There is a _gauge_ in metrics showing how many messages is currently
+being delayed.
+
 It can happen that you know that you have PMH configured, and you need to republish the message and "not count the attempt" (the typical
 scenario is that the message processing has failed and it's not fault of your app but of some 3rd party system which you count on to be
 recovered later). There exists the new `countAsPoisoned` parameter now (defaults to `true`) determining whether the PMH (if configured)
 should count the attempt or not. This is an easy and clean way how to influence the PMH behavior.
+
+On the other hand, you may want to use `DirectlyPoison` result (since 9.3.0) in cases you know there's no chance the retry will succeed (
+e.g. message is not parseable) but still you want to keep the message (move it to the poisoned queue if configured; that is the difference
+between `DirectlyPoison` and `Retry` where the message would be thrown away completely).
 
 #### Dead-queue poisoned message handler
 
@@ -379,9 +394,13 @@ The `DeliveryResult` has 4 possible values
 1. Reject - the message is corrupted or for some other reason we don't want to see it again; it will be removed from the queue
 1. Retry - the message couldn't be processed at this moment (unreachable 3rd party services?); it will be requeued (inserted on the top of
    the queue)
-1. Republish - the message may be corrupted but we're not sure; it will be re-published to the bottom of the queue (as a new message and the
+1. Republish - the message may be corrupted, but we're not sure; it will be re-published to the bottom of the queue (as a new message and
+   the
    original one will be removed). It's usually wise to prevent an infinite republishing of the message -
-   see [Poisoned message handler](extras/README.md#poisoned-message-handler).
+   see [Poisoned message handler](#poisoned-message-handler).
+1. DirectlyPoison - the message should be thrown away, without any retry effort. The [Poisoned message handler](#poisoned-message-handler)
+   takes care of it - it either moves the message to the poisoned queue (if it's configured) like it has reached the configured limit of
+   republishes; or it just throws the message away (if no-op PMH is configured).
 
 #### Difference between _Retry_ and _Republish_
 
