@@ -1,5 +1,6 @@
 package com.avast.clients.rabbitmq
 
+import cats.effect.concurrent.{Deferred, Ref}
 import com.avast.bytes.Bytes
 import com.avast.clients.rabbitmq.api._
 import com.avast.clients.rabbitmq.logging.ImplicitContextLogger
@@ -33,7 +34,9 @@ class DefaultRabbitMQProducerTest extends TestBase {
       reportUnroutable = false,
       sizeLimitBytes = None,
       blocker = TestBase.testBlocker,
-      logger = ImplicitContextLogger.createLogger
+      logger = ImplicitContextLogger.createLogger,
+      sentMessages = None,
+      publisherConfirmsConfig = None
     )
 
     val properties = new AMQP.BasicProperties.Builder()
@@ -75,7 +78,9 @@ class DefaultRabbitMQProducerTest extends TestBase {
       reportUnroutable = false,
       sizeLimitBytes = None,
       blocker = TestBase.testBlocker,
-      logger = ImplicitContextLogger.createLogger
+      logger = ImplicitContextLogger.createLogger,
+      sentMessages = None,
+      publisherConfirmsConfig = None
     )
 
     val cid = Random.nextString(10)
@@ -117,7 +122,9 @@ class DefaultRabbitMQProducerTest extends TestBase {
       reportUnroutable = false,
       sizeLimitBytes = None,
       blocker = TestBase.testBlocker,
-      logger = ImplicitContextLogger.createLogger
+      logger = ImplicitContextLogger.createLogger,
+      sentMessages = None,
+      publisherConfirmsConfig = None
     )
 
     val cid = Random.nextString(10)
@@ -156,7 +163,9 @@ class DefaultRabbitMQProducerTest extends TestBase {
       reportUnroutable = false,
       sizeLimitBytes = None,
       blocker = TestBase.testBlocker,
-      logger = ImplicitContextLogger.createLogger
+      logger = ImplicitContextLogger.createLogger,
+      sentMessages = None,
+      publisherConfirmsConfig = None
     )
 
     val body = Bytes.copyFromUtf8(Random.nextString(10))
@@ -191,7 +200,9 @@ class DefaultRabbitMQProducerTest extends TestBase {
       reportUnroutable = false,
       sizeLimitBytes = Some(limit),
       blocker = TestBase.testBlocker,
-      logger = ImplicitContextLogger.createLogger
+      logger = ImplicitContextLogger.createLogger,
+      sentMessages = None,
+      publisherConfirmsConfig = None
     )
 
     // don't test anything except it doesn't fail

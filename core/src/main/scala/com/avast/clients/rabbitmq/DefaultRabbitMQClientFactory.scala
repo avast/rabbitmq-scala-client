@@ -1,6 +1,7 @@
 package com.avast.clients.rabbitmq
 
 import cats.effect._
+import cats.effect.concurrent.{Deferred, Ref}
 import cats.implicits.{catsSyntaxFlatMapOps, toFunctorOps, toTraverseOps}
 import com.avast.bytes.Bytes
 import com.avast.clients.rabbitmq.DefaultRabbitMQClientFactory.startConsumingQueue
@@ -272,7 +273,7 @@ private[rabbitmq] class DefaultRabbitMQClientFactory[F[_]: ConcurrentEffect: Tim
         // auto declare exchange; if configured
         producerConfig.declare.map { declareExchange(producerConfig.exchange, channel, _)(logger) }.getOrElse(F.unit)
       }
-      .map { channel =>
+      .evalMap { channel =>
         val defaultProperties = MessageProperties(
           deliveryMode = DeliveryMode.fromCode(producerConfig.properties.deliveryMode),
           contentType = producerConfig.properties.contentType,
@@ -280,17 +281,20 @@ private[rabbitmq] class DefaultRabbitMQClientFactory[F[_]: ConcurrentEffect: Tim
           priority = producerConfig.properties.priority.map(Integer.valueOf)
         )
 
-        new DefaultRabbitMQProducer[F, A](
-          producerConfig.name,
-          producerConfig.exchange,
-          channel,
-          defaultProperties,
-          producerConfig.reportUnroutable,
-          producerConfig.sizeLimitBytes,
-          blocker,
-          logger,
-          monitor
-        )
+        producerConfig.properties.confirms.traverse(_ => Ref.of(Map.empty[Long, Deferred[F, Either[Throwable, Unit]]]))
+          .map(new DefaultRabbitMQProducer[F, A](
+            producerConfig.name,
+            producerConfig.exchange,
+            channel,
+            defaultProperties,
+            _,
+            producerConfig.properties.confirms,
+            producerConfig.reportUnroutable,
+            producerConfig.sizeLimitBytes,
+            blocker,
+            logger,
+            monitor
+          ))
       }
   }
 

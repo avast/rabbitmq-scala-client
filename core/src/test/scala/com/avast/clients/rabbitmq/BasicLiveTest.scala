@@ -158,6 +158,54 @@ class BasicLiveTest extends TestBase with ScalaFutures {
     }
   }
 
+  test("bunch with publisher confirms enabled") {
+    val c = createConfig()
+    import c._
+
+    RabbitMQConnection.fromConfig[Task](config.withValue("producers.testing.properties.confirms.enabled", ConfigValueFactory.fromAnyRef(true.booleanValue())), ex).withResource { rabbitConnection =>
+      val count = Random.nextInt(2000) + 2000 // 2-4k
+
+      logger.info(s"Sending $count messages")
+
+      val latch = new CountDownLatch(count + 100) // explanation below
+
+      val d = new AtomicInteger(0)
+
+      val cons = rabbitConnection.newConsumer("testing", Monitor.noOp()) { _: Delivery[Bytes] =>
+        Task(d.incrementAndGet()).flatMap { n =>
+          Task.sleep((if (n % 5 == 0) 150 else 0).millis) >>
+            Task {
+              latch.countDown()
+
+              if (n < (count - 100) || n > count) Ack else Retry
+
+              // ^ example: 750 messages in total => 650 * Ack, 100 * Retry => processing 850 (== +100) messages in total
+            }
+        }
+      }
+
+      cons.withResource { _ =>
+        rabbitConnection.newProducer[Bytes]("testing", Monitor.noOp()).withResource { sender =>
+          for (_ <- 1 to count) {
+            sender.send("test", Bytes.copyFromUtf8(Random.nextString(10))).await
+          }
+
+          // it takes some time before the stats appear... :-|
+          eventually(timeout(Span(5, Seconds)), interval(Span(0.5, Seconds))) {
+            assertResult(count)(testHelper.queue.getPublishedCount(queueName1))
+          }
+
+          eventually(timeout(Span(120, Seconds)), interval(Span(2, Seconds))) {
+            val inQueue = testHelper.queue.getMessagesCount(queueName1)
+            println(s"In QUEUE COUNT: $inQueue")
+            assertResult(true)(latch.await(1000, TimeUnit.MILLISECONDS))
+            assertResult(0)(inQueue)
+          }
+        }
+      }
+    }
+  }
+
   test("multiple producers to single consumer") {
     val c = createConfig()
     import c._

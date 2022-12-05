@@ -90,6 +90,7 @@ class PureconfigImplicits(implicit namingConvention: NamingConvention = CamelCas
   implicit val autoBindQueueConfigReader: ConfigReader[AutoBindQueueConfig] = deriveReader
   implicit val autoBindExchangeConfigReader: ConfigReader[AutoBindExchangeConfig] = deriveReader
   implicit val producerPropertiesConfigReader: ConfigReader[ProducerPropertiesConfig] = deriveReader
+  implicit val publisherConfirmsConfigConfigReader: ConfigReader[PublisherConfirmsConfig] = deriveReader
   implicit val exponentialDelayConfigReader: ConfigReader[ExponentialDelay] = deriveReader
 
   implicit val logLevelReader: ConfigReader[Level] = ConfigReader.stringConfigReader.map(Level.valueOf)
