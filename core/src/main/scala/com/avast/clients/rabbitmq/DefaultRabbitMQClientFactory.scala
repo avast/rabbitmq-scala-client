@@ -7,6 +7,7 @@ import com.avast.bytes.Bytes
 import com.avast.clients.rabbitmq.DefaultRabbitMQClientFactory.startConsumingQueue
 import com.avast.clients.rabbitmq.api._
 import com.avast.clients.rabbitmq.logging.ImplicitContextLogger
+import com.avast.clients.rabbitmq.publisher.{BaseRabbitMQProducer, DefaultRabbitMQProducer, PublishConfirmsRabbitMQProducer}
 import com.avast.metrics.scalaeffectapi.Monitor
 import com.rabbitmq.client.Consumer
 
@@ -27,7 +28,7 @@ private[rabbitmq] class DefaultRabbitMQClientFactory[F[_]: ConcurrentEffect: Tim
 
   object Producer {
 
-    def create[A: ProductConverter](producerConfig: ProducerConfig, monitor: Monitor[F]): Resource[F, DefaultRabbitMQProducer[F, A]] = {
+    def create[A: ProductConverter](producerConfig: ProducerConfig, monitor: Monitor[F]): Resource[F, BaseRabbitMQProducer[F, A]] = {
       prepareProducer[A](producerConfig, connection, monitor)
     }
   }
@@ -264,8 +265,8 @@ private[rabbitmq] class DefaultRabbitMQClientFactory[F[_]: ConcurrentEffect: Tim
 
   private def prepareProducer[A: ProductConverter](producerConfig: ProducerConfig,
                                                    connection: RabbitMQConnection[F],
-                                                   monitor: Monitor[F]): Resource[F, DefaultRabbitMQProducer[F, A]] = {
-    val logger = ImplicitContextLogger.createLogger[F, DefaultRabbitMQProducer[F, A]]
+                                                   monitor: Monitor[F]): Resource[F, BaseRabbitMQProducer[F, A]] = {
+    val logger = ImplicitContextLogger.createLogger[F, BaseRabbitMQProducer[F, A]]
 
     connection
       .newChannel()
@@ -273,7 +274,7 @@ private[rabbitmq] class DefaultRabbitMQClientFactory[F[_]: ConcurrentEffect: Tim
         // auto declare exchange; if configured
         producerConfig.declare.map { declareExchange(producerConfig.exchange, channel, _)(logger) }.getOrElse(F.unit)
       }
-      .evalMap { channel =>
+      .evalMap[F, BaseRabbitMQProducer[F, A]] { channel =>
         val defaultProperties = MessageProperties(
           deliveryMode = DeliveryMode.fromCode(producerConfig.properties.deliveryMode),
           contentType = producerConfig.properties.contentType,
@@ -281,20 +282,36 @@ private[rabbitmq] class DefaultRabbitMQClientFactory[F[_]: ConcurrentEffect: Tim
           priority = producerConfig.properties.priority.map(Integer.valueOf)
         )
 
-        producerConfig.properties.confirms.traverse(_ => Ref.of(Map.empty[Long, Deferred[F, Either[Throwable, Unit]]]))
-          .map(new DefaultRabbitMQProducer[F, A](
-            producerConfig.name,
-            producerConfig.exchange,
-            channel,
-            defaultProperties,
-            _,
-            producerConfig.properties.confirms,
-            producerConfig.reportUnroutable,
-            producerConfig.sizeLimitBytes,
-            blocker,
-            logger,
-            monitor
-          ))
+        producerConfig.properties.confirms match {
+          case Some(PublisherConfirmsConfig(true, sendAttempts)) =>
+            Ref.of(Map.empty[Long, Deferred[F, Either[Throwable, Unit]]])
+              .map {
+                new PublishConfirmsRabbitMQProducer[F, A](
+                  producerConfig.name,
+                  producerConfig.exchange,
+                  channel,
+                  defaultProperties,
+                  _,
+                  sendAttempts,
+                  producerConfig.reportUnroutable,
+                  producerConfig.sizeLimitBytes,
+                  blocker,
+                  logger,
+                  monitor)
+              }
+          case _ =>
+            F.pure {
+              new DefaultRabbitMQProducer[F, A](producerConfig.name,
+                                                producerConfig.exchange,
+                                                channel,
+                                                defaultProperties,
+                                                producerConfig.reportUnroutable,
+                                                producerConfig.sizeLimitBytes,
+                                                blocker,
+                                                logger,
+                                                monitor)
+            }
+        }
       }
   }
 

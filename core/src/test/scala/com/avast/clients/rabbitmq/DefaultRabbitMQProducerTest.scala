@@ -1,9 +1,9 @@
 package com.avast.clients.rabbitmq
 
-import cats.effect.concurrent.{Deferred, Ref}
 import com.avast.bytes.Bytes
 import com.avast.clients.rabbitmq.api._
 import com.avast.clients.rabbitmq.logging.ImplicitContextLogger
+import com.avast.clients.rabbitmq.publisher.DefaultRabbitMQProducer
 import com.avast.metrics.scalaeffectapi.Monitor
 import com.rabbitmq.client.AMQP
 import com.rabbitmq.client.impl.recovery.AutorecoveringChannel
@@ -34,9 +34,7 @@ class DefaultRabbitMQProducerTest extends TestBase {
       reportUnroutable = false,
       sizeLimitBytes = None,
       blocker = TestBase.testBlocker,
-      logger = ImplicitContextLogger.createLogger,
-      sentMessages = None,
-      publisherConfirmsConfig = None
+      logger = ImplicitContextLogger.createLogger
     )
 
     val properties = new AMQP.BasicProperties.Builder()
@@ -78,9 +76,7 @@ class DefaultRabbitMQProducerTest extends TestBase {
       reportUnroutable = false,
       sizeLimitBytes = None,
       blocker = TestBase.testBlocker,
-      logger = ImplicitContextLogger.createLogger,
-      sentMessages = None,
-      publisherConfirmsConfig = None
+      logger = ImplicitContextLogger.createLogger
     )
 
     val cid = Random.nextString(10)
@@ -122,9 +118,7 @@ class DefaultRabbitMQProducerTest extends TestBase {
       reportUnroutable = false,
       sizeLimitBytes = None,
       blocker = TestBase.testBlocker,
-      logger = ImplicitContextLogger.createLogger,
-      sentMessages = None,
-      publisherConfirmsConfig = None
+      logger = ImplicitContextLogger.createLogger
     )
 
     val cid = Random.nextString(10)
@@ -163,9 +157,7 @@ class DefaultRabbitMQProducerTest extends TestBase {
       reportUnroutable = false,
       sizeLimitBytes = None,
       blocker = TestBase.testBlocker,
-      logger = ImplicitContextLogger.createLogger,
-      sentMessages = None,
-      publisherConfirmsConfig = None
+      logger = ImplicitContextLogger.createLogger
     )
 
     val body = Bytes.copyFromUtf8(Random.nextString(10))
@@ -201,8 +193,6 @@ class DefaultRabbitMQProducerTest extends TestBase {
       sizeLimitBytes = Some(limit),
       blocker = TestBase.testBlocker,
       logger = ImplicitContextLogger.createLogger,
-      sentMessages = None,
-      publisherConfirmsConfig = None
     )
 
     // don't test anything except it doesn't fail
