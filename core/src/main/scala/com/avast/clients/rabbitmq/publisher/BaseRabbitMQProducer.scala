@@ -1,15 +1,15 @@
 package com.avast.clients.rabbitmq.publisher
 
-import cats.effect.{Blocker, ConcurrentEffect, ContextShift, Sync}
+import cats.effect.{Blocker, ContextShift, Effect, Sync}
 import cats.syntax.applicativeError._
 import cats.syntax.flatMap._
 import cats.syntax.functor._
 import com.avast.bytes.Bytes
+import com.avast.clients.rabbitmq.JavaConverters._
 import com.avast.clients.rabbitmq.api.CorrelationIdStrategy.FromPropertiesOrRandomNew
 import com.avast.clients.rabbitmq.api._
-import com.avast.clients.rabbitmq.JavaConverters._
 import com.avast.clients.rabbitmq.logging.ImplicitContextLogger
-import com.avast.clients.rabbitmq.{startAndForget, CorrelationId, ProductConverter, ServerChannel}
+import com.avast.clients.rabbitmq.{CorrelationId, ProductConverter, ServerChannel, startAndForget}
 import com.avast.metrics.scalaeffectapi.Monitor
 import com.rabbitmq.client.AMQP.BasicProperties
 import com.rabbitmq.client.{AlreadyClosedException, ReturnListener}
@@ -25,7 +25,7 @@ abstract class BaseRabbitMQProducer[F[_], A: ProductConverter](name: String,
                                                                sizeLimitBytes: Option[Int],
                                                                blocker: Blocker,
                                                                logger: ImplicitContextLogger[F],
-                                                               monitor: Monitor[F])(implicit F: ConcurrentEffect[F], cs: ContextShift[F])
+                                                               monitor: Monitor[F])(implicit F: Effect[F], cs: ContextShift[F])
     extends RabbitMQProducer[F, A] {
 
   private val sentMeter = monitor.meter("sent")

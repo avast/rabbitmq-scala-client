@@ -87,7 +87,7 @@ final case class ProducerPropertiesConfig(deliveryMode: Int = 2,
                                           priority: Option[Int] = None,
                                           confirms: Option[PublisherConfirmsConfig] = None)
 
-final case class PublisherConfirmsConfig(enabled: Boolean = false, sendAttempts: Int = 0)
+final case class PublisherConfirmsConfig(enabled: Boolean = false, sendAttempts: Int = 1)
 
 final case class AutoDeclareExchangeConfig(enabled: Boolean,
                                            `type`: ExchangeType,

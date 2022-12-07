@@ -38,8 +38,10 @@ class PublishConfirmsRabbitMQProducer[F[_], A: ProductConverter](name: String,
 
   private val acked = monitor.meter("acked")
   private val nacked = monitor.meter("nacked")
+
   override def sendMessage(routingKey: String, body: Bytes, properties: MessageProperties)(implicit correlationId: CorrelationId): F[Unit] =
     sendWithAck(routingKey, body, properties, 1)
+
   private def sendWithAck(routingKey: String, body: Bytes, properties: MessageProperties, attemptCount: Int)(
       implicit correlationId: CorrelationId): F[Unit] = {
 
@@ -74,11 +76,13 @@ class PublishConfirmsRabbitMQProducer[F[_], A: ProductConverter](name: String,
 
   private object DefaultConfirmListener extends ConfirmListener {
     import cats.syntax.foldable._
+
     override def handleAck(deliveryTag: Long, multiple: Boolean): Unit = {
       startAndForget {
         logger.plainTrace(s"Acked $deliveryTag") >> completeDefer(deliveryTag, Right(()))
       }
     }
+
     override def handleNack(deliveryTag: Long, multiple: Boolean): Unit = {
       startAndForget {
         logger.plainTrace(s"Not acked $deliveryTag") >> completeDefer(
