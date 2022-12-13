@@ -5,7 +5,7 @@ import cats.effect.{Blocker, ConcurrentEffect, ContextShift}
 import cats.syntax.flatMap._
 import cats.syntax.functor._
 import com.avast.bytes.Bytes
-import com.avast.clients.rabbitmq.api.{MaxAttempts, MessageProperties, NotAcknowledgedPublish}
+import com.avast.clients.rabbitmq.api.{MaxAttemptsReached, MessageProperties, NotAcknowledgedPublish}
 import com.avast.clients.rabbitmq.logging.ImplicitContextLogger
 import com.avast.clients.rabbitmq.publisher.PublishConfirmsRabbitMQProducer.SentMessages
 import com.avast.clients.rabbitmq.{CorrelationId, ProductConverter, ServerChannel, startAndForget}
@@ -46,11 +46,11 @@ class PublishConfirmsRabbitMQProducer[F[_], A: ProductConverter](name: String,
       implicit correlationId: CorrelationId): F[Unit] = {
 
     if (attemptCount > sendAttempts) {
-      F.raiseError(MaxAttempts("Exhausted max number of attempts"))
+      F.raiseError(MaxAttemptsReached("Exhausted max number of attempts"))
     } else {
       val messageId = channel.getNextPublishSeqNo
       for {
-        defer <- Deferred.apply[F, Either[Throwable, Unit]]
+        defer <- Deferred.apply[F, Either[NotAcknowledgedPublish, Unit]]
         _ <- sentMessages.update(_ + (messageId -> defer))
         _ <- basicSend(routingKey, body, properties)
         result <- defer.get
@@ -59,7 +59,7 @@ class PublishConfirmsRabbitMQProducer[F[_], A: ProductConverter](name: String,
             val sendResult = if (sendAttempts > 1) {
               clearProcessedMessage(messageId) >> sendWithAck(routingKey, body, properties, attemptCount + 1)
             } else {
-              F.raiseError(NotAcknowledgedPublish(s"Broker did not acknowledge publish of message $messageId", err))
+              F.raiseError(err)
             }
 
             nacked.mark >> sendResult
@@ -87,11 +87,11 @@ class PublishConfirmsRabbitMQProducer[F[_], A: ProductConverter](name: String,
       startAndForget {
         logger.plainTrace(s"Not acked $deliveryTag") >> completeDefer(
           deliveryTag,
-          Left(new Exception(s"Message $deliveryTag not acknowledged by broker")))
+          Left(NotAcknowledgedPublish(s"Message $deliveryTag not acknowledged by broker", messageId = deliveryTag)))
       }
     }
 
-    private def completeDefer(deliveryTag: Long, result: Either[Throwable, Unit]): F[Unit] = {
+    private def completeDefer(deliveryTag: Long, result: Either[NotAcknowledgedPublish, Unit]): F[Unit] = {
       sentMessages.get.flatMap(_.get(deliveryTag).traverse_(_.complete(result)))
     }
   }
@@ -99,5 +99,5 @@ class PublishConfirmsRabbitMQProducer[F[_], A: ProductConverter](name: String,
 }
 
 object PublishConfirmsRabbitMQProducer {
-  type SentMessages[F[_]] = Ref[F, Map[Long, Deferred[F, Either[Throwable, Unit]]]]
+  type SentMessages[F[_]] = Ref[F, Map[Long, Deferred[F, Either[NotAcknowledgedPublish, Unit]]]]
 }

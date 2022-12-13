@@ -57,7 +57,7 @@ abstract class BaseRabbitMQProducer[F[_], A: ProductConverter](name: String,
       case Right(convertedBody) =>
         for {
           _ <- checkSize(convertedBody, routingKey)
-          _ <- logErrors(sendMessage(routingKey, convertedBody, finalProperties), routingKey)
+          _ <- processErrors(sendMessage(routingKey, convertedBody, finalProperties), routingKey)
         } yield ()
       case Left(ce) => Sync[F].raiseError(ce)
     }
@@ -76,7 +76,7 @@ abstract class BaseRabbitMQProducer[F[_], A: ProductConverter](name: String,
     } yield ()
   }
 
-  private def logErrors(from: F[Unit], routingKey: String)(implicit correlationId: CorrelationId): F[Unit] = {
+  private def processErrors(from: F[Unit], routingKey: String)(implicit correlationId: CorrelationId): F[Unit] = {
     from.recoverWith {
       case ce: AlreadyClosedException =>
         logger.debug(ce)(s"[$name] Failed to send message with routing key '$routingKey' to exchange '$exchangeName'") >>

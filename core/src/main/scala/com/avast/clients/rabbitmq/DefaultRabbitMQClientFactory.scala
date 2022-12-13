@@ -15,6 +15,7 @@ import scala.collection.compat._
 import scala.collection.immutable
 import scala.jdk.CollectionConverters._
 import scala.language.implicitConversions
+import scala.reflect.ClassTag
 
 private[rabbitmq] class DefaultRabbitMQClientFactory[F[_]: ConcurrentEffect: Timer: ContextShift](
     connection: RabbitMQConnection[F],
@@ -266,7 +267,45 @@ private[rabbitmq] class DefaultRabbitMQClientFactory[F[_]: ConcurrentEffect: Tim
   private def prepareProducer[A: ProductConverter](producerConfig: ProducerConfig,
                                                    connection: RabbitMQConnection[F],
                                                    monitor: Monitor[F]): Resource[F, BaseRabbitMQProducer[F, A]] = {
-    val logger = ImplicitContextLogger.createLogger[F, BaseRabbitMQProducer[F, A]]
+    producerConfig.properties.confirms match {
+      case Some(PublisherConfirmsConfig(true, sendAttempts)) =>
+        prepareProducer(producerConfig, connection) { (defaultProperties, channel, logger) =>
+          Ref.of(Map.empty[Long, Deferred[F, Either[NotAcknowledgedPublish, Unit]]])
+            .map {
+              new PublishConfirmsRabbitMQProducer[F, A](
+                producerConfig.name,
+                producerConfig.exchange,
+                channel,
+                defaultProperties,
+                _,
+                sendAttempts,
+                producerConfig.reportUnroutable,
+                producerConfig.sizeLimitBytes,
+                blocker,
+                logger,
+                monitor)
+            }
+        }
+      case _ =>
+        prepareProducer(producerConfig, connection) { (defaultProperties, channel, logger) =>
+          F.pure {
+            new DefaultRabbitMQProducer[F, A](producerConfig.name,
+                                              producerConfig.exchange,
+                                              channel,
+                                              defaultProperties,
+                                              producerConfig.reportUnroutable,
+                                              producerConfig.sizeLimitBytes,
+                                              blocker,
+                                              logger,
+                                              monitor)
+          }
+        }
+    }
+  }
+
+  private def prepareProducer[T: ClassTag, A: ProductConverter](producerConfig: ProducerConfig, connection: RabbitMQConnection[F])(
+    createProducer: (MessageProperties, ServerChannel, ImplicitContextLogger[F]) => F[T]) = {
+    val logger: ImplicitContextLogger[F] = ImplicitContextLogger.createLogger[F, T]
 
     connection
       .newChannel()
@@ -274,44 +313,14 @@ private[rabbitmq] class DefaultRabbitMQClientFactory[F[_]: ConcurrentEffect: Tim
         // auto declare exchange; if configured
         producerConfig.declare.map { declareExchange(producerConfig.exchange, channel, _)(logger) }.getOrElse(F.unit)
       }
-      .evalMap[F, BaseRabbitMQProducer[F, A]] { channel =>
+      .evalMap[F, T] { channel =>
         val defaultProperties = MessageProperties(
           deliveryMode = DeliveryMode.fromCode(producerConfig.properties.deliveryMode),
           contentType = producerConfig.properties.contentType,
           contentEncoding = producerConfig.properties.contentEncoding,
           priority = producerConfig.properties.priority.map(Integer.valueOf)
-        )
-
-        producerConfig.properties.confirms match {
-          case Some(PublisherConfirmsConfig(true, sendAttempts)) =>
-            Ref.of(Map.empty[Long, Deferred[F, Either[Throwable, Unit]]])
-              .map {
-                new PublishConfirmsRabbitMQProducer[F, A](
-                  producerConfig.name,
-                  producerConfig.exchange,
-                  channel,
-                  defaultProperties,
-                  _,
-                  sendAttempts,
-                  producerConfig.reportUnroutable,
-                  producerConfig.sizeLimitBytes,
-                  blocker,
-                  logger,
-                  monitor)
-              }
-          case _ =>
-            F.pure {
-              new DefaultRabbitMQProducer[F, A](producerConfig.name,
-                                                producerConfig.exchange,
-                                                channel,
-                                                defaultProperties,
-                                                producerConfig.reportUnroutable,
-                                                producerConfig.sizeLimitBytes,
-                                                blocker,
-                                                logger,
-                                                monitor)
-            }
-        }
+          )
+        createProducer(defaultProperties, channel, logger)
       }
   }
 

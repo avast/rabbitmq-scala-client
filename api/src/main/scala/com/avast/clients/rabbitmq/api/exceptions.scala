@@ -7,6 +7,6 @@ case class ChannelNotRecoveredException(desc: String, cause: Throwable = null) e
 
 case class TooBigMessage(desc: String, cause: Throwable = null) extends IllegalArgumentException(desc, cause)
 
-case class MaxAttempts(desc: String, cause: Throwable = null) extends RuntimeException(desc, cause)
+case class MaxAttemptsReached(desc: String, cause: Throwable = null) extends RuntimeException(desc, cause)
 
-case class NotAcknowledgedPublish(desc: String, cause: Throwable = null) extends RuntimeException(desc, cause)
+case class NotAcknowledgedPublish(desc: String, cause: Throwable = null, messageId: Long) extends RuntimeException(desc, cause)
