@@ -1,12 +1,15 @@
-package com.avast.clients.rabbitmq
+package com.avast.clients.rabbitmq.publisher
 
 import cats.effect.{Blocker, ContextShift, Effect, Sync}
-import cats.implicits.{catsSyntaxApplicativeError, catsSyntaxFlatMapOps, toFlatMapOps}
+import cats.syntax.applicativeError._
+import cats.syntax.flatMap._
+import cats.syntax.functor._
 import com.avast.bytes.Bytes
 import com.avast.clients.rabbitmq.JavaConverters._
 import com.avast.clients.rabbitmq.api.CorrelationIdStrategy.FromPropertiesOrRandomNew
 import com.avast.clients.rabbitmq.api._
 import com.avast.clients.rabbitmq.logging.ImplicitContextLogger
+import com.avast.clients.rabbitmq.{CorrelationId, ProductConverter, ServerChannel, startAndForget}
 import com.avast.metrics.scalaeffectapi.Monitor
 import com.rabbitmq.client.AMQP.BasicProperties
 import com.rabbitmq.client.{AlreadyClosedException, ReturnListener}
@@ -14,15 +17,15 @@ import com.rabbitmq.client.{AlreadyClosedException, ReturnListener}
 import java.util.UUID
 import scala.util.control.NonFatal
 
-class DefaultRabbitMQProducer[F[_], A: ProductConverter](name: String,
-                                                         exchangeName: String,
-                                                         channel: ServerChannel,
-                                                         defaultProperties: MessageProperties,
-                                                         reportUnroutable: Boolean,
-                                                         sizeLimitBytes: Option[Int],
-                                                         blocker: Blocker,
-                                                         logger: ImplicitContextLogger[F],
-                                                         monitor: Monitor[F])(implicit F: Effect[F], cs: ContextShift[F])
+abstract class BaseRabbitMQProducer[F[_], A: ProductConverter](name: String,
+                                                               exchangeName: String,
+                                                               channel: ServerChannel,
+                                                               defaultProperties: MessageProperties,
+                                                               reportUnroutable: Boolean,
+                                                               sizeLimitBytes: Option[Int],
+                                                               blocker: Blocker,
+                                                               logger: ImplicitContextLogger[F],
+                                                               monitor: Monitor[F])(implicit F: Effect[F], cs: ContextShift[F])
     extends RabbitMQProducer[F, A] {
 
   private val sentMeter = monitor.meter("sent")
@@ -34,6 +37,8 @@ class DefaultRabbitMQProducer[F[_], A: ProductConverter](name: String,
   private val sendLock = new Object
 
   channel.addReturnListener(if (reportUnroutable) LoggingReturnListener else NoOpReturnListener)
+
+  def sendMessage(routingKey: String, body: Bytes, properties: MessageProperties)(implicit correlationId: CorrelationId): F[Unit]
 
   override def send(routingKey: String, body: A, properties: Option[MessageProperties] = None)(
       implicit cidStrategy: CorrelationIdStrategy = FromPropertiesOrRandomNew(properties)): F[Unit] = {
@@ -49,33 +54,40 @@ class DefaultRabbitMQProducer[F[_], A: ProductConverter](name: String,
     }
 
     converter.convert(body) match {
-      case Right(convertedBody) => send(routingKey, convertedBody, finalProperties)
+      case Right(convertedBody) =>
+        for {
+          _ <- checkSize(convertedBody, routingKey)
+          _ <- processErrors(sendMessage(routingKey, convertedBody, finalProperties), routingKey)
+        } yield ()
       case Left(ce) => Sync[F].raiseError(ce)
     }
   }
 
-  private def send(routingKey: String, body: Bytes, properties: MessageProperties)(implicit correlationId: CorrelationId): F[Unit] = {
-    checkSize(body, routingKey) >>
-      logger.debug(s"Sending message with ${body.size()} B to exchange $exchangeName with routing key '$routingKey' and $properties") >>
-      blocker
-        .delay {
-          sendLock.synchronized {
-            // see https://www.rabbitmq.com/api-guide.html#channel-threads
-            channel.basicPublish(exchangeName, routingKey, properties.asAMQP, body.toByteArray)
-          }
+  protected def basicSend(routingKey: String, body: Bytes, properties: MessageProperties)(implicit correlationId: CorrelationId): F[Unit] = {
+    for {
+      _ <- logger.debug(s"Sending message with ${body.size()} B to exchange $exchangeName with routing key '$routingKey' and $properties")
+      _ <- blocker.delay {
+        sendLock.synchronized {
+          // see https://www.rabbitmq.com/api-guide.html#channel-threads
+          channel.basicPublish(exchangeName, routingKey, properties.asAMQP, body.toByteArray)
         }
-        .flatTap(_ => sentMeter.mark)
-        .recoverWith {
-          case ce: AlreadyClosedException =>
-            logger.debug(ce)(s"[$name] Failed to send message with routing key '$routingKey' to exchange '$exchangeName'") >>
-              sentFailedMeter.mark >>
-              F.raiseError[Unit](ChannelNotRecoveredException("Channel closed, wait for recovery", ce))
+      }
+      _ <- sentMeter.mark
+    } yield ()
+  }
 
-          case NonFatal(e) =>
-            logger.debug(e)(s"[$name] Failed to send message with routing key '$routingKey' to exchange '$exchangeName'") >>
-              sentFailedMeter.mark >>
-              F.raiseError[Unit](e)
-        }
+  private def processErrors(from: F[Unit], routingKey: String)(implicit correlationId: CorrelationId): F[Unit] = {
+    from.recoverWith {
+      case ce: AlreadyClosedException =>
+        logger.debug(ce)(s"[$name] Failed to send message with routing key '$routingKey' to exchange '$exchangeName'") >>
+          sentFailedMeter.mark >>
+          F.raiseError[Unit](ChannelNotRecoveredException("Channel closed, wait for recovery", ce))
+
+      case NonFatal(e) =>
+        logger.debug(e)(s"[$name] Failed to send message with routing key '$routingKey' to exchange '$exchangeName'") >>
+          sentFailedMeter.mark >>
+          F.raiseError[Unit](e)
+    }
   }
 
   private def checkSize(bytes: Bytes, routingKey: String)(implicit correlationId: CorrelationId): F[Unit] = {

@@ -517,6 +517,25 @@ If you don't specify the strategy by yourself, `CorrelationIdStrategy.FromProper
 properties (or headers) and generate a new one if it doesn't succeed. In any way, the CID will be part of both logs and resulting (outgoing)
 RabbitMQ message.
 
+#### Publisher confirms
+
+By using following configuration
+```hocon
+   producer {
+      properties {
+         confirms {
+            enabled = true
+            sendAttempts = 2
+         }
+      }
+}
+```
+clients can enable [publisher confirms](https://www.rabbitmq.com/confirms.html#publisher-confirms). Each `send` call will wait for ack/nack from broker. 
+This wait is of course non-blocking. `sendAttempts` is number of all attempts including initial one. If number of `sendAttempts` is greater than 1 it will try to resend messages again 
+right after it obtains nack from broker. 
+
+From implementation point of view, it uses asynchronous acks/nacks combined with [Deferred](https://typelevel.org/cats-effect/docs/std/deferred) from cats library.
+
 #### Consumers
 
 You can also get the CorrelationId from the message properties on the consumer side. The CID is taken from both AMQP properties
