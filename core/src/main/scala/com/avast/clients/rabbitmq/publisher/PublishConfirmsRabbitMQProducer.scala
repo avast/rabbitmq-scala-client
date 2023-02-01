@@ -1,22 +1,22 @@
 package com.avast.clients.rabbitmq.publisher
 
-import cats.effect.concurrent.{Deferred, Ref}
+import cats.effect.concurrent.Deferred
 import cats.effect.{Blocker, ConcurrentEffect, ContextShift}
 import cats.syntax.flatMap._
 import cats.syntax.functor._
 import com.avast.bytes.Bytes
 import com.avast.clients.rabbitmq.api.{MaxAttemptsReached, MessageProperties, NotAcknowledgedPublish}
 import com.avast.clients.rabbitmq.logging.ImplicitContextLogger
-import com.avast.clients.rabbitmq.publisher.PublishConfirmsRabbitMQProducer.SentMessages
-import com.avast.clients.rabbitmq.{CorrelationId, ProductConverter, ServerChannel, startAndForget}
+import com.avast.clients.rabbitmq.{startAndForget, CorrelationId, ProductConverter, ServerChannel}
 import com.avast.metrics.scalaeffectapi.Monitor
 import com.rabbitmq.client.ConfirmListener
 
+import java.util.concurrent.ConcurrentHashMap
+import scala.collection.JavaConverters._
 class PublishConfirmsRabbitMQProducer[F[_], A: ProductConverter](name: String,
                                                                  exchangeName: String,
                                                                  channel: ServerChannel,
                                                                  defaultProperties: MessageProperties,
-                                                                 sentMessages: SentMessages[F],
                                                                  sendAttempts: Int,
                                                                  reportUnroutable: Boolean,
                                                                  sizeLimitBytes: Option[Int],
@@ -39,6 +39,10 @@ class PublishConfirmsRabbitMQProducer[F[_], A: ProductConverter](name: String,
   private val acked = monitor.meter("acked")
   private val nacked = monitor.meter("nacked")
 
+  private[rabbitmq] val confirmationCallbacks = {
+    new ConcurrentHashMap[Long, Deferred[F, Either[NotAcknowledgedPublish, Unit]]]().asScala
+  }
+
   override def sendMessage(routingKey: String, body: Bytes, properties: MessageProperties)(implicit correlationId: CorrelationId): F[Unit] =
     sendWithAck(routingKey, body, properties, 1)
 
@@ -48,34 +52,29 @@ class PublishConfirmsRabbitMQProducer[F[_], A: ProductConverter](name: String,
     if (attemptCount > sendAttempts) {
       F.raiseError(MaxAttemptsReached("Exhausted max number of attempts"))
     } else {
-      val messageId = channel.getNextPublishSeqNo
       for {
-        defer <- Deferred.apply[F, Either[NotAcknowledgedPublish, Unit]]
-        _ <- sentMessages.update(_ + (messageId -> defer))
-        _ <- basicSend(routingKey, body, properties)
-        result <- defer.get
+        confirmationCallback <- Deferred.apply[F, Either[NotAcknowledgedPublish, Unit]]
+        sequenceNumber <- basicSend(routingKey, body, properties, (sequenceNumber: Long) => {
+          confirmationCallbacks += (sequenceNumber, confirmationCallback)
+        })
+        result <- confirmationCallback.get
+        _ <- F.delay(confirmationCallbacks -= sequenceNumber)
         _ <- result match {
           case Left(err) =>
             val sendResult = if (sendAttempts > 1) {
-              clearProcessedMessage(messageId) >> sendWithAck(routingKey, body, properties, attemptCount + 1)
+              sendWithAck(routingKey, body, properties, attemptCount + 1)
             } else {
               F.raiseError(err)
             }
-
             nacked.mark >> sendResult
           case Right(_) =>
-            acked.mark >> clearProcessedMessage(messageId)
+            acked.mark
         }
       } yield ()
     }
   }
 
-  private def clearProcessedMessage(messageId: Long): F[Unit] = {
-    sentMessages.update(_ - messageId)
-  }
-
   private object DefaultConfirmListener extends ConfirmListener {
-    import cats.syntax.foldable._
 
     override def handleAck(deliveryTag: Long, multiple: Boolean): Unit = {
       startAndForget {
@@ -92,12 +91,10 @@ class PublishConfirmsRabbitMQProducer[F[_], A: ProductConverter](name: String,
     }
 
     private def completeDefer(deliveryTag: Long, result: Either[NotAcknowledgedPublish, Unit]): F[Unit] = {
-      sentMessages.get.flatMap(_.get(deliveryTag).traverse_(_.complete(result)))
+      confirmationCallbacks.get(deliveryTag) match {
+        case Some(callback) => callback.complete(result)
+        case None => logger.plainWarn("Received confirmation for unknown delivery tag. That is unexpected state.")
+      }
     }
   }
-
-}
-
-object PublishConfirmsRabbitMQProducer {
-  type SentMessages[F[_]] = Ref[F, Map[Long, Deferred[F, Either[NotAcknowledgedPublish, Unit]]]]
 }
