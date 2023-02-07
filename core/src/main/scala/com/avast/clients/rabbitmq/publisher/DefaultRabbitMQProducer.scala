@@ -1,6 +1,7 @@
 package com.avast.clients.rabbitmq.publisher
 
 import cats.effect.{Blocker, ConcurrentEffect, ContextShift}
+import cats.implicits.toFunctorOps
 import com.avast.bytes.Bytes
 import com.avast.clients.rabbitmq.api.MessageProperties
 import com.avast.clients.rabbitmq.logging.ImplicitContextLogger
@@ -26,5 +27,5 @@ class DefaultRabbitMQProducer[F[_], A: ProductConverter](name: String,
                                        logger,
                                        monitor) {
   override def sendMessage(routingKey: String, body: Bytes, properties: MessageProperties)(implicit correlationId: CorrelationId): F[Unit] =
-    basicSend(routingKey, body, properties)
+    basicSend(routingKey, body, properties).void
 }

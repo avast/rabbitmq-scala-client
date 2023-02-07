@@ -9,7 +9,7 @@ import com.avast.clients.rabbitmq.JavaConverters._
 import com.avast.clients.rabbitmq.api.CorrelationIdStrategy.FromPropertiesOrRandomNew
 import com.avast.clients.rabbitmq.api._
 import com.avast.clients.rabbitmq.logging.ImplicitContextLogger
-import com.avast.clients.rabbitmq.{CorrelationId, ProductConverter, ServerChannel, startAndForget}
+import com.avast.clients.rabbitmq.{startAndForget, CorrelationId, ProductConverter, ServerChannel}
 import com.avast.metrics.scalaeffectapi.Monitor
 import com.rabbitmq.client.AMQP.BasicProperties
 import com.rabbitmq.client.{AlreadyClosedException, ReturnListener}
@@ -63,17 +63,21 @@ abstract class BaseRabbitMQProducer[F[_], A: ProductConverter](name: String,
     }
   }
 
-  protected def basicSend(routingKey: String, body: Bytes, properties: MessageProperties)(implicit correlationId: CorrelationId): F[Unit] = {
+  protected def basicSend(routingKey: String, body: Bytes, properties: MessageProperties, preSendAction: Long => Unit = (_: Long) => ())(
+      implicit correlationId: CorrelationId): F[Long] = {
     for {
       _ <- logger.debug(s"Sending message with ${body.size()} B to exchange $exchangeName with routing key '$routingKey' and $properties")
-      _ <- blocker.delay {
+      sequenceNumber <- blocker.delay {
         sendLock.synchronized {
           // see https://www.rabbitmq.com/api-guide.html#channel-threads
+          val sequenceNumber = channel.getNextPublishSeqNo
+          preSendAction(sequenceNumber)
           channel.basicPublish(exchangeName, routingKey, properties.asAMQP, body.toByteArray)
+          sequenceNumber
         }
       }
       _ <- sentMeter.mark
-    } yield ()
+    } yield sequenceNumber
   }
 
   private def processErrors(from: F[Unit], routingKey: String)(implicit correlationId: CorrelationId): F[Unit] = {
