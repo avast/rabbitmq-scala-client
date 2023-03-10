@@ -1,9 +1,9 @@
 package com.avast.clients.rabbitmq.publisher
 
+import cats.effect.Concurrent.ops.toAllConcurrentOps
 import cats.effect.concurrent.Deferred
 import cats.effect.{Blocker, ConcurrentEffect, ContextShift}
-import cats.syntax.flatMap._
-import cats.syntax.functor._
+import cats.implicits._
 import com.avast.bytes.Bytes
 import com.avast.clients.rabbitmq.api.{MaxAttemptsReached, MessageProperties, NotAcknowledgedPublish}
 import com.avast.clients.rabbitmq.logging.ImplicitContextLogger
@@ -62,7 +62,8 @@ class PublishConfirmsRabbitMQProducer[F[_], A: ProductConverter](name: String,
         _ <- result match {
           case Left(err) =>
             val sendResult = if (sendAttempts > 1) {
-              sendWithAck(routingKey, body, properties, attemptCount + 1)
+              logger.plainTrace(s"Republishing nacked message with sequenceNumber $sequenceNumber") >>
+                sendWithAck(routingKey, body, properties, attemptCount + 1)
             } else {
               F.raiseError(err)
             }
@@ -74,26 +75,40 @@ class PublishConfirmsRabbitMQProducer[F[_], A: ProductConverter](name: String,
     }
   }
 
-  private object DefaultConfirmListener extends ConfirmListener {
+  private[rabbitmq] object DefaultConfirmListener extends ConfirmListener {
 
     override def handleAck(deliveryTag: Long, multiple: Boolean): Unit = {
       startAndForget {
-        logger.plainTrace(s"Acked $deliveryTag") >> completeDefer(deliveryTag, Right(()))
+        logger.plainTrace(s"Acked $deliveryTag, multiple: $multiple") >> completeDefer(deliveryTag, multiple, Right(()))
       }
     }
 
     override def handleNack(deliveryTag: Long, multiple: Boolean): Unit = {
       startAndForget {
-        logger.plainTrace(s"Not acked $deliveryTag") >> completeDefer(
+        logger.plainTrace(s"Nacked $deliveryTag, multiple: $multiple") >> completeDefer(
           deliveryTag,
-          Left(NotAcknowledgedPublish(s"Message $deliveryTag not acknowledged by broker", messageId = deliveryTag)))
+          multiple,
+          Left(NotAcknowledgedPublish(s"Broker was unable to process the message", messageId = deliveryTag)))
       }
     }
 
-    private def completeDefer(deliveryTag: Long, result: Either[NotAcknowledgedPublish, Unit]): F[Unit] = {
-      confirmationCallbacks.get(deliveryTag) match {
-        case Some(callback) => callback.complete(result)
-        case None => logger.plainWarn("Received confirmation for unknown delivery tag. That is unexpected state.")
+    private def completeDefer(deliveryTag: Long, multiple: Boolean, result: Either[NotAcknowledgedPublish, Unit]): F[Unit] = {
+      if (multiple) {
+        confirmationCallbacks
+          .filter {
+            case (sequenceNumber, _) => sequenceNumber <= deliveryTag
+          }
+          .values
+          .toList
+          .traverse { callback =>
+            callback.complete(result).start
+          }
+          .void
+      } else {
+        confirmationCallbacks.get(deliveryTag) match {
+          case Some(callback) => callback.complete(result)
+          case None => logger.plainError(s"Received confirmation for unknown delivery tag $deliveryTag. That is unexpected state.")
+        }
       }
     }
   }
