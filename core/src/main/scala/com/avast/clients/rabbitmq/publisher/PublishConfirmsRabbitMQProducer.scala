@@ -62,8 +62,8 @@ class PublishConfirmsRabbitMQProducer[F[_], A: ProductConverter](name: String,
         _ <- result match {
           case Left(err) =>
             val sendResult = if (sendAttempts > 1) {
-              logger.plainTrace(s"Republishing nacked message with sequenceNumber $sequenceNumber")
-              sendWithAck(routingKey, body, properties, attemptCount + 1)
+              logger.plainTrace(s"Republishing nacked message with sequenceNumber $sequenceNumber") >>
+                sendWithAck(routingKey, body, properties, attemptCount + 1)
             } else {
               F.raiseError(err)
             }
