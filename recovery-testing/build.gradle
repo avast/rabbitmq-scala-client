@@ -1,0 +1,15 @@
+archivesBaseName = "rabbitmq-client-core_$scalaVersion"
+
+dockerCompose.isRequiredBy(test)
+
+dockerCompose {
+    dockerComposeWorkingDirectory = project.file('recovery-testing') // not load the "global" docker-compose file
+}
+
+test.doFirst {
+    dockerCompose.exposeAsSystemProperties(test)
+}
+
+dependencies {
+    api project(":pureconfig")
+}
