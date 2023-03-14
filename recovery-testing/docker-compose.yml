@@ -4,7 +4,7 @@ services:
     image: lucifer8591/rabbitmq-server:3.7.17
     hostname: cluster_rabbit1
     ports:
-      - "5672:5672"
+      - "20001:5672"
       - "15672:15672"
     environment:
       - RABBITMQ_DEFAULT_USER=${RABBITMQ_DEFAULT_USER:-admin}
@@ -19,7 +19,7 @@ services:
       - CLUSTER_WITH=cluster_rabbit1
       - RAM_NODE=true
     ports:
-      - "5673:5672"
+      - "20002:5672"
       - "15673:15672"
   cluster_rabbit3:
     image: lucifer8591/rabbitmq-server:3.7.17
@@ -31,4 +31,4 @@ services:
       - CLUSTERED=true
       - CLUSTER_WITH=cluster_rabbit1
     ports:
-      - "5674:5672"
+      - "20003:5672"
