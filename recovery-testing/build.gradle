@@ -12,4 +12,6 @@ test.doFirst {
 
 dependencies {
     api project(":pureconfig")
+
+    api "com.spotify:docker-client:8.14.1"
 }
