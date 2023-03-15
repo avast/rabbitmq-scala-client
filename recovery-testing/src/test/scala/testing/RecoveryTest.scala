@@ -3,7 +3,7 @@ package testing
 import cats.effect.Blocker
 import cats.effect.concurrent.Ref
 import com.avast.clients.rabbitmq.RabbitMQConnection
-import com.avast.clients.rabbitmq.api.{Delivery, DeliveryResult}
+import com.avast.clients.rabbitmq.api._
 import com.avast.clients.rabbitmq.pureconfig._
 import com.avast.metrics.scalaeffectapi.Monitor
 import com.spotify.docker.client.DefaultDockerClient
@@ -18,6 +18,7 @@ import org.scalatestplus.junit.JUnitRunner
 import java.util.concurrent.Executors
 import scala.concurrent.duration.DurationInt
 import scala.jdk.CollectionConverters._
+import scala.util.Random
 
 @RunWith(classOf[JUnitRunner])
 class RecoveryTest extends FunSuite with StrictLogging {
@@ -29,16 +30,17 @@ class RecoveryTest extends FunSuite with StrictLogging {
   private lazy val dockerClient = new DefaultDockerClient("unix:///var/run/docker.sock")
 
   val run: Task[Unit] = {
-    val messagesToBeSent = 1000
-
-    val messagesReceived = Ref.unsafe[Task, Int](0)
-    val messagesSent = Ref.unsafe[Task, Int](0)
+    val messagesReceived = Ref.unsafe[Task, Set[String]](Set.empty)
+    val messagesSent = Ref.unsafe[Task, Set[String]](Set.empty)
 
     RabbitMQConnection
       .fromConfig[Task](config, blockingExecutor)
       .use { conn =>
         val consumer = conn.newConsumer[String]("consumer", Monitor.noOp()) {
-          case Delivery.Ok(body, _, _) if body == "ahoj" => messagesReceived.update(_ + 1).as(DeliveryResult.Ack)
+          case Delivery.Ok(body, props, _) if body == "ahoj" =>
+            Task.sleep(150.millis) >>
+              messagesReceived.update(_ + props.messageId.getOrElse(sys.error("no MSG ID?"))).as(DeliveryResult.Ack)
+
           case d =>
             Task {
               println(s"Delivery failure! $d")
@@ -53,9 +55,14 @@ class RecoveryTest extends FunSuite with StrictLogging {
             producer
               .use { producer =>
                 fs2.Stream
-                  .range[Task](0, messagesToBeSent)
-                  .parEvalMap(4) { _ =>
-                    Task.sleep(100.millis) >> retryExponentially(producer.send(queueName, "ahoj"), 2) >> messagesSent.update(_ + 1)
+                  .repeatEval {
+                    Task { Random.alphanumeric.take(10).mkString }.flatMap { id =>
+                      val props = MessageProperties(messageId = Some(id))
+
+                      Task.sleep(100.millis) >>
+                        retryExponentially(producer.send(queueName, "ahoj", Some(props)), 2) >>
+                        messagesSent.update(_ + id)
+                    }
                   }
                   .compile
                   .drain
@@ -71,18 +78,20 @@ class RecoveryTest extends FunSuite with StrictLogging {
                     blocker.delay[Task, Unit] { dockerClient.restartContainer(container.id(), 0) }
                 }
 
-                val restartAll = (0 to 2).foldLeft(Task.unit) { case (p, n) => p >> Task.sleep(10.seconds) >> restart(n) }
+                val restartAll = (0 to 2).foldLeft(Task.unit) { case (p, n) => p >> Task.sleep(20.seconds) >> restart(n) }
 
-                restartAll >> producerFiber.join
-              } >> Task(println("Wait for consumer to finish")) >> Task.sleep(10.seconds) // let the consumer finish the job
+                restartAll >>
+                  Task.sleep(20.seconds) >>
+                  producerFiber.cancel
+              } >> Task(println("Wait for consumer to finish")) >> Task.sleep(20.seconds) // let the consumer finish the job
           } >> {
           for {
             sent <- messagesSent.get
             received <- messagesReceived.get
           } yield {
-            val inFlight = sent - received
-            println(s"Sent $sent, received $received, in-flight: $inFlight")
-            assertResult(0)(inFlight)
+            val inFlight = sent.size - received.size
+            println(s"Sent ${sent.size}, received (unique) ${received.size}, in-flight: $inFlight")
+            assertResult(sent)(received)
           }
 
         }
@@ -91,7 +100,7 @@ class RecoveryTest extends FunSuite with StrictLogging {
   }
 
   test("run") {
-    run.runSyncUnsafe(2.minutes)
+    run.runSyncUnsafe(5.minutes)
   }
 
   private def retryExponentially[A](t: Task[A], maxRetries: Int): Task[A] = {
