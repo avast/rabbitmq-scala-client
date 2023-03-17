@@ -12,7 +12,6 @@ buildscript {
 plugins {
     id "io.github.gradle-nexus.publish-plugin" version '1.1.0'
 }
-apply plugin: 'docker-compose'
 
 nexusPublishing {
     repositories {
@@ -84,9 +83,12 @@ subprojects {
     apply plugin: 'java'
     apply plugin: 'scala'
     apply plugin: 'java-library'
-    apply plugin: 'maven-publish'
-    apply plugin: 'signing'
     apply plugin: 'com.github.ben-manes.versions'
+
+    if (!project.hasProperty("notPublished")) {
+        apply plugin: 'maven-publish'
+        apply plugin: 'signing'
+    }
 
     task sourceJar(type: Jar) {
         from sourceSets.main.allSource
@@ -100,45 +102,47 @@ subprojects {
         withSourcesJar()
     }
 
-    afterEvaluate {
-        publishing {
-            publications {
-                mavenJava(MavenPublication) {
-                    from(components.java)
-                    artifactId = archivesBaseName
-                    pom {
-                        name = 'RabbitMQ client for Scala'
-                        description = 'Scala wrapper over standard RabbitMQ Java client library'
-                        url = 'https://github.com/avast/rabbitmq-scala-client'
-                        licenses {
-                            license {
-                                name = 'The MIT License'
-                                url = 'http://www.opensource.org/licenses/mit-license.php'
-                            }
-                        }
-                        developers {
-                            developer {
-                                id = 'jendakol'
-                                name = 'Jenda Kolena'
-                                email = 'jan.kolena@avast.com'
-                            }
-                        }
-                        scm {
-                            connection = 'scm:git:git://github.com/avast/rabbitmq-scala-client.git'
-                            developerConnection = 'scm:git:ssh://github.com/avast/rabbitmq-scala-client.git'
+    if (!project.hasProperty("notPublished")) {
+        afterEvaluate {
+            publishing {
+                publications {
+                    mavenJava(MavenPublication) {
+                        from(components.java)
+                        artifactId = archivesBaseName
+                        pom {
+                            name = 'RabbitMQ client for Scala'
+                            description = 'Scala wrapper over standard RabbitMQ Java client library'
                             url = 'https://github.com/avast/rabbitmq-scala-client'
+                            licenses {
+                                license {
+                                    name = 'The MIT License'
+                                    url = 'http://www.opensource.org/licenses/mit-license.php'
+                                }
+                            }
+                            developers {
+                                developer {
+                                    id = 'jendakol'
+                                    name = 'Jenda Kolena'
+                                    email = 'jan.kolena@avast.com'
+                                }
+                            }
+                            scm {
+                                connection = 'scm:git:git://github.com/avast/rabbitmq-scala-client.git'
+                                developerConnection = 'scm:git:ssh://github.com/avast/rabbitmq-scala-client.git'
+                                url = 'https://github.com/avast/rabbitmq-scala-client'
+                            }
                         }
                     }
                 }
             }
         }
-    }
 
-    signing {
-        String base64Key = System.getenv('SIGNING_KEY')
-        if (base64Key) {
-            useInMemoryPgpKeys(new String(Base64.decoder.decode(base64Key)), System.getenv('SIGNING_PASSWORD'))
-            sign publishing.publications
+        signing {
+            String base64Key = System.getenv('SIGNING_KEY')
+            if (base64Key) {
+                useInMemoryPgpKeys(new String(Base64.decoder.decode(base64Key)), System.getenv('SIGNING_PASSWORD'))
+                sign publishing.publications
+            }
         }
     }
 

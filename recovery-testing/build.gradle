@@ -1,0 +1,15 @@
+apply plugin: 'docker-compose'
+
+archivesBaseName = "rabbitmq-client-core_$scalaVersion"
+
+dockerCompose.isRequiredBy(test)
+
+test.doFirst {
+    dockerCompose.exposeAsSystemProperties(test)
+}
+
+dependencies {
+    api project(":pureconfig")
+
+    api "com.spotify:docker-client:8.14.1"
+}
