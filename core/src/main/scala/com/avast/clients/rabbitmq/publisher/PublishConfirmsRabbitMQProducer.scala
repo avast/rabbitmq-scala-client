@@ -107,7 +107,8 @@ class PublishConfirmsRabbitMQProducer[F[_], A: ProductConverter](name: String,
       } else {
         confirmationCallbacks.get(deliveryTag) match {
           case Some(callback) => callback.complete(result)
-          case None => logger.plainError(s"Received confirmation for unknown delivery tag $deliveryTag. That is unexpected state.")
+          case None =>
+            logger.plainError(s"Received confirmation for unknown delivery tag $deliveryTag with result $result. That is unexpected state.")
         }
       }
     }
