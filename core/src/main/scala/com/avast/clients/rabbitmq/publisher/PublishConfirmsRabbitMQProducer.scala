@@ -7,12 +7,12 @@ import cats.implicits._
 import com.avast.bytes.Bytes
 import com.avast.clients.rabbitmq.api.{MaxAttemptsReached, MessageProperties, NotAcknowledgedPublish}
 import com.avast.clients.rabbitmq.logging.ImplicitContextLogger
-import com.avast.clients.rabbitmq.{startAndForget, CorrelationId, ProductConverter, ServerChannel}
+import com.avast.clients.rabbitmq.{CorrelationId, ProductConverter, ServerChannel, startAndForget}
 import com.avast.metrics.scalaeffectapi.Monitor
 import com.rabbitmq.client.ConfirmListener
 
 import java.util.concurrent.ConcurrentHashMap
-import scala.collection.JavaConverters._
+import scala.jdk.CollectionConverters._
 class PublishConfirmsRabbitMQProducer[F[_], A: ProductConverter](name: String,
                                                                  exchangeName: String,
                                                                  channel: ServerChannel,
@@ -108,7 +108,7 @@ class PublishConfirmsRabbitMQProducer[F[_], A: ProductConverter](name: String,
         confirmationCallbacks.get(deliveryTag) match {
           case Some(callback) => callback.complete(result)
           case None =>
-            logger.plainError(s"Received confirmation for unknown delivery tag $deliveryTag with result $result. That is unexpected state.")
+            logger.plainDebug(s"Received confirmation for unknown delivery tag $deliveryTag with result $result.")
         }
       }
     }
