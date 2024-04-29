@@ -19,7 +19,8 @@ final case class RabbitMQConnectionConfig(name: String,
                                           networkRecovery: NetworkRecoveryConfig = NetworkRecoveryConfig(),
                                           channelMax: Int = 2047,
                                           credentials: CredentialsConfig,
-                                          republishStrategy: RepublishStrategyConfig = RepublishStrategyConfig.DefaultExchange)
+                                          republishStrategy: RepublishStrategyConfig = RepublishStrategyConfig.DefaultExchange,
+                                          maxInboundMessageBodySize: Int = Int.MaxValue)
 
 final case class NetworkRecoveryConfig(enabled: Boolean = true, handler: RecoveryDelayHandler = RecoveryDelayHandlers.Linear())
 

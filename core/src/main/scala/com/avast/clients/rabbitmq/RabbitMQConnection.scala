@@ -216,6 +216,7 @@ object RabbitMQConnection {
     }
 
     factory.setConnectionTimeout(connectionTimeout.toMillis.toInt)
+    factory.setMaxInboundMessageBodySize(connectionConfig.maxInboundMessageBodySize)
   }
 
   // scalastyle:off
