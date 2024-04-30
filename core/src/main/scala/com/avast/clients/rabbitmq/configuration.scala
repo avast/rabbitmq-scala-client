@@ -19,7 +19,10 @@ final case class RabbitMQConnectionConfig(name: String,
                                           networkRecovery: NetworkRecoveryConfig = NetworkRecoveryConfig(),
                                           channelMax: Int = 2047,
                                           credentials: CredentialsConfig,
-                                          republishStrategy: RepublishStrategyConfig = RepublishStrategyConfig.DefaultExchange)
+                                          republishStrategy: RepublishStrategyConfig = RepublishStrategyConfig.DefaultExchange,
+                                          // This is the new hard-limit on server side. see:
+                                          // https://github.com/rabbitmq/rabbitmq-common/blob/67c4397ffa9f51d87f994aa4db4a68e8e95326ab/include/rabbit.hrl#L250
+                                          maxInboundMessageBodySize: Int = 536870912)
 
 final case class NetworkRecoveryConfig(enabled: Boolean = true, handler: RecoveryDelayHandler = RecoveryDelayHandlers.Linear())
 
