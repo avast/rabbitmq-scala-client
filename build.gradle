@@ -40,7 +40,7 @@ allprojects {
         fs2Version = "2.5.3"
         metricsVersion = "2.9.3"
         protobufVersion = "3.21.4"
-        pureconfigVersion = "0.17.1"
+        pureconfigVersion = "0.17.9"
         scalapbVersion = "0.11.8"
         scalapbJson4sVersion = "0.11.1"
         typesafeConfigVersion = "1.4.3"
