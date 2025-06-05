@@ -41,7 +41,7 @@ allprojects {
         metricsVersion = "2.9.3"
         protobufVersion = "3.21.4"
         pureconfigVersion = "0.17.8"
-        scalapbVersion = "0.11.8"
+        scalapbVersion = "0.11.17"
         scalapbJson4sVersion = "0.11.1"
         typesafeConfigVersion = "1.4.3"
         monixVersion = "3.4.0" // just for tests!
