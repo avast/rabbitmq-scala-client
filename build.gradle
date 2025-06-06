@@ -90,11 +90,6 @@ subprojects {
         apply plugin: 'signing'
     }
 
-    task sourceJar(type: Jar) {
-        from sourceSets.main.allSource
-        classifier "sources"
-    }
-
     group = "com.avast.clients.rabbitmq"
 
     java {
