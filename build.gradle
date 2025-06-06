@@ -180,7 +180,7 @@ subprojects {
         testImplementation "org.scalatest:scalatest_$scalaVersion:3.0.8"
         testImplementation 'org.mockito:mockito-all:1.10.19'
         testImplementation "com.typesafe.scala-logging:scala-logging_$scalaVersion:3.9.4"
-        testImplementation 'ch.qos.logback:logback-classic:1.2.11'
+        testImplementation 'ch.qos.logback:logback-classic:1.5.18'
 
         testImplementation 'org.pegdown:pegdown:1.6.0'
     }
