@@ -30,7 +30,7 @@ allprojects {
     ext {
         def scalaVersionEnv = System.getenv("SCALA_VERSION")
 
-        scalaVersionFull = scalaVersionEnv != null ? scalaVersionEnv : "2.12.13"
+        scalaVersionFull = scalaVersionEnv != null ? scalaVersionEnv : "2.13.8"
         scalaVersion = "${scalaVersionFull}".split("\\.").dropRight(1).join(".")
 
         bytesVersion = "2.2.0"
@@ -40,7 +40,7 @@ allprojects {
         fs2Version = "2.5.3"
         metricsVersion = "3.0.4"
         protobufVersion = "3.25.8"
-        pureconfigVersion = "0.17.8"
+        pureconfigVersion = "0.17.9"
         scalapbVersion = "0.11.18"
         scalapbJson4sVersion = "0.11.1"
         typesafeConfigVersion = "1.4.3"
