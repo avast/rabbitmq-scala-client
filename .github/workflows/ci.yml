@@ -9,7 +9,7 @@ jobs:
       matrix:
         scala-version: [ 2.13.8 ]
     steps:
-      - uses: actions/checkout@v4.2.2
+      - uses: actions/checkout@v4.3.0
         with:
           fetch-depth: 100
       - name: Fetch tags
