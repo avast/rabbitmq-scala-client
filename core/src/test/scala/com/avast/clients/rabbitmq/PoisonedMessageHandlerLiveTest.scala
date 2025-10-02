@@ -156,7 +156,7 @@ class PoisonedMessageHandlerLiveTest extends TestBase with ScalaFutures {
             Task {
               processed.incrementAndGet()
             } >>
-              sleepIfEven(n, 800.millis) >> // timeout is 500 ms, this need to be quite much longer to be deterministic
+              sleepIfEven(n, 3000.millis) >> // timeout is 2000 ms, this need to be quite much longer to be deterministic
               Task.now(DeliveryResult.Ack)
 
           case _ => fail()
@@ -287,7 +287,7 @@ class PoisonedMessageHandlerLiveTest extends TestBase with ScalaFutures {
 
       rabbitConnection.newStreamingConsumer[Bytes]("testingStreamingWithPoisonedMessageHandler", monitor).withResource { cons =>
         cons.deliveryStream
-          .parEvalMapUnordered(4) {
+          .parEvalMapUnordered(20) {
             _.handleWith {
               case Delivery.Ok(body, _, _) =>
                 val n = body.toStringUtf8.toInt
@@ -303,7 +303,7 @@ class PoisonedMessageHandlerLiveTest extends TestBase with ScalaFutures {
                 Task {
                   processed.incrementAndGet()
                 } >>
-                  sleepIfEven(n, 800.millis) >> // timeout is 500 ms, this need to be quite much longer to be deterministic
+                  sleepIfEven(n, 3000.millis) >> // timeout is 2000 ms, this need to be quite much longer to be deterministic
                   Task.now(DeliveryResult.Ack)
 
               case _ => fail()
@@ -325,7 +325,7 @@ class PoisonedMessageHandlerLiveTest extends TestBase with ScalaFutures {
               Some(MessageProperties(messageId = Some(s"msg_${n}_")))).await
           }
 
-          eventually(timeout(Span(120, Seconds)), interval(Span(1, Seconds))) {
+          eventually(timeout(Span(60, Seconds)), interval(Span(1, Seconds))) {
             println(s"PROCESSED COUNT: ${processed.get()}")
             // we can't assert the `processed` here - some deliveries may have been cancelled before they were even executed
             assertResult(0)(testHelper.queue.getMessagesCount(queueName1))
