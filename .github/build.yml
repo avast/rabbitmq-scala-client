@@ -9,9 +9,7 @@ jobs:
       matrix:
        include:
          - scalaVersion: 2.13
-           scalaLibraryVersion: 2.13.6
-         - scalaVersion: 2.12
-           scalaLibraryVersion: 2.12.14
+           scalaLibraryVersion: 2.13.16
     steps:
       - uses: actions/checkout@v5
       - name: Set up JDK
