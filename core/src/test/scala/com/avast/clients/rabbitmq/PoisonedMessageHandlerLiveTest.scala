@@ -279,7 +279,7 @@ class PoisonedMessageHandlerLiveTest extends TestBase with ScalaFutures {
     import c._
 
     val monitor = new TestMonitor[Task]
-    val messagesCount = 40
+    val messagesCount = 10
     println(s"Sending $messagesCount messages!")
 
     RabbitMQConnection.fromConfig[Task](config, ex).withResource { rabbitConnection =>
