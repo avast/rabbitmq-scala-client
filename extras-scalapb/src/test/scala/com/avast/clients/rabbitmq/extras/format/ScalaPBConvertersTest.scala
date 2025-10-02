@@ -3,7 +3,8 @@ package com.avast.clients.rabbitmq.extras.format
 import com.avast.bytes.Bytes
 import com.avast.clients.rabbitmq.test.FileSource
 import org.junit.runner.RunWith
-import org.scalatest.{FlatSpec, Matchers}
+import org.scalatest.flatspec.FlatSpec
+import org.scalatest.matchers.should.Matchers
 import org.scalatestplus.junit.JUnitRunner
 import scalapb.json4s.Printer
 

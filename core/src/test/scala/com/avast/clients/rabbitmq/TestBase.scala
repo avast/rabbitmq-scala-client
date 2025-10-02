@@ -7,7 +7,7 @@ import monix.execution.Scheduler
 import monix.execution.Scheduler.Implicits.global
 import monix.execution.schedulers.CanBlock
 import org.junit.runner.RunWith
-import org.scalatest.FunSuite
+import org.scalatest.funsuite.AnyFunSuite
 import org.scalatest.concurrent.Eventually
 import org.scalatestplus.junit.JUnitRunner
 import org.scalatestplus.mockito.MockitoSugar
@@ -18,7 +18,7 @@ import scala.concurrent.{ExecutionContext, TimeoutException}
 import scala.language.implicitConversions
 
 @RunWith(classOf[JUnitRunner])
-class TestBase extends FunSuite with MockitoSugar with Eventually with StrictLogging {
+class TestBase extends AnyFunSuite with MockitoSugar with Eventually with StrictLogging {
   protected implicit def taskToOps[A](t: Task[A]): TaskOps[A] = new TaskOps[A](t)
   protected implicit def IOToOps[A](t: IO[A]): IOOps[A] = new IOOps[A](t)
   protected implicit def resourceToIOOps[A](t: Resource[IO, A]): ResourceIOOps[A] = new ResourceIOOps[A](t)

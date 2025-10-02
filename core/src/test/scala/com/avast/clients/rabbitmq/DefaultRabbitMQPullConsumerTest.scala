@@ -11,7 +11,7 @@ import com.rabbitmq.client.{Envelope, GetResponse}
 import monix.eval.Task
 import monix.execution.Scheduler.Implicits.global
 import org.mockito.Mockito._
-import org.mockito.{ArgumentCaptor, Matchers}
+import org.mockito.{ArgumentCaptor, ArgumentMatchers}
 import org.scalatest.time.{Seconds, Span}
 
 import java.util.UUID
@@ -39,7 +39,7 @@ class DefaultRabbitMQPullConsumerTest extends TestBase {
 
     val body = Random.nextString(5).getBytes
 
-    when(channel.basicGet(Matchers.eq("queueName"), Matchers.eq(false))).thenReturn(
+    when(channel.basicGet(ArgumentMatchers.eq("queueName"), ArgumentMatchers.eq(false))).thenReturn(
       new GetResponse(envelope, properties, body, 1)
     )
 
@@ -74,7 +74,7 @@ class DefaultRabbitMQPullConsumerTest extends TestBase {
 
     val body = Random.nextString(5).getBytes
 
-    when(channel.basicGet(Matchers.eq("queueName"), Matchers.eq(false))).thenReturn(
+    when(channel.basicGet(ArgumentMatchers.eq("queueName"), ArgumentMatchers.eq(false))).thenReturn(
       new GetResponse(envelope, properties, body, 1)
     )
 
@@ -109,7 +109,7 @@ class DefaultRabbitMQPullConsumerTest extends TestBase {
 
     val body = Random.nextString(5).getBytes
 
-    when(channel.basicGet(Matchers.eq("queueName"), Matchers.eq(false))).thenReturn(
+    when(channel.basicGet(ArgumentMatchers.eq("queueName"), ArgumentMatchers.eq(false))).thenReturn(
       new GetResponse(envelope, properties, body, 1)
     )
 
@@ -145,7 +145,7 @@ class DefaultRabbitMQPullConsumerTest extends TestBase {
 
     val body = Random.nextString(5).getBytes
 
-    when(channel.basicGet(Matchers.eq("queueName"), Matchers.eq(false))).thenReturn(
+    when(channel.basicGet(ArgumentMatchers.eq("queueName"), ArgumentMatchers.eq(false))).thenReturn(
       new GetResponse(envelope, properties, body, 1)
     )
 
@@ -162,7 +162,7 @@ class DefaultRabbitMQPullConsumerTest extends TestBase {
       verify(channel, times(0)).basicReject(deliveryTag, true)
       verify(channel, times(0)).basicReject(deliveryTag, false)
       val propertiesCaptor = ArgumentCaptor.forClass(classOf[BasicProperties])
-      verify(channel, times(1)).basicPublish(Matchers.eq(""), Matchers.eq("queueName"), propertiesCaptor.capture(), Matchers.eq(body))
+      verify(channel, times(1)).basicPublish(ArgumentMatchers.eq(""), ArgumentMatchers.eq("queueName"), propertiesCaptor.capture(), ArgumentMatchers.eq(body))
       assertResult(Some(originalUserId))(propertiesCaptor.getValue.getHeaders.asScala.get(DefaultRabbitMQConsumer.RepublishOriginalUserId))
     }
   }
@@ -182,7 +182,7 @@ class DefaultRabbitMQPullConsumerTest extends TestBase {
 
     val body = Random.nextString(5).getBytes
 
-    when(channel.basicGet(Matchers.eq("queueName"), Matchers.eq(false))).thenReturn(
+    when(channel.basicGet(ArgumentMatchers.eq("queueName"), ArgumentMatchers.eq(false))).thenReturn(
       new GetResponse(envelope, properties, body, 1)
     )
 
@@ -220,7 +220,7 @@ class DefaultRabbitMQPullConsumerTest extends TestBase {
 
     val body = Random.nextString(5).getBytes
 
-    when(channel.basicGet(Matchers.eq("queueName"), Matchers.eq(false))).thenReturn(
+    when(channel.basicGet(ArgumentMatchers.eq("queueName"), ArgumentMatchers.eq(false))).thenReturn(
       new GetResponse(envelope, properties, body, 1)
     )
 
@@ -251,7 +251,7 @@ class DefaultRabbitMQPullConsumerTest extends TestBase {
 
     val body = Random.nextString(5).getBytes
 
-    when(channel.basicGet(Matchers.eq("queueName"), Matchers.eq(false))).thenReturn(
+    when(channel.basicGet(ArgumentMatchers.eq("queueName"), ArgumentMatchers.eq(false))).thenReturn(
       new GetResponse(envelope, properties, body, 1)
     )
 

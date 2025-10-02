@@ -7,7 +7,8 @@ import com.google.protobuf.util.JsonFormat
 import monix.eval.Task
 import monix.execution.Scheduler.Implicits.global
 import org.junit.runner.RunWith
-import org.scalatest.{FlatSpec, Matchers}
+import org.scalatest.flatspec.FlatSpec
+import org.scalatest.matchers.should.Matchers
 import org.scalatestplus.junit.JUnitRunner
 
 @RunWith(classOf[JUnitRunner])

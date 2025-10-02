@@ -9,8 +9,8 @@ import com.rabbitmq.client.impl.recovery.AutorecoveringChannel
 import monix.eval.Task
 import monix.execution.Scheduler.Implicits.global
 import monix.execution.atomic.AtomicInt
-import org.mockito.Matchers
-import org.mockito.Matchers.any
+import org.mockito.ArgumentMatchers
+import org.mockito.ArgumentMatchers.any
 import org.mockito.Mockito.{times, verify, when}
 
 import scala.concurrent.Await
@@ -56,7 +56,7 @@ class PublisherConfirmsRabbitMQProducerTest extends TestBase {
     Await.result(publishFuture, 10.seconds)
 
     verify(channel, times(2))
-      .basicPublish(Matchers.eq(exchangeName), Matchers.eq(routingKey), any(), Matchers.eq(body.toByteArray))
+      .basicPublish(ArgumentMatchers.eq(exchangeName), ArgumentMatchers.eq(routingKey), any(), ArgumentMatchers.eq(body.toByteArray))
   }
 
   test("Message not acked returned if number of attempts exhausted") {
@@ -97,7 +97,7 @@ class PublisherConfirmsRabbitMQProducerTest extends TestBase {
       Await.result(publishTask, 1.seconds)
     }
 
-    verify(channel).basicPublish(Matchers.eq(exchangeName), Matchers.eq(routingKey), any(), Matchers.eq(body.toByteArray))
+    verify(channel).basicPublish(ArgumentMatchers.eq(exchangeName), ArgumentMatchers.eq(routingKey), any(), ArgumentMatchers.eq(body.toByteArray))
   }
 
   test("Multiple messages are fully acked one by one") {
@@ -141,7 +141,7 @@ class PublisherConfirmsRabbitMQProducerTest extends TestBase {
 
     assertResult(seqNumbers.length)(nextSeqNumber.get())
     verify(channel, times(seqNumbers.length))
-      .basicPublish(Matchers.eq(exchangeName), Matchers.eq(routingKey), any(), Matchers.eq(body.toByteArray))
+      .basicPublish(ArgumentMatchers.eq(exchangeName), ArgumentMatchers.eq(routingKey), any(), ArgumentMatchers.eq(body.toByteArray))
   }
 
   test("Multiple messages are fully acked at once") {
@@ -184,6 +184,6 @@ class PublisherConfirmsRabbitMQProducerTest extends TestBase {
 
     assertResult(seqNumbers.length)(nextSeqNumber.get())
     verify(channel, times(seqNumbers.length))
-      .basicPublish(Matchers.eq(exchangeName), Matchers.eq(routingKey), any(), Matchers.eq(body.toByteArray))
+      .basicPublish(ArgumentMatchers.eq(exchangeName), ArgumentMatchers.eq(routingKey), any(), ArgumentMatchers.eq(body.toByteArray))
   }
 }

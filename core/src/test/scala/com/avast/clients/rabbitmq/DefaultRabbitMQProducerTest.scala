@@ -11,7 +11,7 @@ import com.rabbitmq.client.impl.recovery.AutorecoveringChannel
 import monix.eval.Task
 import monix.execution.Scheduler.Implicits.global
 import org.mockito.Mockito._
-import org.mockito.{ArgumentCaptor, Matchers}
+import org.mockito.{ArgumentCaptor, ArgumentMatchers}
 
 import scala.util.Random
 
@@ -48,10 +48,10 @@ class DefaultRabbitMQProducerTest extends TestBase {
 
     val captor = ArgumentCaptor.forClass(classOf[AMQP.BasicProperties])
 
-    verify(channel, times(1)).basicPublish(Matchers.eq(exchangeName),
-                                           Matchers.eq(routingKey),
+    verify(channel, times(1)).basicPublish(ArgumentMatchers.eq(exchangeName),
+                                           ArgumentMatchers.eq(routingKey),
                                            captor.capture(),
-                                           Matchers.eq(body.toByteArray))
+                                           ArgumentMatchers.eq(body.toByteArray))
 
     val caughtProperties = captor.getValue
 
@@ -95,10 +95,10 @@ class DefaultRabbitMQProducerTest extends TestBase {
 
     val captor = ArgumentCaptor.forClass(classOf[AMQP.BasicProperties])
 
-    verify(channel, times(1)).basicPublish(Matchers.eq(exchangeName),
-                                           Matchers.eq(routingKey),
+    verify(channel, times(1)).basicPublish(ArgumentMatchers.eq(exchangeName),
+                                           ArgumentMatchers.eq(routingKey),
                                            captor.capture(),
-                                           Matchers.eq(body.toByteArray))
+                                           ArgumentMatchers.eq(body.toByteArray))
 
     // check that the one from properties was used
     assertResult(cid)(captor.getValue.getCorrelationId)
@@ -134,10 +134,10 @@ class DefaultRabbitMQProducerTest extends TestBase {
 
     val captor = ArgumentCaptor.forClass(classOf[AMQP.BasicProperties])
 
-    verify(channel, times(1)).basicPublish(Matchers.eq(exchangeName),
-                                           Matchers.eq(routingKey),
+    verify(channel, times(1)).basicPublish(ArgumentMatchers.eq(exchangeName),
+                                           ArgumentMatchers.eq(routingKey),
                                            captor.capture(),
-                                           Matchers.eq(body.toByteArray))
+                                           ArgumentMatchers.eq(body.toByteArray))
 
     // check that the one from headers was used
     assertResult(cid)(captor.getValue.getCorrelationId)
@@ -167,10 +167,10 @@ class DefaultRabbitMQProducerTest extends TestBase {
 
     val captor = ArgumentCaptor.forClass(classOf[AMQP.BasicProperties])
 
-    verify(channel, times(1)).basicPublish(Matchers.eq(exchangeName),
-                                           Matchers.eq(routingKey),
+    verify(channel, times(1)).basicPublish(ArgumentMatchers.eq(exchangeName),
+                                           ArgumentMatchers.eq(routingKey),
                                            captor.capture(),
-                                           Matchers.eq(body.toByteArray))
+                                           ArgumentMatchers.eq(body.toByteArray))
 
     // check that some CID was generated
     assert(captor.getValue.getCorrelationId != null)

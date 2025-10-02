@@ -13,7 +13,7 @@ import com.rabbitmq.client.impl.recovery.AutorecoveringChannel
 import monix.eval.Task
 import monix.execution.Scheduler.Implicits.global
 import org.mockito.Mockito._
-import org.mockito.{ArgumentCaptor, Matchers}
+import org.mockito.{ArgumentCaptor, ArgumentMatchers}
 import org.scalatest.time.{Seconds, Span}
 import org.slf4j.event.Level
 
@@ -147,7 +147,7 @@ class DefaultRabbitMQConsumerTest extends TestBase {
       verify(channel, times(0)).basicReject(deliveryTag, true)
       verify(channel, times(0)).basicReject(deliveryTag, false)
       val propertiesCaptor = ArgumentCaptor.forClass(classOf[BasicProperties])
-      verify(channel, times(1)).basicPublish(Matchers.eq(""), Matchers.eq("queueName"), propertiesCaptor.capture(), Matchers.eq(body))
+      verify(channel, times(1)).basicPublish(ArgumentMatchers.eq(""), ArgumentMatchers.eq("queueName"), propertiesCaptor.capture(), ArgumentMatchers.eq(body))
       assertResult(Some(originalUserId))(propertiesCaptor.getValue.getHeaders.asScala.get(DefaultRabbitMQConsumer.RepublishOriginalUserId))
     }
   }
@@ -220,10 +220,10 @@ class DefaultRabbitMQConsumerTest extends TestBase {
     when(channel.isOpen).thenReturn(true)
 
     val monitor = mock[Monitor[Task]]
-    when(monitor.meter(Matchers.anyString())).thenReturn(Monitor.noOp[Task]().meter(""))
-    when(monitor.named(Matchers.eq("results"))).thenReturn(Monitor.noOp[Task]())
+    when(monitor.meter(ArgumentMatchers.anyString())).thenReturn(Monitor.noOp[Task]().meter(""))
+    when(monitor.named(ArgumentMatchers.eq("results"))).thenReturn(Monitor.noOp[Task]())
     val tasksMonitor = mock[Monitor[Task]]
-    when(monitor.named(Matchers.eq("tasks"))).thenReturn(tasksMonitor)
+    when(monitor.named(ArgumentMatchers.eq("tasks"))).thenReturn(tasksMonitor)
     when(tasksMonitor.gauge).thenReturn(new GaugeFactory[Task] {
       override def settableLong(n: String, replaceExisting: Boolean): SettableGauge[Task, Long] = new SettableGauge[Task, Long] {
         override def set(value: Long): Task[Unit] = fail("Should have not be called")
@@ -240,7 +240,7 @@ class DefaultRabbitMQConsumerTest extends TestBase {
     var successLengths = Seq.newBuilder[Long] // scalastyle:ignore
     var failuresLengths = Seq.newBuilder[Long] // scalastyle:ignore
 
-    when(tasksMonitor.timerPair(Matchers.eq("processed"))).thenReturn(new TimerPair[Task] {
+    when(tasksMonitor.timerPair(ArgumentMatchers.eq("processed"))).thenReturn(new TimerPair[Task] {
       override def update(duration: Duration): Task[Unit] = Task.delay(successLengths += duration.toMillis)
       override def updateFailure(duration: Duration): Task[Unit] = Task.delay(failuresLengths += duration.toMillis)
 
@@ -302,10 +302,10 @@ class DefaultRabbitMQConsumerTest extends TestBase {
     when(channel.isOpen).thenReturn(true)
 
     val monitor = mock[Monitor[Task]]
-    when(monitor.meter(Matchers.anyString())).thenReturn(Monitor.noOp[Task]().meter(""))
-    when(monitor.named(Matchers.eq("results"))).thenReturn(Monitor.noOp[Task]())
+    when(monitor.meter(ArgumentMatchers.anyString())).thenReturn(Monitor.noOp[Task]().meter(""))
+    when(monitor.named(ArgumentMatchers.eq("results"))).thenReturn(Monitor.noOp[Task]())
     val tasksMonitor = mock[Monitor[Task]]
-    when(monitor.named(Matchers.eq("tasks"))).thenReturn(tasksMonitor)
+    when(monitor.named(ArgumentMatchers.eq("tasks"))).thenReturn(tasksMonitor)
     when(tasksMonitor.gauge).thenReturn(new GaugeFactory[Task] {
       override def settableLong(n: String, replaceExisting: Boolean): SettableGauge[Task, Long] = new SettableGauge[Task, Long] {
         override def set(value: Long): Task[Unit] = fail("Should have not be called")
@@ -322,7 +322,7 @@ class DefaultRabbitMQConsumerTest extends TestBase {
     var successLengths = Seq.newBuilder[Long] // scalastyle:ignore
     var failuresLengths = Seq.newBuilder[Long] // scalastyle:ignore
 
-    when(tasksMonitor.timerPair(Matchers.eq("processed"))).thenReturn(new TimerPair[Task] {
+    when(tasksMonitor.timerPair(ArgumentMatchers.eq("processed"))).thenReturn(new TimerPair[Task] {
       override def update(duration: Duration): Task[Unit] = Task.delay(successLengths += duration.toMillis)
       override def updateFailure(duration: Duration): Task[Unit] = Task.delay(failuresLengths += duration.toMillis)
 

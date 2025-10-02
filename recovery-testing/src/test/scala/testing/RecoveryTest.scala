@@ -13,7 +13,8 @@ import com.typesafe.scalalogging.StrictLogging
 import monix.eval.Task
 import monix.execution.Scheduler.Implicits.global
 import org.junit.runner.RunWith
-import org.scalatest.{FunSuite, Ignore}
+import org.scalatest.Ignore
+import org.scalatest.funsuite.AnyFunSuite
 import org.scalatestplus.junit.JUnitRunner
 import org.typelevel.log4cats.slf4j.Slf4jLogger
 
@@ -24,7 +25,7 @@ import scala.util.Random
 
 @Ignore // we don't want to run this test during every build
 @RunWith(classOf[JUnitRunner])
-class RecoveryTest extends FunSuite with StrictLogging {
+class RecoveryTest extends AnyFunSuite with StrictLogging {
   private lazy val config = ConfigFactory.load().getConfig("recoveryTesting")
   private lazy val queueName = config.getString("consumers.consumer.queueName")
   private lazy val blockingExecutor = Executors.newCachedThreadPool()
