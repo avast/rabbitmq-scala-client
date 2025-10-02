@@ -1,0 +1,33 @@
+name: Release
+on:
+  release:
+    types: [published]
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    strategy:
+      matrix:
+       include:
+         - scalaVersion: 2.13
+           scalaLibraryVersion: 2.13.6
+         - scalaVersion: 2.12
+           scalaLibraryVersion: 2.12.14
+    steps:
+      - uses: actions/checkout@v5
+      - name: Set up JDK
+        uses: actions/setup-java@v5
+        with:
+          java-version: 17
+          distribution: 'temurin'
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+      - name: Check with Gradle
+        run: ./gradlew check --info -PscalaVersion=${{ matrix.scalaVersion }} -PscalaLibraryVersion=${{ matrix.scalaLibraryVersion }} -Pversion=${{ github.event.release.tag_name }}
+      - name: Publish with Gradle to Maven Central
+        run: ./gradlew publish jreleaserDeploy --info -Pversion=${{ github.event.release.tag_name }} -PscalaVersion=${{ matrix.scalaVersion }} -PscalaLibraryVersion=${{ matrix.scalaLibraryVersion }}
+        env:
+          SIGNING_KEY: ${{ secrets.SIGNING_KEY }}
+          SIGNING_PUBLIC_KEY: ${{ secrets.SIGNING_PUBLIC_KEY }}
+          JRELEASER_GPG_PASSPHRASE: ${{ secrets.SIGNING_PASSWORD }}
+          JRELEASER_MAVENCENTRAL_USERNAME: ${{ secrets.JRELEASER_MAVENCENTRAL_USERNAME }}
+          JRELEASER_MAVENCENTRAL_PASSWORD: ${{ secrets.JRELEASER_MAVENCENTRAL_PASSWORD }}
