@@ -277,16 +277,14 @@ class PoisonedMessageHandlerLiveTest extends TestBase with ScalaFutures {
     import c._
 
     val monitor = new TestMonitor[Task]
-
-    val messagesCount = (Random.nextInt(2000) + 2000) * 2 // 4-8k, even
-
+    val messagesCount = 4000 // Fixed count for deterministic behavior
     println(s"Sending $messagesCount messages!")
 
     RabbitMQConnection.fromConfig[Task](config, ex).withResource { rabbitConnection =>
       val processed = new AtomicInteger(0)
 
       rabbitConnection.newStreamingConsumer[Bytes]("testingStreamingWithPoisonedMessageHandler", monitor).withResource { cons =>
-        cons.deliveryStream
+        val streamFuture = cons.deliveryStream
           .parEvalMapUnordered(200) {
             _.handleWith {
               case Delivery.Ok(body, _, _) =>
@@ -313,20 +311,28 @@ class PoisonedMessageHandlerLiveTest extends TestBase with ScalaFutures {
           .drain
           .runToFuture
 
+        // Give the stream time to initialize
+        Task.sleep(1.second).await
+
         rabbitConnection.newProducer[Bytes]("testing", Monitor.noOp()).withResource { sender =>
-          // this need to be done _after_ the producer is created (it declares the exchange) but _before_ it starts send messages (so they are not lost)
+          // Declare infrastructure first
           rabbitConnection.declareQueue("declareQueue").await
           rabbitConnection.bindQueue("bindQueue").await
 
           for (n <- 1 to messagesCount) {
-            sender.send(initialRoutingKey, Bytes.copyFromUtf8(n.toString), Some(MessageProperties(messageId = Some(s"msg_${n}_")))).await
+            sender.send(initialRoutingKey, Bytes.copyFromUtf8(n.toString),
+              Some(MessageProperties(messageId = Some(s"msg_${n}_")))).await
           }
 
-          eventually(timeout(Span(120, Seconds)), interval(Span(1, Seconds))) {
-            println(s"PROCESSED COUNT: ${processed.get()}")
-            // we can't assert the `processed` here - some deliveries may have been cancelled before they were even executed
-            assertResult(0)(testHelper.queue.getMessagesCount(queueName1))
-            assertResult(messagesCount / 2)(testHelper.queue.getMessagesCount(queueName2)) // dead queue
+          try {
+            eventually(timeout(Span(120, Seconds)), interval(Span(1, Seconds))) {
+              println(s"PROCESSED COUNT: ${processed.get()}")
+              // we can't assert the `processed` here - some deliveries may have been cancelled before they were even executed
+              assertResult(0)(testHelper.queue.getMessagesCount(queueName1))
+              assertResult(messagesCount / 2)(testHelper.queue.getMessagesCount(queueName2)) // dead queue
+            }
+          } finally {
+            streamFuture.cancel()
           }
         }
       }
