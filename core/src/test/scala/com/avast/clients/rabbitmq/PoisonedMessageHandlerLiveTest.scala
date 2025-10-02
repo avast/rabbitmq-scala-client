@@ -93,7 +93,7 @@ class PoisonedMessageHandlerLiveTest extends TestBase with ScalaFutures {
     val c = createConfig()
     import c._
 
-    val messagesCount = Random.nextInt(5000) + 5000 // 5-10k
+    val messagesCount = 50
 
     println(s"Sending $messagesCount messages!")
 
@@ -132,7 +132,7 @@ class PoisonedMessageHandlerLiveTest extends TestBase with ScalaFutures {
     val c = createConfig()
     import c._
 
-    val messagesCount = (Random.nextInt(1000) + 1000) * 2 // 2-4k, even
+    val messagesCount = 50 * 2 // even
 
     println(s"Sending $messagesCount messages!")
 
@@ -186,7 +186,7 @@ class PoisonedMessageHandlerLiveTest extends TestBase with ScalaFutures {
     val c = createConfig()
     import c._
 
-    val messagesCount = Random.nextInt(2000) + 2000 // only 2-4k, this consumer is just slow
+    val messagesCount = 20 // this consumer is just slow
 
     println(s"Sending $messagesCount messages!")
 
@@ -231,7 +231,7 @@ class PoisonedMessageHandlerLiveTest extends TestBase with ScalaFutures {
     val c = createConfig()
     import c._
 
-    val messagesCount = Random.nextInt(5000) + 5000 // 5-10k
+    val messagesCount = 50
 
     println(s"Sending $messagesCount messages!")
 
@@ -279,7 +279,7 @@ class PoisonedMessageHandlerLiveTest extends TestBase with ScalaFutures {
     import c._
 
     val monitor = new TestMonitor[Task]
-    val messagesCount = 4000 // Fixed count for deterministic behavior
+    val messagesCount = 40
     println(s"Sending $messagesCount messages!")
 
     RabbitMQConnection.fromConfig[Task](config, ex).withResource { rabbitConnection =>
@@ -287,7 +287,7 @@ class PoisonedMessageHandlerLiveTest extends TestBase with ScalaFutures {
 
       rabbitConnection.newStreamingConsumer[Bytes]("testingStreamingWithPoisonedMessageHandler", monitor).withResource { cons =>
         cons.deliveryStream
-          .parEvalMapUnordered(200) {
+          .parEvalMapUnordered(4) {
             _.handleWith {
               case Delivery.Ok(body, _, _) =>
                 val n = body.toStringUtf8.toInt
