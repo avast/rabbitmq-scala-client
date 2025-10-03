@@ -128,10 +128,6 @@ subprojects {
         scalaCompilerPlugin
     }
 
-    compileScala {
-        scalaCompileOptions.additionalParameters = ['-target:jvm-1.8']
-    }
-
     repositories {
         mavenCentral()
     }
