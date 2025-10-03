@@ -96,7 +96,7 @@ subprojects {
                 publications {
                     mavenJava(MavenPublication) {
                         from(components.java)
-                        artifactId = archivesBaseName
+                        artifactId = tasks.jar.archiveBaseName.get()
                         pom {
                             name = 'RabbitMQ client for Scala'
                             description = 'Scala wrapper over standard RabbitMQ Java client library'
@@ -147,9 +147,6 @@ subprojects {
             showStandardStreams = true
         }
     }
-
-    sourceCompatibility = '1.8'
-    targetCompatibility = '1.8'
 
     repositories {
         mavenCentral()

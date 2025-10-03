@@ -1,6 +1,8 @@
 apply plugin: 'com.google.protobuf'
 
-archivesBaseName = "rabbitmq-client-extras-scalapb_$scalaVersion"
+tasks.jar.configure {
+    archiveBaseName.set("rabbitmq-client-extras-scalapb_$scalaVersion")
+}
 
 dependencies {
     api project(":core")

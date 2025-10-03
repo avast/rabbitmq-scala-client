@@ -1,4 +1,6 @@
-archivesBaseName = "rabbitmq-client-api_$scalaVersion"
+tasks.jar.configure {
+    archiveBaseName.set("rabbitmq-client-api_$scalaVersion")
+}
 
 dependencies {
     api "com.avast.bytes:bytes-core:${bytesVersion}"
