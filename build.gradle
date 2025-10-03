@@ -139,7 +139,7 @@ subprojects {
     dependencies {
         scalaCompilerPlugin "org.typelevel:kind-projector_$scalaLibraryVersion:0.13.4"
 
-        api "org.scala-lang.modules:scala-collection-compat_$scalaVersion:2.6.0"
+        api "org.scala-lang.modules:scala-collection-compat_$scalaVersion:2.13.0"
 
         testImplementation "io.monix:monix_$scalaVersion:$monixVersion"
 
