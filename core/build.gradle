@@ -30,7 +30,7 @@ dependencies {
     api "org.typelevel:cats-core_$scalaVersion:$catsVersion"
     api "org.typelevel:cats-effect_$scalaVersion:$catsEffectVersion"
 
-    api 'org.xbib:jsr-305:1.0.0'
+    api 'org.xbib:jsr-305:2.0.0'
     api "org.scala-lang:scala-reflect:$scalaLibraryVersion"
 
     testImplementation project(":extras")
