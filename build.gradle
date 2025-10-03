@@ -19,7 +19,7 @@ allprojects {
     version = version == 'unspecified' ? 'DEVELOPER-SNAPSHOT' : version
     ext {
         bytesVersion = "2.2.0"
-        circeVersion = "0.14.1"
+        circeVersion = "0.14.15"
         catsVersion = "2.7.0"
         catsEffectVersion = "2.5.5"
         fs2Version = "2.5.13"
