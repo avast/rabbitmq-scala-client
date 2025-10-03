@@ -36,7 +36,7 @@ class TaskOps[A](t: Task[A]) {
 
 class ResourceIOOps[A](val r: Resource[IO, A]) extends AnyVal {
   def withResource[B](f: A => B): B = {
-    withResource(f, Duration.Inf)
+    withResource(f, 10.minutes)
   }
 
   def withResource[B](f: A => B, timeout: Duration): B = {
@@ -46,7 +46,7 @@ class ResourceIOOps[A](val r: Resource[IO, A]) extends AnyVal {
 
 class ResourceTaskOps[A](val r: Resource[Task, A]) extends AnyVal {
   def withResource[B](f: A => B): B = {
-    withResource(f, Duration.Inf)
+    withResource(f, 10.minutes)
   }
 
   def withResource[B](f: A => B, timeout: Duration): B = {
