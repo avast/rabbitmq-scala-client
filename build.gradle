@@ -9,18 +9,9 @@ buildscript {
 }
 
 plugins {
-    id "io.github.gradle-nexus.publish-plugin" version '2.0.0'
+    id 'org.jreleaser' version '1.20.0'
 }
 
-nexusPublishing {
-    repositories {
-        sonatype()
-    }
-
-    transitionCheckOptions {
-        maxRetries.set(180) // 30 minutes
-    }
-}
 
 allprojects {
     apply plugin: 'idea'
@@ -42,6 +33,7 @@ allprojects {
     }
 }
 
+tasks.register('clean') {}
 
 subprojects {
     apply plugin: 'java'
@@ -50,7 +42,7 @@ subprojects {
 
     if (!project.hasProperty("notPublished")) {
         apply plugin: 'maven-publish'
-        apply plugin: 'signing'
+        apply plugin: 'org.jreleaser'
     }
 
     group = "com.avast.clients.rabbitmq"
@@ -92,14 +84,42 @@ subprojects {
                         }
                     }
                 }
+                repositories {
+                    maven {
+                        url = layout.buildDirectory.dir('staging-deploy')
+                    }
+                }
             }
         }
 
-        signing {
-            String base64Key = System.getenv('SIGNING_KEY')
-            if (base64Key) {
-                useInMemoryPgpKeys(new String(Base64.decoder.decode(base64Key)), System.getenv('SIGNING_PASSWORD'))
-                sign publishing.publications
+        jreleaser {
+            signing {
+                active = 'ALWAYS'
+                armored = true
+                String base64Key = System.getenv('SIGNING_KEY')
+                if (base64Key) {
+                    secretKey = new String(Base64.decoder.decode(base64Key))
+                }
+                String base64PublicKey = System.getenv('SIGNING_PUBLIC_KEY')
+                if (base64PublicKey) {
+                    publicKey = new String(Base64.decoder.decode(base64PublicKey))
+                }
+            }
+            deploy {
+                maven {
+                    mavenCentral {
+                        sonatype {
+                            active = 'ALWAYS'
+                            url = 'https://central.sonatype.com/api/v1/publisher'
+                            stagingRepository('build/staging-deploy')
+                        }
+                    }
+                }
+            }
+            release {
+                github {
+                    enabled = false
+                }
             }
         }
     }
