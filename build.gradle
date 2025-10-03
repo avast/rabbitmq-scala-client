@@ -38,7 +38,7 @@ allprojects {
         scalapbVersion = "0.11.18"
         scalapbJson4sVersion = "0.11.1"
         typesafeConfigVersion = "1.4.5"
-        monixVersion = "3.4.0" // just for tests!
+        monixVersion = "3.4.1" // just for tests!
     }
 
     /*
