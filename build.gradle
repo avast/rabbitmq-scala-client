@@ -40,38 +40,8 @@ allprojects {
         typesafeConfigVersion = "1.4.5"
         monixVersion = "3.4.0" // just for tests!
     }
-
-    /*
-    * Report failed test at the end of the run:
-    * */
-
-    // add a collection to track failedTests
-    ext.failedTests = []
-
-    // add a testlistener to all tasks of type Test
-    tasks.withType(Test) {
-        afterTest { TestDescriptor descriptor, TestResult result ->
-            if (result.resultType == TestResult.ResultType.FAILURE) {
-                failedTests << ["${descriptor.className}::${descriptor.name}"]
-            }
-        }
-    }
-
-    // print out tracked failed tests when the build has finished
-    gradle.buildFinished {
-        if (!failedTests.empty) {
-            println "\n\n----------------------------------------"
-            println "Failed tests for ${project.name}:"
-            failedTests.each { failedTest ->
-                println " - ${failedTest}"
-            }
-            println "----------------------------------------"
-            println "\n"
-        }
-    }
 }
 
-println("Scala version: ${scalaVersion} (${scalaLibraryVersion})") // will display the version once, when configuring root
 
 subprojects {
     apply plugin: 'java'
@@ -140,12 +110,6 @@ subprojects {
 
     compileScala {
         scalaCompileOptions.additionalParameters = ['-target:jvm-1.8']
-    }
-
-    test {
-        testLogging {
-            showStandardStreams = true
-        }
     }
 
     repositories {
