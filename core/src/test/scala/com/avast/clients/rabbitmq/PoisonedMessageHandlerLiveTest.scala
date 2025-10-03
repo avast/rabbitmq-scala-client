@@ -227,8 +227,7 @@ class PoisonedMessageHandlerLiveTest extends TestBase with ScalaFutures {
     }
   }
 
-  // stuck in GitHub Actions
-  ignore("PoisonedMessageHandler streaming") {
+  test("PoisonedMessageHandler streaming") {
     val c = createConfig()
     import c._
 
@@ -275,8 +274,7 @@ class PoisonedMessageHandlerLiveTest extends TestBase with ScalaFutures {
     }
   }
 
-  // stuck in GitHub Actions
-  ignore("PoisonedMessageHandler streaming with timeouting messages") {
+  test("PoisonedMessageHandler streaming with timeouting messages") {
     val c = createConfig()
     import c._
 
