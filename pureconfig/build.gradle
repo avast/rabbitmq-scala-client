@@ -1,4 +1,6 @@
-archivesBaseName = "rabbitmq-client-pureconfig_$scalaVersion"
+tasks.jar.configure {
+    archiveBaseName.set("rabbitmq-client-pureconfig_$scalaVersion")
+}
 
 dependencies {
     api project(":core")

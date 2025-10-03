@@ -1,7 +1,9 @@
 apply plugin: 'docker-compose'
 apply plugin: 'com.google.protobuf'
 
-archivesBaseName = "rabbitmq-client-core_$scalaVersion"
+tasks.jar.configure {
+    archiveBaseName.set("rabbitmq-client-core_$scalaVersion")
+}
 
 protobuf {
     protoc {
