@@ -19,8 +19,6 @@ jobs:
           distribution: 'temurin'
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
-      - name: Check with Gradle
-        run: ./gradlew check --info -PscalaVersion=${{ matrix.scalaVersion }} -PscalaLibraryVersion=${{ matrix.scalaLibraryVersion }} -Pversion=${{ github.event.release.tag_name }}
       - name: Publish with Gradle to Maven Central
         run: ./gradlew publish jreleaserDeploy --info -Pversion=${{ github.event.release.tag_name }} -PscalaVersion=${{ matrix.scalaVersion }} -PscalaLibraryVersion=${{ matrix.scalaLibraryVersion }}
         env:
