@@ -25,8 +25,8 @@ class PublisherConfirmsRabbitMQProducerTest extends TestBase {
 
     val nextSeqNumber = AtomicInt(0)
     val channel = mock[AutorecoveringChannel]
-    when(channel.getNextPublishSeqNo).thenAnswer(_ => nextSeqNumber.get())
-    when(channel.basicPublish(any(), any(), any(), any())).thenAnswer(_ => {
+    when(channel.getNextPublishSeqNo).thenAnswer(_ => nextSeqNumber.get().toLong)
+    when(channel.basicPublish(any(), any(), any(), any(), any())).thenAnswer(_ => {
       nextSeqNumber.increment()
     })
 
@@ -46,7 +46,6 @@ class PublisherConfirmsRabbitMQProducerTest extends TestBase {
     val body = Bytes.copyFrom(Array.fill(499)(32.toByte))
 
     val publishFuture = producer.send(routingKey, body).runToFuture
-
     while (nextSeqNumber.get() < 1) { Thread.sleep(5) }
     producer.DefaultConfirmListener.handleNack(0, multiple = false)
 
@@ -56,7 +55,7 @@ class PublisherConfirmsRabbitMQProducerTest extends TestBase {
     Await.result(publishFuture, 10.seconds)
 
     verify(channel, times(2))
-      .basicPublish(ArgumentMatchers.eq(exchangeName), ArgumentMatchers.eq(routingKey), any(), ArgumentMatchers.eq(body.toByteArray))
+      .basicPublish(ArgumentMatchers.eq(exchangeName), ArgumentMatchers.eq(routingKey), ArgumentMatchers.eq(false), any(), ArgumentMatchers.eq(body.toByteArray))
   }
 
   test("Message not acked returned if number of attempts exhausted") {
@@ -65,8 +64,8 @@ class PublisherConfirmsRabbitMQProducerTest extends TestBase {
 
     val nextSeqNumber = AtomicInt(0)
     val channel = mock[AutorecoveringChannel]
-    when(channel.getNextPublishSeqNo).thenAnswer(_ => nextSeqNumber.get())
-    when(channel.basicPublish(any(), any(), any(), any())).thenAnswer(_ => {
+    when(channel.getNextPublishSeqNo).thenAnswer(_ => nextSeqNumber.get().toLong)
+    when(channel.basicPublish(any(), any(), any(), any(), any())).thenAnswer(_ => {
       nextSeqNumber.increment()
     })
 
@@ -97,7 +96,7 @@ class PublisherConfirmsRabbitMQProducerTest extends TestBase {
       Await.result(publishTask, 1.seconds)
     }
 
-    verify(channel).basicPublish(ArgumentMatchers.eq(exchangeName), ArgumentMatchers.eq(routingKey), any(), ArgumentMatchers.eq(body.toByteArray))
+    verify(channel).basicPublish(ArgumentMatchers.eq(exchangeName), ArgumentMatchers.eq(routingKey), ArgumentMatchers.eq(false), any(), ArgumentMatchers.eq(body.toByteArray))
   }
 
   test("Multiple messages are fully acked one by one") {
@@ -108,8 +107,8 @@ class PublisherConfirmsRabbitMQProducerTest extends TestBase {
     val nextSeqNumber = AtomicInt(0)
 
     val channel = mock[AutorecoveringChannel]
-    when(channel.getNextPublishSeqNo).thenAnswer(_ => nextSeqNumber.get())
-    when(channel.basicPublish(any(), any(), any(), any())).thenAnswer(_ => {
+    when(channel.getNextPublishSeqNo).thenAnswer(_ => nextSeqNumber.get().toLong)
+    when(channel.basicPublish(any(), any(), any(), any(), any())).thenAnswer(_ => {
       nextSeqNumber.increment()
     })
 
@@ -141,7 +140,7 @@ class PublisherConfirmsRabbitMQProducerTest extends TestBase {
 
     assertResult(seqNumbers.length)(nextSeqNumber.get())
     verify(channel, times(seqNumbers.length))
-      .basicPublish(ArgumentMatchers.eq(exchangeName), ArgumentMatchers.eq(routingKey), any(), ArgumentMatchers.eq(body.toByteArray))
+      .basicPublish(ArgumentMatchers.eq(exchangeName), ArgumentMatchers.eq(routingKey), ArgumentMatchers.eq(false), any(), ArgumentMatchers.eq(body.toByteArray))
   }
 
   test("Multiple messages are fully acked at once") {
@@ -153,8 +152,8 @@ class PublisherConfirmsRabbitMQProducerTest extends TestBase {
     val nextSeqNumber = AtomicInt(0)
 
     val channel = mock[AutorecoveringChannel]
-    when(channel.getNextPublishSeqNo).thenAnswer(_ => nextSeqNumber.get())
-    when(channel.basicPublish(any(), any(), any(), any())).thenAnswer(_ => {
+    when(channel.getNextPublishSeqNo).thenAnswer(_ => nextSeqNumber.get().toLong)
+    when(channel.basicPublish(any(), any(), any(), any(), any())).thenAnswer(_ => {
       nextSeqNumber.increment()
     })
 
@@ -184,6 +183,6 @@ class PublisherConfirmsRabbitMQProducerTest extends TestBase {
 
     assertResult(seqNumbers.length)(nextSeqNumber.get())
     verify(channel, times(seqNumbers.length))
-      .basicPublish(ArgumentMatchers.eq(exchangeName), ArgumentMatchers.eq(routingKey), any(), ArgumentMatchers.eq(body.toByteArray))
+      .basicPublish(ArgumentMatchers.eq(exchangeName), ArgumentMatchers.eq(routingKey), ArgumentMatchers.eq(false), any(), ArgumentMatchers.eq(body.toByteArray))
   }
 }

@@ -15,7 +15,8 @@ case class MessageProperties(contentType: Option[String] = None,
                              `type`: Option[String] = None,
                              userId: Option[String] = None,
                              appId: Option[String] = None,
-                             clusterId: Option[String] = None)
+                             clusterId: Option[String] = None,
+                             mandatory: Boolean = false)
 
 object MessageProperties {
   val empty: MessageProperties = MessageProperties()

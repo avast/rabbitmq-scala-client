@@ -50,6 +50,7 @@ class DefaultRabbitMQProducerTest extends TestBase {
 
     verify(channel, times(1)).basicPublish(ArgumentMatchers.eq(exchangeName),
                                            ArgumentMatchers.eq(routingKey),
+                                           ArgumentMatchers.eq(false),
                                            captor.capture(),
                                            ArgumentMatchers.eq(body.toByteArray))
 
@@ -86,7 +87,11 @@ class DefaultRabbitMQProducerTest extends TestBase {
     val body = Bytes.copyFromUtf8(Random.nextString(10))
 
     val mp = Some(
-      MessageProperties(correlationId = Some(cid), headers = Map(CorrelationIdStrategy.CorrelationIdKeyName -> cid2.asInstanceOf[AnyRef]))
+      MessageProperties(
+        correlationId = Some(cid),
+        headers = Map(CorrelationIdStrategy.CorrelationIdKeyName -> cid2.asInstanceOf[AnyRef]),
+        mandatory = true
+      )
     )
 
     implicit val cidStrategy: CorrelationIdStrategy = CorrelationIdStrategy.FromPropertiesOrRandomNew(mp)
@@ -97,6 +102,7 @@ class DefaultRabbitMQProducerTest extends TestBase {
 
     verify(channel, times(1)).basicPublish(ArgumentMatchers.eq(exchangeName),
                                            ArgumentMatchers.eq(routingKey),
+                                           ArgumentMatchers.eq(true),
                                            captor.capture(),
                                            ArgumentMatchers.eq(body.toByteArray))
 
@@ -136,6 +142,7 @@ class DefaultRabbitMQProducerTest extends TestBase {
 
     verify(channel, times(1)).basicPublish(ArgumentMatchers.eq(exchangeName),
                                            ArgumentMatchers.eq(routingKey),
+                                           ArgumentMatchers.eq(false),
                                            captor.capture(),
                                            ArgumentMatchers.eq(body.toByteArray))
 
@@ -154,7 +161,7 @@ class DefaultRabbitMQProducerTest extends TestBase {
       exchangeName = exchangeName,
       channel = channel,
       monitor = Monitor.noOp(),
-      defaultProperties = MessageProperties.empty,
+      defaultProperties = MessageProperties.empty.copy(mandatory = true),
       reportUnroutable = false,
       sizeLimitBytes = None,
       blocker = TestBase.testBlocker,
@@ -169,6 +176,7 @@ class DefaultRabbitMQProducerTest extends TestBase {
 
     verify(channel, times(1)).basicPublish(ArgumentMatchers.eq(exchangeName),
                                            ArgumentMatchers.eq(routingKey),
+                                           ArgumentMatchers.eq(true),
                                            captor.capture(),
                                            ArgumentMatchers.eq(body.toByteArray))
 
