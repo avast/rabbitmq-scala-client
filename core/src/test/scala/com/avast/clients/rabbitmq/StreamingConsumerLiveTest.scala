@@ -312,7 +312,7 @@ class StreamingConsumerLiveTest extends TestBase with ScalaFutures {
               Task.delay(d.incrementAndGet()) >>
                 Task
                   .now(Ack)
-                  .delayExecution(800.millis)
+                  .delayExecution(8000.millis)
             }
           }
 
@@ -355,7 +355,7 @@ class StreamingConsumerLiveTest extends TestBase with ScalaFutures {
           .mapAsyncUnordered(50) {
             _.handleWith { d =>
               Task.delay(delivered.incrementAndGet()) >>
-                Task.sleep(800.millis) >>
+                Task.sleep(8000.millis) >>
                 // the consumer has timeout to 500ms so this should never get executed!
                 Task {
                   logger.info(s"Executed: ${d.properties.messageId.getOrElse("-no-message-id-")}")

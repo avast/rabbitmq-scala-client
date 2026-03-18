@@ -72,7 +72,7 @@ abstract class BaseRabbitMQProducer[F[_], A: ProductConverter](name: String,
           // see https://www.rabbitmq.com/api-guide.html#channel-threads
           val sequenceNumber = channel.getNextPublishSeqNo
           preSendAction(sequenceNumber)
-          channel.basicPublish(exchangeName, routingKey, properties.asAMQP, body.toByteArray)
+          channel.basicPublish(exchangeName, routingKey, properties.mandatory, properties.asAMQP, body.toByteArray)
           sequenceNumber
         }
       }
