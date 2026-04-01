@@ -22,7 +22,7 @@ allprojects {
         circeVersion = "0.14.1"
         catsVersion = "2.7.0"
         catsEffectVersion = "2.5.5"
-        fs2Version = "2.5.13"
+        fs2Version = "2.5-766988d"
         metricsVersion = "3.0.4"
         protobufVersion = "3.25.8"
         pureconfigVersion = "0.17.9"
